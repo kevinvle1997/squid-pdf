@@ -31,11 +31,14 @@ from squidpdf.core.pdf.mupdf import DRIVER_BUILD, MUPDF_FAILURES, open_driver, o
 from squidpdf.core.plan import DrawPlan, DrawPlanner, letter_widths
 from squidpdf.core.redaction import RedactionCheck, any_word_left, holds, whole_words, without
 from squidpdf.core.text.fidelity import FidelityReport
-from squidpdf.core.text.room import rooms_on
+from squidpdf.core.text.lines import lines_on
+from squidpdf.core.text.room import line_rooms_on, rooms_on
 from squidpdf.core.text.spans import build_index
 from squidpdf.core.types import (
     Face,
     FormField,
+    FreeSpace,
+    Line,
     Page,
     QuarterTurn,
     Rect,
@@ -163,6 +166,31 @@ class Engine:
                 drawn = self.driver.drawn_boxes(page)
                 rooms |= rooms_on(on_page, drawn, wanted=wanted)
         return rooms
+
+    def free_space(self, index: SpanIndex) -> FreeSpace:
+        """Every span's room, and each line of more than one span with its own.
+
+        Read from the pages as they are, so ask before an erase changes them. Each page's
+        drawings are read once, for both.
+        """
+        rooms: dict[str, float] = {}
+        lines: list[Line] = []
+        for page, on_page in by_page(index).items():
+            drawn = self.driver.drawn_boxes(page)
+            rooms |= rooms_on(on_page, drawn, wanted={span.id for span in on_page})
+            lines += self._lines_on(page, on_page, drawn=drawn)
+        return FreeSpace(rooms, lines)
+
+    def _lines_on(self, page: int, spans: list[Span], *, drawn: list[Rect]) -> list[Line]:
+        """The lines of more than one span among `spans`, all on `page`, which draws `drawn`."""
+        in_fields = {span.id for span in self._in_fields_on(page, spans)}
+        breaks = [*drawn, *self.driver.link_boxes(page)]
+        lines = lines_on(spans, breaks=breaks, in_fields=in_fields)
+        rooms = line_rooms_on(spans, drawn, lines=lines)
+        return [
+            Line(tuple(span.id for span in line), room)
+            for line, room in zip(lines, rooms, strict=True)
+        ]
 
     # What we can promise about it.
 

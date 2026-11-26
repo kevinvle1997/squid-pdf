@@ -14,13 +14,11 @@ import secrets
 import shutil
 import tempfile
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from functools import cache, partial
 from pathlib import Path
 from typing import BinaryIO, Protocol
-
-import orjson
 
 from squidpdf.core import (
     ANALYSIS_TUNING,
@@ -28,9 +26,12 @@ from squidpdf.core import (
     DriverFactory,
     Engine,
     FontSources,
+    FreeSpace,
     GoogleDownload,
     Page,
     SpanIndex,
+    free_space_as_json,
+    free_space_from_json,
     google_fonts,
     index_as_json,
     index_from_json,
@@ -419,18 +420,18 @@ def load_pages(folder: Path) -> list[Page]:
     return pages_from_json(saved)
 
 
-def save_rooms(folder: Path, build: str, rooms: Mapping[str, float]) -> None:
-    """Keep every span's room, by id, worked out under this build: no font moves one."""
-    _write_whole(folder / _rooms_file(build), orjson.dumps(rooms))
+def save_free_space(folder: Path, build: str, free_space: FreeSpace) -> None:
+    """Keep every span's room and every line, worked out under this build: no font moves one."""
+    _write_whole(folder / _free_space_file(build), free_space_as_json(free_space))
 
 
-def load_rooms(folder: Path, build: str) -> dict[str, float] | None:
-    """Every span's room, by id, as kept under this build, format and tuning, or None."""
+def load_free_space(folder: Path, build: str) -> FreeSpace | None:
+    """Every span's room and every line, kept under this build, format and tuning, or None."""
     try:
-        saved = (folder / _rooms_file(build)).read_bytes()
+        saved = (folder / _free_space_file(build)).read_bytes()
     except FileNotFoundError:  # a new build, format or tuning, or not worked out yet
         return None
-    return orjson.loads(saved)
+    return free_space_from_json(saved)
 
 
 def save_analysis(folder: Path, build: str, kept: KeptAnalysis, *, attached: str) -> None:
@@ -487,9 +488,9 @@ def _source_digest() -> bytes:
     return digest.digest()
 
 
-def _rooms_file(build: str) -> str:
-    """The file every span's room under `build` is kept in, beside `_analysis_file`."""
-    return _analysis_kept_as(f"rooms-{build}.json")
+def _free_space_file(build: str) -> str:
+    """The file the rooms and lines under `build` are kept in, beside `_analysis_file`."""
+    return _analysis_kept_as(f"free-space-{build}.json")
 
 
 def _analysis_file(build: str) -> str:

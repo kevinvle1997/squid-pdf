@@ -16,6 +16,7 @@ GREEN_RATE_WARN = 0.5  # below this, the CLI marks a document red rather than ye
 BASELINE_EPS = 0.6  # pt: two letters' baselines this close are one line
 SIZE_EPS = 0.1  # pt: two runs' sizes this close are one size
 GAP_RATIO = 0.35  # of the size: a gap past this between two runs is a word's, not kerning
+KERNING_PT = -1.0  # a gap down to this far below 0 is kerning pulling letters together
 
 # Two copies of a font under one name are one font when every letter both draw
 # is this close in width, per 1000 em: a width list rounds to whole units.
@@ -38,6 +39,11 @@ ROOM_SLACK_PT = 0.1
 # Letters set apart by less than this, per em, are kerned, not spaced: a kerned pair moves
 # about a hundredth of an em, a heading set tight two hundredths, a tracked label five.
 LETTER_SPACING_MIN_EM = 0.015
+
+# A line: spans on one baseline, a word space apart, edited as one. A drawing or a link with an
+# edge inside one cuts it there; an edge this close inside a span's end is at its end, as a
+# stroke's ink spreads a little past where it's drawn.
+LINE_EDGE_SLACK_PT = 1.0
 
 # Room: how far a line runs to the right before it reaches anything, read from the page.
 ROOM_TOUCH_PT = 0.1  # boxes overlapping by less than this don't touch: a hairline is no wall
@@ -79,6 +85,10 @@ LENT_COPIES_KEPT = 32
 
 # The numbers an analysis is worked out by: it's kept under them, so add any new one here.
 ANALYSIS_TUNING = {
+    "baseline_eps": BASELINE_EPS,
+    "gap_ratio": GAP_RATIO,
+    "kerning_pt": KERNING_PT,
+    "line_edge_slack_pt": LINE_EDGE_SLACK_PT,
     "tolerance_pt": TOLERANCE_PT,
     "room_touch_pt": ROOM_TOUCH_PT,
     "letter_spacing_min_em": LETTER_SPACING_MIN_EM,

@@ -116,6 +116,10 @@ class PdfDriver(Protocol):
         """
         ...
 
+    def link_boxes(self, page: int) -> list[Rect]:
+        """The area of each link on the page, as shown, whatever it does."""
+        ...
+
     def drawn_glyphs(self, page: int) -> list[DrawnGlyph]:
         """Each letter the page's own drawing writes, on it or off it, and the shape picked.
 

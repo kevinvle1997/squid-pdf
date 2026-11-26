@@ -117,22 +117,46 @@ class PageRedaction:
         mu = pymupdf.mupdf
         page_obj = mu.pdf_lookup_page_obj(pdf_of(self.doc), page)
         listed = mu.pdf_dict_get(page_obj, mu.PDF_ENUM_NAME_Annots)
-        to_page = ~to_pdf_matrix(self.doc, page)
         boxes_shown = [pymupdf.Rect(box.x0, box.y0, box.x1, box.y1) for box in boxes]
-        # From the end, so each deletion leaves the places still to read where they were.
-        for place in reversed(range(mu.pdf_array_len(listed))):
-            annotation = mu.pdf_array_get(listed, place)
-            subtype = mu.pdf_dict_get(annotation, mu.PDF_ENUM_NAME_Subtype)
-            # Another kind of annotation: a note, a form field.
-            if not mu.pdf_name_eq(subtype, mu.PDF_ENUM_NAME_Link):
-                continue
-            rect = mu.pdf_to_rect(mu.pdf_dict_get(annotation, mu.PDF_ENUM_NAME_Rect))
-            link_area = pymupdf.Rect(rect.x0, rect.y0, rect.x1, rect.y1) * to_page
-            over = any(link_area.intersects(box) for box in boxes_shown)
-            held = holding is None or any(map(holding, _texts_of_link(annotation)))
+        for link in _links_on(self.doc, page):
+            over = any(link.area.intersects(box) for box in boxes_shown)
+            held = holding is None or any(map(holding, _texts_of_link(link.annotation)))
             if over and held:
-                mu.pdf_array_delete(listed, place)
+                mu.pdf_array_delete(listed, link.place)
         _sync_links(self.doc, page)
+
+    def link_boxes(self, page: int) -> list[Rect]:
+        """The area of each link on the page, as shown, whatever it does."""
+        areas = [link.area for link in _links_on(self.doc, page)]
+        return [Rect(area.x0, area.y0, area.x1, area.y1) for area in areas]
+
+
+@dataclass(frozen=True, slots=True, eq=False)
+class _Link:
+    """One link in a page's list of annotations: its place there, itself, its area as shown."""
+
+    place: int
+    annotation: pymupdf.mupdf.PdfObj
+    area: pymupdf.Rect
+
+
+def _links_on(doc: pymupdf.Document, page: int) -> Iterator[_Link]:
+    """Each link in the page's own list of annotations (its Annots), the last first."""
+    mu = pymupdf.mupdf
+    page_obj = mu.pdf_lookup_page_obj(pdf_of(doc), page)
+    listed = mu.pdf_dict_get(page_obj, mu.PDF_ENUM_NAME_Annots)
+    to_page = ~to_pdf_matrix(doc, page)
+    # From the end, so a link deleted leaves the places still to read where they were.
+    for place in reversed(range(mu.pdf_array_len(listed))):
+        annotation = mu.pdf_array_get(listed, place)
+        subtype = mu.pdf_dict_get(annotation, mu.PDF_ENUM_NAME_Subtype)
+        # Another kind of annotation: a note, a form field.
+        if not mu.pdf_name_eq(subtype, mu.PDF_ENUM_NAME_Link):
+            continue
+        rect = mu.pdf_to_rect(mu.pdf_dict_get(annotation, mu.PDF_ENUM_NAME_Rect))
+        yield _Link(
+            place, annotation, pymupdf.Rect(rect.x0, rect.y0, rect.x1, rect.y1) * to_page
+        )
 
 
 def _texts_of_link(annotation: pymupdf.mupdf.PdfObj) -> list[str]:

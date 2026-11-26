@@ -247,6 +247,7 @@ export function aDoc(fields: Partial<Document> = {}): Document {
     pages: Array.from({ length: pageCount }, () => A4),
     spans,
     fonts: [],
+    lines: [],
     signed: false,
     fit: RULES,
     sentences: SENTENCES,

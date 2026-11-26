@@ -35,7 +35,7 @@ from squidpdf.core import (
 )
 from squidpdf.documents import store
 from squidpdf.documents.errors import NoSuchPage, is_page
-from squidpdf.documents.free_space import kept_rooms
+from squidpdf.documents.free_space import kept_free_space
 from squidpdf.documents.store import DocumentStore
 from squidpdf.documents.types import Loaded
 from squidpdf.editing import constants
@@ -138,7 +138,7 @@ def _make_pdf(
     The server makes `scratch`, reads the file from it, and removes it. Runs in a worker.
     """
     index = store.require_index(folder)
-    rooms = kept_rooms(documents, folder, index)
+    rooms = kept_free_space(documents, folder, index).rooms
 
     with documents.open_original(folder) as engine:
         # Outside the document's folder: deleting it while the file is open can't take the save.

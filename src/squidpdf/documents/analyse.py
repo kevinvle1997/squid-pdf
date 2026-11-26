@@ -16,6 +16,8 @@ from squidpdf.core import (
     BUILD,
     Engine,
     FidelityReport,
+    FreeSpace,
+    Line,
     MessageInfo,
     Span,
     SpanIndex,
@@ -24,13 +26,14 @@ from squidpdf.core import (
 )
 from squidpdf.documents import attached, store
 from squidpdf.documents.errors import TooManyPages
-from squidpdf.documents.free_space import kept_rooms
+from squidpdf.documents.free_space import kept_free_space
 from squidpdf.documents.store import DocumentStore
 from squidpdf.documents.types import (
     AnalysisFacts,
     ApproximateInfo,
     FontFacts,
     KeptAnalysis,
+    LineInfo,
     SpanInfo,
 )
 
@@ -50,10 +53,11 @@ def analyse_upload(documents: DocumentStore, folder: Path, max_pages: int) -> Ke
         index = engine.index()
         store.save_index(folder, index)
         store.save_pages(folder, engine.pages())
-        # How far each line can run before it's too long: kept, so nothing works it out again.
-        rooms = engine.rooms(index, index)
-        store.save_rooms(folder, BUILD, rooms)
-        return _analysed(engine, folder, index, rooms=rooms, files=files)
+        # How far each line can run before it's too long, and which spans are one line: kept,
+        # so nothing works them out again.
+        free_space = engine.free_space(index)
+        store.save_free_space(folder, BUILD, free_space)
+        return _analysed(engine, folder, index, free_space=free_space, files=files)
 
 
 def _take_in(documents: DocumentStore, folder: Path, max_pages: int) -> None:
@@ -85,10 +89,10 @@ def analyse(documents: DocumentStore, folder: Path) -> KeptAnalysis:
     Raises Gone if that index was deleted or kept in another format.
     """
     index = store.require_index(folder)
-    rooms = kept_rooms(documents, folder, index)
+    free_space = kept_free_space(documents, folder, index)
     files = attached.attached_files(folder)
     with documents.open_to_analyse(folder, files) as engine:
-        return _analysed(engine, folder, index, rooms=rooms, files=files)
+        return _analysed(engine, folder, index, free_space=free_space, files=files)
 
 
 def _analysed(
@@ -96,7 +100,7 @@ def _analysed(
     folder: Path,
     index: SpanIndex,
     *,
-    rooms: Mapping[str, float],
+    free_space: FreeSpace,
     files: attached.AttachedFiles,
 ) -> KeptAnalysis:
     """Judge every span and list each font's letters, under this build; keep and return it.
@@ -108,12 +112,13 @@ def _analysed(
     # Text a form field draws: said before any edit, since an edit to it is left out.
     form_field_span_ids = {span.id for span in engine.in_form_fields(index)}
     fonts = _fonts_of(engine, index, reports=reports, files=files)
-    facts = _document_facts(folder, signed=engine.holds_signature(), fonts=fonts)
+    lines = [_line_info(line) for line in free_space.lines]
+    facts = _document_facts(folder, signed=engine.holds_signature(), fonts=fonts, lines=lines)
     spans = [
         _span_info(
             span,
             reports[span.id],
-            room_pt=rooms[span.id],
+            room_pt=free_space.rooms[span.id],
             form_field=span.id in form_field_span_ids,
         )
         for span in index
@@ -151,8 +156,10 @@ def _fonts_of(
     ]
 
 
-def _document_facts(folder: Path, *, signed: bool, fonts: list[FontFacts]) -> AnalysisFacts:
-    """What the analysis says of the whole document: its build, signature, pages and fonts."""
+def _document_facts(
+    folder: Path, *, signed: bool, fonts: list[FontFacts], lines: list[LineInfo]
+) -> AnalysisFacts:
+    """What the analysis says of the whole document: its build, pages, fonts and lines."""
     return {
         "build": BUILD,
         "active_content_dropped": store.active_content_dropped(folder),
@@ -163,7 +170,13 @@ def _document_facts(folder: Path, *, signed: bool, fonts: list[FontFacts]) -> An
             for page in store.load_pages(folder)
         ],
         "fonts": fonts,
+        "lines": lines,
     }
+
+
+def _line_info(line: Line) -> LineInfo:
+    """A line of more than one span as the browser gets it."""
+    return {"span_ids": list(line.span_ids), "room_pt": round(line.room_pt, _ROOM_DP)}
 
 
 def _kept_analysis(facts: AnalysisFacts, spans: list[SpanInfo]) -> KeptAnalysis:

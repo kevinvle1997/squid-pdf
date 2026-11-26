@@ -21,7 +21,6 @@ from squidpdf.core.types import (
 )
 
 _POSITION_DP = 2  # boxes, origins and sizes, as span ids and the client see them
-_KERNING_PT = -1.0  # a gap down to this far below 0 is kerning pulling letters together
 
 
 def build_index(pages: Iterable[list[list[TextPiece]]]) -> SpanIndex:
@@ -84,7 +83,7 @@ def _continues(previous: TextPiece, piece: TextPiece) -> bool:
         return False
     # Close enough: a small negative gap is kerning pulling letters together.
     gap = piece.box.x0 - previous.box.x1
-    return _KERNING_PT <= gap <= piece.size * constants.GAP_RATIO
+    return constants.KERNING_PT <= gap <= piece.size * constants.GAP_RATIO
 
 
 def _span_from(page: int, group: list[TextPiece], ordinal: int) -> Span:

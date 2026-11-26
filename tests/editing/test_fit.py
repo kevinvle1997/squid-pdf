@@ -94,6 +94,7 @@ def test_the_shared_cases_use_the_servers_rules():
         "signed": False,
         "pages": [],
         "fonts": [],
+        "lines": [],
     }
     kept = KeptAnalysis(orjson.dumps(facts), b"[]", "its-digest")
     reply = orjson.loads(document_json("a-doc", expires_at=0.0, kept=kept, language="en"))

@@ -362,6 +362,10 @@ class _MuPDFDriver:
         ]
         return pieces + pictures
 
+    def link_boxes(self, page: int) -> list[Rect]:
+        """The area of each link on the page, as shown, whatever it does."""
+        return self.file.redaction.link_boxes(page)
+
     def form_fields(self, page: int) -> list[FormField]:
         """Each form field on the page that shows text, and the value it shows.
 

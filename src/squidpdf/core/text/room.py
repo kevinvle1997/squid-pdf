@@ -54,6 +54,39 @@ def _by_height[T](short: list[_Placed[T]], *, tall: list[_Placed[T]]) -> _ByHeig
     )
 
 
+@dataclass(frozen=True, slots=True, eq=False)
+class _Walls:
+    """What a page's text could run into: its level text and line art, its rightmost text."""
+
+    text: _ByHeight[Span] = field(repr=False)
+    art: _ByHeight[Rect] = field(repr=False)
+    margin: float
+
+    def room_of(self, span: Span, *, besides: frozenset[str] = frozenset()) -> float:
+        """How far `span` can run right before what's ahead of it; `besides` move with it."""
+        box = span.bbox
+        text_ahead = [
+            other.bbox.x0
+            for other in self.text.touching(box)
+            if other.id not in besides and _is_ahead(other, span)
+        ]
+        art_ahead = [
+            _stop_at(drawn, box) for drawn in self.art.touching(box) if _not_behind(drawn, box)
+        ]
+        walls = [*text_ahead, self.margin, *art_ahead]
+        return max(min(walls) - box.x1, 0.0)
+
+
+def _walls_on(spans: list[Span], drawn: list[Rect]) -> _Walls | None:
+    """What one page's text could run into; `drawn` is its line art. None with no level text."""
+    level_spans = [span for span in spans if not span.turned]
+    if not level_spans:
+        return None
+    turned = [_Placed(span.bbox, span) for span in spans if span.turned]
+    text = _by_height([_Placed(span.bbox, span) for span in level_spans], tall=turned)
+    return _Walls(text, _art_near(drawn, text), margin=max(span.bbox.x1 for span in spans))
+
+
 def rooms_on(spans: list[Span], drawn: list[Rect], *, wanted: set[str]) -> dict[str, float]:
     """The room of each `wanted` span on one page, in points; `drawn` is its line art.
 
@@ -61,30 +94,33 @@ def rooms_on(spans: list[Span], drawn: list[Rect], *, wanted: set[str]) -> dict[
     past the page's rightmost text. A turned span has none.
     """
     rooms = {span.id: 0.0 for span in spans if span.id in wanted}
-    level_spans = [span for span in spans if not span.turned]
-    if not level_spans:
+    walls = _walls_on(spans, drawn)
+    if walls is None:
         return rooms
-    turned = [_Placed(span.bbox, span) for span in spans if span.turned]
-    text = _by_height([_Placed(span.bbox, span) for span in level_spans], tall=turned)
-    art = _art_near(drawn, text)
-    margin = max(span.bbox.x1 for span in spans)
     measured = {
-        span.id: _room_of(span, text=text, art=art, margin=margin)
-        for span in level_spans
-        if span.id in wanted
+        span.id: walls.room_of(span) for span in spans if span.id in wanted and not span.turned
     }
     return rooms | measured
 
 
-def _room_of(
-    span: Span, *, text: _ByHeight[Span], art: _ByHeight[Rect], margin: float
-) -> float:
-    """How far `span` can run right before the text or drawing ahead of it, or the margin."""
-    box = span.bbox
-    text_ahead = [other.bbox.x0 for other in text.touching(box) if _is_ahead(other, span)]
-    art_ahead = [_stop_at(drawn, box) for drawn in art.touching(box) if _not_behind(drawn, box)]
-    walls = [*text_ahead, margin, *art_ahead]
-    return max(min(walls) - box.x1, 0.0)
+def line_rooms_on(
+    spans: list[Span], drawn: list[Rect], *, lines: list[list[Span]]
+) -> list[float]:
+    """The room of each of `lines` on one page, in points: the least any of its spans has.
+
+    A span's own line moves with it, so only what's ahead of it besides that counts. An
+    earlier, taller span can meet what the line's last one passes under.
+    """
+    walls = _walls_on(spans, drawn)
+    if walls is None:
+        return [0.0 for _line in lines]
+    return [_line_room(line, walls) for line in lines]
+
+
+def _line_room(line: list[Span], walls: _Walls) -> float:
+    """How far `line`'s end can run before any of its spans reaches what's ahead of it."""
+    own = frozenset(span.id for span in line)
+    return min(walls.room_of(span, besides=own) for span in line)
 
 
 def _art_near(drawn: list[Rect], text: _ByHeight[Span]) -> _ByHeight[Rect]:
