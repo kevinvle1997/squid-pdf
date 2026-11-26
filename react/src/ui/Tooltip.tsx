@@ -114,18 +114,52 @@ export function NameTip({ name, children }: { name: string; children: ReactEleme
   );
 }
 
-/** A note in full over what's pressed, on hover or focus: a heading, and a detail under it. */
-export function Tip({ heading, detail, children }: { heading: string; detail: string; children: ReactElement }) {
+/**
+ * A note in full over what's pressed, on hover or focus: a heading, and a detail under it, or what the heading
+ * became (`changed`), an arrow down to it.
+ */
+export function Tip({
+  heading,
+  detail,
+  changed = false,
+  children,
+}: {
+  heading: string;
+  detail: string;
+  changed?: boolean;
+  children: ReactElement;
+}) {
   return (
     <TooltipTrigger delay={SHORTCUT_DELAY_MS}>
       {children}
       <AriaTooltip className={styles.note} placement="top" offset={8}>
         <span className={styles.words}>
           <span className={styles.heading}>{heading}</span>
+          {changed && <BecameMark />}
           {detail}
         </span>
       </AriaTooltip>
     </TooltipTrigger>
+  );
+}
+
+/** An arrow down from what was to what is, drawn at its own size so the stroke stays 1.5px. The words say it. */
+function BecameMark() {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 12 12"
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={styles.became}
+    >
+      <path d="M6 1.5v9M2.5 7 6 10.5 9.5 7" />
+    </svg>
   );
 }
 

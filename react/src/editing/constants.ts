@@ -48,6 +48,9 @@ export const DOUBLE_TAP_MS = 400;
 /** A second tap on bare paper this near the first, in CSS pixels, is on the same spot: a finger's width. */
 export const DOUBLE_TAP_REACH_PX = 24;
 
+/** A change's note shows the words it changed and this many either side, whole: enough to find it in its line. */
+export const NOTE_WORDS_AROUND = 1;
+
 /** How long a pointer rests on a span before its note shows. Focus shows it at once. */
 export const NOTE_DELAY_MS = 250;
 
