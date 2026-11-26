@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from functools import cache, partial
 from itertools import chain, count
+from pathlib import Path
 from typing import Any
 
 import pymupdf
@@ -197,8 +198,7 @@ def open_driver(path: str) -> PdfDriver:
     Damaged when it isn't a PDF anyone could show.
     """
     try:
-        # Left to sniff, MuPDF opens a PNG as a document.
-        doc = pymupdf.open(path, filetype="pdf")
+        doc = _opened(path)
     except pymupdf.FileNotFoundError as exc:  # gone: Python's own error, which callers catch
         raise FileNotFoundError(path) from exc
     except pymupdf.FileDataError as exc:  # garbage, truncated or empty
@@ -220,6 +220,18 @@ def open_driver(path: str) -> PdfDriver:
     # Before any page loads: kept in its page's list, an annotation's made-up drawing can go in.
     file.annotations.each_its_own_object()
     return _MuPDFDriver(doc, file)
+
+
+def _opened(path: str) -> pymupdf.Document:
+    """The PDF at `path` in MuPDF, read into memory whole first if it's within the bound.
+
+    MuPDF reads a file on disk through a small buffer that each move to another object
+    empties, and a pass over the whole document, as an analysis or an export, moves often.
+    """
+    # Opened as a PDF either way: left to sniff, MuPDF opens a PNG as a document.
+    if Path(path).stat().st_size <= constants.READ_WHOLE_BYTES:
+        return pymupdf.open(stream=Path(path).read_bytes(), filetype="pdf")
+    return pymupdf.open(path, filetype="pdf")
 
 
 @dataclass(slots=True)

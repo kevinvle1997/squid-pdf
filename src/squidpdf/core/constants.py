@@ -57,6 +57,10 @@ TURN_TOLERANCE = 0.01
 CONDENSE_LIMIT = 0.05  # a squeeze past this reads as condensed, worse than running long
 SHRINK_FLOOR = 0.9  # of the original size, set by eye: smaller reads as another line
 
+# A PDF this size or smaller is read into memory whole as it's opened, so a pass over all of it
+# reads no file. A larger one, up to documents' MAX_FILE_MB, would weigh on WORKER_MEMORY_BYTES.
+READ_WHOLE_BYTES = 16 * 1024 * 1024
+
 # How hard a save cleans the file: MuPDF's garbage level. 2 drops unused objects;
 # 3 also merges copies, which takes time in the square of the pages.
 GARBAGE_COLLECT = 2

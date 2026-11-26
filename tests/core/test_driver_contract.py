@@ -8,6 +8,7 @@ from collections.abc import Iterator, Sequence
 import pymupdf
 import pytest
 
+import squidpdf.core.constants as constants
 from squidpdf.core import Message, Rect, open_pdf
 from squidpdf.core.fonts.catalog import FACES, face_bytes
 from squidpdf.core.pdf.driver import DriverError
@@ -246,3 +247,14 @@ def test_two_fonts_whose_names_mupdf_cuts_alike_are_neither_taken_for_the_other(
     assert_equal(
         named_by, [(cut, None), (cut, None)], "each span's font: its cut name, no object"
     )
+
+
+def test_a_pdf_past_the_size_read_whole_opens_from_disk_and_reads_alike(pdf, monkeypatch):
+    """Up to an upload's limit, one too large to hold whole stays on disk: the same document."""
+    with open_pdf(pdf) as engine:
+        read_whole = (list(engine.index()), engine.pages())
+    monkeypatch.setattr(constants, "READ_WHOLE_BYTES", 0)
+    with open_pdf(pdf) as engine:
+        from_disk = (list(engine.index()), engine.pages())
+
+    assert_equal(from_disk, read_whole, "the spans and pages read from disk")
