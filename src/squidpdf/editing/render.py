@@ -27,7 +27,7 @@ from squidpdf.core import (
 )
 from squidpdf.documents import store
 from squidpdf.documents.errors import NoSuchPage, is_page
-from squidpdf.documents.free_space import kept_rooms
+from squidpdf.documents.free_space import kept_free_space
 from squidpdf.documents.page_image import page_scale
 from squidpdf.documents.replies import time_of
 from squidpdf.documents.store import DocumentStore
@@ -141,7 +141,7 @@ def _draw_regions(
     `strips` are the rows the regions ask for, and `drawn_pages` their pages, by number.
     """
     index = store.require_index(folder)
-    rooms = kept_rooms(documents, folder, index)
+    rooms = kept_free_space(documents, folder, index).rooms
     with documents.open_original(folder) as engine:
         resolved = resolve(engine, index, rooms=rooms, edits=edits)
         fits = fits_of(engine, resolved)  # before run: erasing can drop the fonts it measures

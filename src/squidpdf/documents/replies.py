@@ -47,6 +47,7 @@ def document_json(
         "pages": facts["pages"],
         "spans": [],  # sent as kept, below
         "fonts": [_font_info(font, language) for font in facts["fonts"]],
+        "lines": facts["lines"],
         "signed": facts["signed"],
         "id": doc_id,
         "expires_at": time_of(expires_at),

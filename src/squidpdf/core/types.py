@@ -534,6 +534,38 @@ def pages_from_json(saved: bytes) -> list[Page]:
     return [Page(**page) for page in orjson.loads(saved)]
 
 
+@dataclass(frozen=True, slots=True)
+class Line:
+    """Spans a page draws one after another on one baseline, a word space apart: edited as one.
+
+    Its spans' ids left to right, and its room: how far its end can run before any of them
+    reaches something on the page.
+    """
+
+    span_ids: tuple[str, ...]
+    room_pt: float
+
+
+@dataclass(frozen=True, slots=True)
+class FreeSpace:
+    """What the original leaves its text to run into: each span's room, and each line's."""
+
+    rooms: dict[str, float] = field(repr=False)  # by span id
+    lines: list[Line] = field(repr=False)  # each of more than one span, in reading order
+
+
+def free_space_as_json(free_space: FreeSpace) -> bytes:
+    """The free space as JSON, which `free_space_from_json` reads back whole."""
+    return orjson.dumps(free_space)
+
+
+def free_space_from_json(saved: bytes) -> FreeSpace:
+    """The free space `free_space_as_json` wrote, each line as it was."""
+    read = orjson.loads(saved)
+    lines = [Line(tuple(line["span_ids"]), line["room_pt"]) for line in read["lines"]]
+    return FreeSpace(read["rooms"], lines)
+
+
 # 6 bytes -> 12 hex chars: documents have thousands of spans at most, nowhere
 # near enough for a collision at this length.
 _SPAN_ID_DIGEST_SIZE = 6

@@ -11,7 +11,17 @@ from pathlib import Path
 
 import pytest
 
-from squidpdf.core import Fragment, Page, Rect, Span, index_as_json, index_of, new_text
+from squidpdf.core import (
+    Fragment,
+    FreeSpace,
+    Line,
+    Page,
+    Rect,
+    Span,
+    index_as_json,
+    index_of,
+    new_text,
+)
 from squidpdf.documents import api as documents, attached, constants, store
 from squidpdf.documents.constants import IDLE_S
 from squidpdf.documents.errors import Gone, ServerFull
@@ -294,10 +304,12 @@ def test_every_room_kept_reads_back_to_the_last_bit():
     """A render fits an edit in the room upload worked out, so it must read back exactly."""
     _, folder = FOLDER_STORE.create("owner")
     rooms = {"a1b2c3d4e5f6": 1 / 3, "b2c3d4e5f6a1": 0.1 + 0.2, "c3d4e5f6a1b2": 0.0}
+    lines = [Line(("a1b2c3d4e5f6", "b2c3d4e5f6a1"), 2 / 3)]
 
-    store.save_rooms(folder, "a-build", rooms)
+    store.save_free_space(folder, "a-build", FreeSpace(rooms, lines))
 
-    assert_equal(store.load_rooms(folder, "a-build"), rooms, "the rooms read back")
+    kept = store.load_free_space(folder, "a-build")
+    assert_equal(kept, FreeSpace(rooms, lines), "the rooms and lines read back")
 
 
 def test_kept_indexes_that_forget_equal_fresh_ones(engine, tmp_path, kept_indexes):

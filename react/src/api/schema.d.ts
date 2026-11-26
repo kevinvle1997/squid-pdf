@@ -440,6 +440,8 @@ export interface components {
             spans: components["schemas"]["SpanInfo"][];
             /** Fonts */
             fonts: components["schemas"]["FontInfo"][];
+            /** Lines */
+            lines: components["schemas"]["LineInfo"][];
             /** Signed */
             signed: boolean;
             /** Id */
@@ -739,6 +741,18 @@ export interface components {
             kind: "insert";
             /** Edit */
             edit: number;
+        };
+        /**
+         * LineInfo
+         * @description Spans the page draws one after another on one baseline, a word space apart: one field.
+         *
+         *     Only a line of more than one span is listed. `room_pt` is how far its end can run.
+         */
+        LineInfo: {
+            /** Span Ids */
+            span_ids: string[];
+            /** Room Pt */
+            room_pt: number;
         };
         /**
          * LinkBody

@@ -71,6 +71,16 @@ class SpanInfo(TypedDict):
     turned: bool  # its line isn't level: the browser can't measure along it, as on a level one
 
 
+class LineInfo(TypedDict):
+    """Spans the page draws one after another on one baseline, a word space apart: one field.
+
+    Only a line of more than one span is listed. `room_pt` is how far its end can run.
+    """
+
+    span_ids: list[str]  # left to right
+    room_pt: float
+
+
 class FontFacts(TypedDict):
     """A font the spans use, as the analysis keeps it: in no language, so any can say it.
 
@@ -123,6 +133,7 @@ class AnalysisFacts(TypedDict):
     pages: list[PageInfo]
     # The document's own fonts. The faces we ship, which inserts can use too, are at /api/fonts.
     fonts: list[FontFacts]
+    lines: list[LineInfo]
 
 
 @dataclass(frozen=True, slots=True)
@@ -254,6 +265,7 @@ class Document(TypedDict):
     pages: list[PageInfo]
     spans: list[SpanInfo]
     fonts: list[FontInfo]
+    lines: list[LineInfo]  # each line of more than one span, edited as one
     signed: bool  # the original holds a signature: the first edit says it breaks it
 
     id: str
