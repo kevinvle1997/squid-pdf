@@ -21,6 +21,8 @@ _BIT_DEPTH = 8  # bits per channel
 _STANDARD_METHODS = (0, 0, 0)  # zlib, the one set of row filters, and no interlacing
 _METER_UNIT = 1  # the unit of a resolution, as a PNG names the metre
 _INCH_M = 0.0254  # metres in an inch
+# Rows the grey check reads at a time: a colour page shows it in its first few blocks.
+_GRAY_CHECK_ROWS = 64
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,11 +48,25 @@ def png_of(drawn: pymupdf.Pixmap) -> bytes:
             f"a PNG is written from 3 channels, no alpha; got {drawn.n}, {drawn.alpha}"
         )
     rgb = drawn.samples
-    red = rgb[0::3]
+    red = _red_if_gray(rgb, row_bytes=drawn.stride)
     # Every pixel grey, as on a page of text: red, the same as green and blue, holds all three.
-    if red == rgb[1::3] == rgb[2::3]:
+    if red is not None:
         return _png_from(red, drawn, layout=_GRAY, level=constants.PNG_GRAY_LEVEL)
     return _png_from(rgb, drawn, layout=_COLOR, level=constants.PNG_COLOR_LEVEL)
+
+
+def _red_if_gray(rgb: bytes, *, row_bytes: int) -> bytes | None:
+    """The red of `rgb` if every pixel is grey; None from the first block of rows that isn't."""
+    reds: list[bytes] = []
+    block_bytes = row_bytes * _GRAY_CHECK_ROWS  # whole rows, so each block starts on a pixel
+    for start in range(0, len(rgb), block_bytes):
+        block = rgb[start : start + block_bytes]
+        red = block[0::3]
+        # A colour pixel in this block: no need to read the rest of the page.
+        if not (red == block[1::3] == block[2::3]):
+            return None
+        reds.append(red)
+    return b"".join(reds)
 
 
 def _png_from(pixels: bytes, drawn: pymupdf.Pixmap, *, layout: _Layout, level: int) -> bytes:
