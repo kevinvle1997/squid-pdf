@@ -8,6 +8,7 @@ from dataclasses import dataclass
 
 import pymupdf
 
+from squidpdf.core.pdf.lowlevel.letters_read import LettersRead
 from squidpdf.core.pdf.lowlevel.objects import (
     bytes_of,
     each_reached,
@@ -28,6 +29,7 @@ class PageRedaction:
     """What a redaction deletes from a page: its letters, and the links and comments on them."""
 
     doc: pymupdf.Document  # open already; whoever opened it closes it
+    letters_read: LettersRead  # forgotten where a write here changes the page
 
     def redact(self, page: int, boxes: list[Rect]) -> None:
         """Delete every letter whose box touches one of `boxes`, and any link or comment on it.
@@ -35,6 +37,7 @@ class PageRedaction:
         Only a comment that writes its words on the page (a FreeText) goes. A redaction
         mark the file already holds stays unapplied: applying it is not this edit's call.
         """
+        self.letters_read.forget_page(page)
         mu = pymupdf.mupdf
         # MuPDF applies every mark on the page, so only ours may be there.
         with self._file_marks_aside(page):
@@ -104,6 +107,7 @@ class PageRedaction:
             listed = mu.pdf_dict_get(page_obj, mu.PDF_ENUM_NAME_Annots)
             _put_back(listed, before, mu.PDF_ENUM_NAME_Link)
             _sync_links(self.doc, page)
+            self.letters_read.forget_page(page)
 
     def drop_links(
         self, page: int, boxes: list[Rect], *, holding: Callable[[str], bool] | None = None
@@ -114,6 +118,7 @@ class PageRedaction:
         own list of annotations (its Annots): PyMuPDF's list of links leaves out what MuPDF
         can't follow, a script or a form reset.
         """
+        self.letters_read.forget_page(page)
         mu = pymupdf.mupdf
         page_obj = mu.pdf_lookup_page_obj(pdf_of(self.doc), page)
         listed = mu.pdf_dict_get(page_obj, mu.PDF_ENUM_NAME_Annots)

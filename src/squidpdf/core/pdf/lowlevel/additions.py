@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 import pymupdf
 
+from squidpdf.core.pdf.lowlevel.letters_read import LettersRead
 from squidpdf.core.pdf.lowlevel.objects import pdf_of
 from squidpdf.core.pdf.lowlevel.pages import to_pdf_matrix
 from squidpdf.core.types import SOLID
@@ -25,6 +26,7 @@ class PageAdditions:
     """What the driver adds to a page: a font, an opacity, a drawing, and where it goes."""
 
     doc: pymupdf.Document  # open already; whoever opened it closes it
+    letters_read: LettersRead  # forgotten where a write here changes the page
 
     def restore_font(self, page: int, resource: str, font_object: int) -> None:
         """Point the page's resource name `resource` at font `font_object`, already in the file.
@@ -32,6 +34,7 @@ class PageAdditions:
         Erasing text can remove a font the page no longer uses: this puts it
         back. Nothing new is added to the file.
         """
+        self.letters_read.forget_page(page)
         mu = pymupdf.mupdf
         pdf = pdf_of(self.doc)
         resources = _page_resources(mu.pdf_lookup_page_obj(pdf, page))
@@ -43,6 +46,7 @@ class PageAdditions:
 
         Rounded to a thousandth and named for it, so writing it again changes nothing.
         """
+        self.letters_read.forget_page(page)
         mu = pymupdf.mupdf
         pdf = pdf_of(self.doc)
         permille = round(opacity * _PERMILLE)
@@ -60,6 +64,7 @@ class PageAdditions:
         Named as PyMuPDF names it, for `opacity` to a hundredth, and stroking solid. One the
         page already has under that name is used as it is, so the bytes are PyMuPDF's.
         """
+        self.letters_read.forget_page(page)
         mu = pymupdf.mupdf
         pdf = pdf_of(self.doc)
         name = _FILL_OPACITY_NAME.format(min(round(opacity * _PERCENT), _PERCENT - 1))
@@ -79,6 +84,7 @@ class PageAdditions:
 
         Added to the page's own list, not by writing the list out again: each edit adds one.
         """
+        self.letters_read.forget_page(page)
         mu = pymupdf.mupdf
         pdf = pdf_of(self.doc)
         page_obj = mu.pdf_lookup_page_obj(pdf, page)

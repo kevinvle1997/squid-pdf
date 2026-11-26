@@ -7,6 +7,7 @@ from dataclasses import dataclass
 import pymupdf
 
 from squidpdf.core.pdf.lowlevel.fields import FIELD_VALUE, form_fields
+from squidpdf.core.pdf.lowlevel.letters_read import LettersRead
 from squidpdf.core.pdf.lowlevel.objects import root_of
 
 # What a signed file's catalog keeps only for its signatures, so it goes with them.
@@ -20,6 +21,7 @@ class Signatures:
     """A signed file's signatures, and what its catalog keeps only for them."""
 
     doc: pymupdf.Document  # open already; whoever opened it closes it
+    letters_read: LettersRead  # forgotten where a write here changes the page
 
     def is_signed(self) -> bool:
         """Whether the document holds a signature, or what a signed file keeps for one."""
@@ -38,6 +40,7 @@ class Signatures:
 
     def drop(self) -> None:
         """Delete every signature, and what the file keeps only to check one."""
+        self.letters_read.forget()
         mu = pymupdf.mupdf
         root = root_of(self.doc)
         for field in self._signed_fields(root):

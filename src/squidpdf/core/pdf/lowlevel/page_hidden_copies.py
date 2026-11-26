@@ -15,6 +15,7 @@ from squidpdf.core.pdf.lowlevel.drawn_strings import (
     strings_in,
     strings_past_an_end_in,
 )
+from squidpdf.core.pdf.lowlevel.letters_read import LettersRead
 from squidpdf.core.pdf.lowlevel.lexing import (
     is_image_start,
     lexer_of,
@@ -43,6 +44,7 @@ class PageHiddenCopies:
     """The hidden copies a page's drawings keep, read and rewritten in their bytes."""
 
     doc: pymupdf.Document  # open already; whoever opened it closes it
+    letters_read: LettersRead  # forgotten where a write here changes the page
 
     def read(self, page: int) -> list[str]:
         """Every hidden copy on the page, as text, and each string MuPDF may miss."""
@@ -57,6 +59,7 @@ class PageHiddenCopies:
 
     def rewrite(self, page: int, rewritten: Callable[[str], str]) -> None:
         """Put `rewritten(hidden_copy)` for each hidden copy on the page; one blanked goes."""
+        self.letters_read.forget_page(page)
         mu = pymupdf.mupdf
         for streams, resources in self._drawings(page):
             properties = mu.pdf_dict_get(resources, mu.PDF_ENUM_NAME_Properties)

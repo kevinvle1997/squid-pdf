@@ -30,6 +30,7 @@ from squidpdf.core.pdf.lowlevel import (
     MUPDF_TOO_HEAVY,
     PDF_NULL,
     PDF_REFERENCE,
+    Blocks,
     PdfFile,
     object_number,
     pdf_file,
@@ -387,10 +388,17 @@ class _MuPDFDriver:
         """The letters of each line on the page whose box meets one of `near`, to find by place.
 
         A line's box holds each of its letters' boxes, so a line left out has none inside them.
+        Read once until the page changes: a redaction asks of one page again and again.
         """
-        blocks = self.doc[page].get_text("rawdict", flags=flags)["blocks"]
+        blocks = self.file.letters_read.of(
+            page, flags, partial(self._read_letters, page, flags)
+        )
         lines = (line for line in _each_line(blocks) if _meets_any(line["bbox"], near))
         return _page_letters(list(_each_letter(lines)))
+
+    def _read_letters(self, page: int, flags: int) -> Blocks:
+        """The page's text read letter by letter, with `flags`: its blocks."""
+        return self.doc[page].get_text("rawdict", flags=flags)["blocks"]
 
     def fonts(self, page: int) -> list[PageFont]:
         """Each font the page uses that's an object of its own, forms included."""
@@ -518,6 +526,7 @@ class _MuPDFDriver:
         """
         free_name = self._free_name(page, resource)
         pdf_page = self.doc[page]
+        self.file.letters_read.forget_page(page)
         try:
             font_object = pdf_page.insert_font(fontname=free_name, fontbuffer=font_file)
         except MUPDF_ERRORS as exc:  # the bytes opened as a font, but the page won't take them
@@ -712,10 +721,12 @@ class _MuPDFDriver:
 
     def keep_pages(self, pages: list[int]) -> None:
         """Keep only `pages`, in that order; links, bookmarks and fields on the rest go too."""
+        self.file.letters_read.forget()
         self.doc.select(pages)
 
     def turn_page(self, page: int, turn_cw: QuarterTurn) -> None:
         """Set the turn `page` asks for, clockwise, in place of the one it had."""
+        self.file.letters_read.forget_page(page)
         self.doc[page].set_rotation(turn_cw)
 
     def drop_active_content(self) -> bool:
@@ -744,6 +755,7 @@ class _MuPDFDriver:
 
     def drop_xmp(self) -> None:
         """Delete the file's XMP, wherever the file names it. Its Info stays."""
+        self.file.letters_read.forget()
         # The object itself, not the catalog's name for it: a page or PieceInfo may name it too.
         self.doc.update_object(self.doc.xref_xml_metadata(), PDF_NULL)
 
@@ -753,6 +765,8 @@ class _MuPDFDriver:
 
     def save(self, path: str) -> None:
         """Write the document to `path`, protected as the original was."""
+        # Garbage collected and renumbered in memory too, as it writes.
+        self.file.letters_read.forget()
         self._fill_in_missing_id()
         # Object streams compress the plain objects too: a face's width list is most of it.
         self.doc.save(
@@ -775,6 +789,7 @@ class _MuPDFDriver:
 
     def close(self) -> None:
         """Release the open document."""
+        self.file.letters_read.forget()
         self.doc.close()
 
     def replace_font_file(self, font_object: int, font_file: bytes) -> None:
@@ -798,6 +813,7 @@ class _MuPDFDriver:
                 debug=f"font {font_object} has no file to swap",
             )
         file_xref = object_number(value)
+        self.file.letters_read.forget()
         self.doc.update_stream(file_xref, font_file)
         # Its size before compression (Length1), which MuPDF states for either kind.
         self.doc.xref_set_key(file_xref, "Length1", str(len(font_file)))
@@ -816,6 +832,7 @@ class _MuPDFDriver:
     def drop_tags(self) -> None:
         """Remove the file's tags. Saving then drops every page only they pointed at."""
         catalog = self.doc.pdf_catalog()  # the file's root entry, where the tags are listed
+        self.file.letters_read.forget()
         self.doc.xref_set_key(xref=catalog, key=_TAGS_KEY, value=PDF_NULL)
 
     def _add_content(self, page: int, stream: bytes) -> None:

@@ -9,6 +9,7 @@ from dataclasses import dataclass
 import pymupdf
 
 from squidpdf.core.pdf.lowlevel.errors import MUPDF_ERRORS
+from squidpdf.core.pdf.lowlevel.letters_read import LettersRead
 from squidpdf.core.pdf.lowlevel.objects import (
     items_of,
     keys_of,
@@ -62,12 +63,14 @@ class ActiveContent:
     """What acts on its own or reaches outside the file, found and deleted."""
 
     doc: pymupdf.Document  # open already; whoever opened it closes it
+    letters_read: LettersRead  # forgotten where a write here changes the page
 
     def drop(self) -> bool:
         """Delete what acts on its own or reaches outside the file; whether there was any.
 
         Every object is read, not only those the pages reach: a viewer may read any of them.
         """
+        self.letters_read.forget()
         mu = pymupdf.mupdf
         pdf = pdf_of(self.doc)
         dropped = False

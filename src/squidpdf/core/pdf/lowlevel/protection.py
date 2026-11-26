@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 import pymupdf
 
+from squidpdf.core.pdf.lowlevel.letters_read import LettersRead
 from squidpdf.core.pdf.lowlevel.objects import keys_of, pdf_of, values_of
 
 # What a reader reads of the Encrypt dictionary to make the key, as the standard and the
@@ -39,6 +40,7 @@ class Protection:
     """The file's protection: what a reader reads before it can decrypt anything."""
 
     doc: pymupdf.Document  # open already; whoever opened it closes it
+    letters_read: LettersRead  # forgotten where a write here changes the page
 
     def write_entries_in_place(self) -> None:
         """Write what a reader reads to make the key in place, where it's kept as an object.
@@ -46,6 +48,7 @@ class Protection:
         In place: inside the dictionary itself, not as an object of its own. A save may put
         such an object in an object stream, which only the key opens, and it makes the key.
         """
+        self.letters_read.forget()
         mu = pymupdf.mupdf
         encrypt = mu.pdf_dict_get(mu.pdf_trailer(pdf_of(self.doc)), mu.PDF_ENUM_NAME_Encrypt)
         _write_in_place(encrypt, _KEY_ENTRIES)

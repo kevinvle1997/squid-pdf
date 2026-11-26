@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 
 import pymupdf
 
+from squidpdf.core.pdf.lowlevel.letters_read import LettersRead
 from squidpdf.core.pdf.lowlevel.objects import (
     bytes_of,
     metadata_stream,
@@ -24,9 +25,11 @@ class Metadata:
     """The file's metadata: its Info, and its XMP where it has one."""
 
     doc: pymupdf.Document  # open already; whoever opened it closes it
+    letters_read: LettersRead  # forgotten where a write here changes the page
 
     def mark_changed_by(self, producer: str, when: datetime) -> None:
         """Say in the Info, and the XMP where it can, that `producer` changed it, at `when`."""
+        self.letters_read.forget()
         self._mark_info(producer, when)
         self._mark_xmp(producer, when)
 

@@ -18,6 +18,7 @@ from squidpdf.core.pdf.lowlevel.fields import (
     form_fields,
     is_widget,
 )
+from squidpdf.core.pdf.lowlevel.letters_read import LettersRead
 from squidpdf.core.pdf.lowlevel.objects import (
     HIDDEN_COPY_KEYS,
     PDF_NULL,
@@ -84,6 +85,7 @@ class DocumentHiddenCopies:
     """The hidden copies the file keeps outside its pages, read and rewritten."""
 
     doc: pymupdf.Document  # open already; whoever opened it closes it
+    letters_read: LettersRead  # forgotten where a write here changes the page
 
     def read(self, holding: Callable[[str], bool]) -> list[HiddenCopy]:
         """Each of the document's own hidden copies that `holding` is true of, and where."""
@@ -97,6 +99,7 @@ class DocumentHiddenCopies:
 
     def rewrite(self, rewritten: Callable[[str], str]) -> None:
         """Put `rewritten(copy)` for the document's hidden copies; one left blank goes."""
+        self.letters_read.forget()
         mu = pymupdf.mupdf
         holding = partial(_is_changed_by, rewritten)
         # Read first: a key deleted mid-walk would move the ones after it.

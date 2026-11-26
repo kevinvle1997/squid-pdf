@@ -82,6 +82,9 @@ KEYBOARD_RANGES = (range(0x20, 0x7F), range(0xA0, 0x100))
 # How many copies from outside the file (the user's, Google's) a worker keeps the letters
 # of: each is a few tens of KB, so all of them stay near a megabyte.
 LENT_COPIES_KEPT = 32
+# Pages' letters an open document keeps read, each way they're read: a redaction reads its page
+# again and again. A dense page's are a few MB, so together they stay within tens of MB.
+LETTERS_READ_KEPT = 8
 
 # The numbers an analysis is worked out by: it's kept under them, so add any new one here.
 ANALYSIS_TUNING = {

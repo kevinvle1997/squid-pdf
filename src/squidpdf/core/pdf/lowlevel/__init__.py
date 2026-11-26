@@ -14,6 +14,7 @@ from squidpdf.core.pdf.lowlevel.errors import (
     MUPDF_TOO_HEAVY as MUPDF_TOO_HEAVY,
 )
 from squidpdf.core.pdf.lowlevel.file import PdfFile as PdfFile, pdf_file as pdf_file
+from squidpdf.core.pdf.lowlevel.letters_read import Blocks as Blocks
 from squidpdf.core.pdf.lowlevel.objects import (
     PDF_NULL as PDF_NULL,
     PDF_REFERENCE as PDF_REFERENCE,
