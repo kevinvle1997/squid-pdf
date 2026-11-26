@@ -23,14 +23,23 @@ _PIECE_BYTES = 1024 * 1024
 
 
 def controller_with_workers[C](
-    cls: Callable[[Workers, Any], C],
+    cls: Callable[[Workers, Any], C], *, capped: bool = False
 ) -> Callable[[Workers, Request], C]:
     """A route's dependency: a new `cls` for each request, with the app's workers and store.
 
-    Used as `Depends(controller_with_workers(RenderController))`. Made once, when
-    the route is defined; FastAPI calls what it returns on every request. Each job
-    the controller sends waits for one of its address's turns.
+    Used as `Depends(controller_with_workers(RenderController))`. Made once, when the route
+    is defined; FastAPI calls what it returns on every request. Each job the controller sends
+    waits for one of its address's turns, `capped` ones for one of all but a few of them.
     """
+    if capped:
+
+        def with_capped_workers(
+            workers: Annotated[Workers, Depends(rate.capped_workers_in_turn)], request: Request
+        ) -> C:
+            """The controller, built with the app's workers, capped, and its store."""
+            return cls(workers, request.app.state.documents)
+
+        return with_capped_workers
 
     def with_the_apps_workers(
         workers: Annotated[Workers, Depends(rate.workers_in_turn)], request: Request

@@ -11,8 +11,8 @@ import asyncio
 import time
 from collections import deque
 from collections.abc import AsyncIterator, Callable
-from contextlib import asynccontextmanager
-from dataclasses import dataclass, field
+from contextlib import asynccontextmanager, nullcontext
+from dataclasses import dataclass, field, replace
 from ipaddress import IPv6Address, ip_address, ip_network
 from typing import Annotated
 
@@ -62,10 +62,20 @@ class RecentStarts:
 
 @dataclass(slots=True)
 class _Line:
-    """One address's requests of one kind: some taking their turn, the rest waiting for one."""
+    """One address's requests of one kind: some taking their turn, the rest waiting for one.
+
+    Those capped below the turns, as page images are, take one of the capped turns first.
+    """
 
     turns: asyncio.Semaphore  # one per request taking its turn
+    capped: asyncio.Semaphore | None = None  # one per capped request taking its turn
     in_line: int = 0  # taking their turn and waiting
+
+    def capped_at(self, cap: int) -> asyncio.Semaphore:
+        """The turns a request capped at `cap` of them takes first: made by the first one."""
+        if self.capped is None:
+            self.capped = asyncio.Semaphore(cap)
+        return self.capped
 
     def join(self, *, most: int) -> None:
         """Join the line, or raise RateLimited when `most` are in it already."""
@@ -89,18 +99,21 @@ class Turns:
     lines: dict[str, _Line] = field(default_factory=dict, repr=False)
 
     @asynccontextmanager
-    async def turn(self, address: str, *, at_once: int, waiting: int) -> AsyncIterator[None]:
+    async def turn(
+        self, address: str, *, at_once: int, waiting: int, cap: int | None = None
+    ) -> AsyncIterator[None]:
         """Hold one of `address`'s `at_once` turns while the block runs, waiting for one.
 
-        Raises RateLimited, at once, when `waiting` wait already. On the event loop, so two
-        requests never take one place.
+        A request capped at `cap` of them waits in the same line. Raises RateLimited, at
+        once, when `waiting` wait already. On the event loop, so two never take one place.
         """
         line = self.lines.get(address)  # none while the address has nothing in line
         if line is None:
             line = self.lines[address] = _Line(asyncio.Semaphore(at_once))
         line.join(most=at_once + waiting)
+        capped = nullcontext() if cap is None else line.capped_at(cap)
         try:
-            async with line.turns:
+            async with capped, line.turns:
                 yield
         finally:
             if line.leave():
@@ -114,12 +127,16 @@ class _WorkersInTurn:
     workers: Workers  # the app's
     turns: Turns  # the app's turns at a job
     address: str  # the request's, as `_counted_as` gives it
+    capped: bool = False  # whether its jobs are capped below the turns, as page images are
 
     async def run[T](self, timeout: float, task: Callable[[], T]) -> T:
         """`task()` in a worker, once the address has a turn; past JOBS_WAITING, refused."""
+        at_work = constants.JOBS_AT_WORK
+        # At least one, or a capped job would never run where an address has a single turn.
+        cap = max(1, at_work - constants.JOBS_KEPT_FROM_PAGE_IMAGES) if self.capped else None
         # The timeout starts in the pool: waiting here is the address's own doing.
         async with self.turns.turn(
-            self.address, at_once=constants.JOBS_AT_WORK, waiting=constants.JOBS_WAITING
+            self.address, at_once=at_work, waiting=constants.JOBS_WAITING, cap=cap
         ):
             return await self.workers.run(timeout, task)
 
@@ -165,13 +182,20 @@ async def upload_turn(request: Request) -> AsyncIterator[None]:
 
 def workers_in_turn(
     request: Request, workers: Annotated[Workers, Depends(pool.current)]
-) -> Workers:
+) -> _WorkersInTurn:
     """The app's workers, as a request's controller sends them jobs: one turn a job.
 
     Past JOBS_AT_WORK an address's jobs wait, holding no worker, so one address can't hold
     every worker. They wait, not refused, since the page images near the view ask at once.
     """
     return _WorkersInTurn(workers, request.app.state.job_turns, _address_of(request))
+
+
+def capped_workers_in_turn(
+    workers: Annotated[_WorkersInTurn, Depends(workers_in_turn)],
+) -> _WorkersInTurn:
+    """`workers_in_turn`'s, capped: JOBS_KEPT_FROM_PAGE_IMAGES of the turns stay free."""
+    return replace(workers, capped=True)
 
 
 def _admit(request: Request, recent: RecentStarts, *, limit: int) -> None:

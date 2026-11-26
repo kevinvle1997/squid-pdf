@@ -42,6 +42,9 @@ MAX_BODY_BYTES = 5 * _MB
 # those at work, the rest wait their turn holding none: page images near the view ask at once.
 JOBS_AT_WORK = 3  # per IP
 JOBS_WAITING = 30  # per IP, beyond those at work; past both, refused
+# Turns page images never take, of those at work: a render or an export never waits behind a
+# full set of them, as the browser asks for every page near the view at once.
+JOBS_KEPT_FROM_PAGE_IMAGES = 1  # per IP
 
 # Workers. Each feature's timeouts are in its own constants.py.
 WORKERS = os.process_cpu_count() or 1  # PDF work keeps a core busy: one each

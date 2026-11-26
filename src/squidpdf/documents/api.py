@@ -197,7 +197,7 @@ async def page(
     scale: Annotated[int, Query(ge=min(limits.PAGE_SCALES), le=max(limits.PAGE_SCALES))],
     build: str,
     page_controller: Annotated[
-        PageController, Depends(controller_with_workers(PageController))
+        PageController, Depends(controller_with_workers(PageController, capped=True))
     ],
 ) -> Response:
     """Page `n` of the original as a PNG, unrotated, `scale` pixels per point."""
