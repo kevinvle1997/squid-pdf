@@ -309,8 +309,8 @@ class PageWriter:
     def _add_face(self, page: int, face: Face) -> str:
         """Add a face we ship to a page, whole, and return its resource name."""
         font_file = face_bytes(face)
-        font_resource = self.driver.add_font(
-            page, font_file, resource=_resource_name("S", face.file)
+        font_resource = self.driver.add_face(
+            page, face, resource=_resource_name("S", face.file)
         )
         self._keep_whole(
             face.file, _AddedFont(face.name, font_file), font_object=font_resource.font_object

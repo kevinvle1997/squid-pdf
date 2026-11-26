@@ -1,4 +1,4 @@
-"""What the driver adds to a page: a font put back, an opacity, a drawing of its own."""
+"""What the driver adds to a page: a font put back or added whole, an opacity, a drawing."""
 
 from __future__ import annotations
 
@@ -19,6 +19,9 @@ _PERMILLE = 1000  # opacity is written to a thousandth, far finer than the eye s
 _FILL_OPACITY_NAME = "fitzca99{:02d}"
 
 _PERCENT = 100  # a fill opacity is named to a hundredth, 0 to 99
+
+# The entries PyMuPDF makes a new dictionary with space for, a page's resources or its fonts.
+_NEW_DICTIONARY_CAPACITY = 5
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -79,6 +82,21 @@ class PageAdditions:
         mu.pdf_dict_puts(states, name, state)
         return name
 
+    def add_font_as_pymupdf(self, page: int, font: pymupdf.Font, *, resource: str) -> int:
+        """Add `font`, open already, whole to the file and to the page as `resource`.
+
+        Returns its object. As `insert_font` adds a font's file, so the objects are PyMuPDF's,
+        with no file read again. One the file already has, by its digest, is named, not added.
+        """
+        self.letters_read.forget_page(page)
+        mu = pymupdf.mupdf
+        pdf = pdf_of(self.doc)
+        font_object = mu.pdf_to_num(mu.pdf_add_cid_font(pdf, font.this))
+        page_obj = mu.pdf_lookup_page_obj(pdf, page)
+        fonts = _font_resources_as_pymupdf(pdf, page_obj)
+        mu.pdf_dict_puts(fonts, resource, mu.pdf_new_indirect(pdf, font_object, 0))
+        return font_object
+
     def add_drawing(self, page: int, drawing: bytes) -> None:
         """Add `drawing` last in the page's list of drawings (its Contents), so it's on top.
 
@@ -133,6 +151,24 @@ def _page_resources(page: pymupdf.mupdf.PdfObj) -> pymupdf.mupdf.PdfObj:
     if not resources.m_internal:
         return mu.pdf_dict_put_dict(page, mu.PDF_ENUM_NAME_Resources, 1)
     return resources
+
+
+def _font_resources_as_pymupdf(
+    pdf: pymupdf.mupdf.PdfDocument, page: pymupdf.mupdf.PdfObj
+) -> pymupdf.mupdf.PdfObj:
+    """The fonts `page` names, found or made as `insert_font` finds or makes them."""
+    mu = pymupdf.mupdf
+    resources = mu.pdf_dict_get_inheritable(page, mu.PDF_ENUM_NAME_Resources)
+    if not mu.pdf_is_dict(resources):
+        resources = mu.pdf_dict_put_dict(
+            page, mu.PDF_ENUM_NAME_Resources, _NEW_DICTIONARY_CAPACITY
+        )
+    fonts = mu.pdf_dict_get(resources, mu.PDF_ENUM_NAME_Font)
+    # An empty m_internal means it has none yet: made under the page's own resources.
+    if not fonts.m_internal:
+        fonts = mu.pdf_new_dict(pdf, _NEW_DICTIONARY_CAPACITY)
+        mu.pdf_dict_putl(page, fonts, mu.PDF_ENUM_NAME_Resources, mu.PDF_ENUM_NAME_Font)
+    return fonts
 
 
 def _dictionary_under(

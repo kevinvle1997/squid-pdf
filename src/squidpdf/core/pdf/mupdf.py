@@ -185,8 +185,8 @@ def open_face(font_file: bytes) -> FontProgram:
 
 
 @cache
-def _kept_face(face: Face) -> FontProgram:
-    """A face we ship, opened once per process: it measures what `add_font` draws."""
+def _kept_face(face: Face) -> _MuPDFFont:
+    """A face we ship, opened once per process: what `add_face` adds, and measures it with."""
     return _mupdf_font(face_bytes(face))
 
 
@@ -516,7 +516,7 @@ class _MuPDFDriver:
             raise DriverError(Message("font_unreadable"), debug=str(exc)) from exc
 
     def face_font(self, face: Face) -> FontProgram:
-        """A face we ship, opened to measure with: it measures what `add_font` draws."""
+        """A face we ship, opened to measure with: it measures what `add_face` draws."""
         return _kept_face(face)
 
     def add_font(self, page: int, font_file: bytes, *, resource: str) -> FontResource:
@@ -532,6 +532,22 @@ class _MuPDFDriver:
         try:
             font_object = pdf_page.insert_font(fontname=free_name, fontbuffer=font_file)
         except MUPDF_ERRORS as exc:  # the bytes opened as a font, but the page won't take them
+            raise DriverError(Message("font_not_added"), debug=str(exc)) from exc
+        self._changed_page(page).keep_named(free_name, font_object)
+        return FontResource(free_name, font_object)
+
+    def add_face(self, page: int, face: Face, *, resource: str) -> FontResource:
+        """Add a face we ship to the page under the resource name `resource`, or one like it.
+
+        From the face this process opened once, as `add_font` would add its file read again.
+        Raises DriverError when MuPDF won't add it.
+        """
+        free_name = self._free_name(page, resource)
+        try:
+            font_object = self.file.additions.add_font_as_pymupdf(
+                page, _kept_face(face).font, resource=free_name
+            )
+        except MUPDF_ERRORS as exc:  # the page won't take it
             raise DriverError(Message("font_not_added"), debug=str(exc)) from exc
         self._changed_page(page).keep_named(free_name, font_object)
         return FontResource(free_name, font_object)
@@ -673,9 +689,9 @@ class _MuPDFDriver:
     ) -> None:
         """Write each run from its origin, in its font, on top of the page, in order.
 
-        Each run's font is one `add_font` added. `scale_x` narrows a run from its own start, and
-        `turn_ccw` turns it about its origin. Written to the byte as PyMuPDF's `insert_text`
-        writes it, but for `letter_spacing`.
+        Each run's font is one `add_font` or `add_face` added. `scale_x` narrows a run from its
+        own start, and `turn_ccw` turns it about its origin. Written to the byte as PyMuPDF's
+        `insert_text` writes it, but for `letter_spacing`.
         """
         written = [run for run in runs if run.text]
         # Empty new text.
@@ -710,7 +726,7 @@ class _MuPDFDriver:
     def _glyph_codes(self, font_object: int, text: str) -> str:
         """`text` in font `font_object`'s codes: four hex digits a letter, its glyph's number.
 
-        `add_font` adds a font whose codes are its glyphs' numbers.
+        `add_font` and `add_face` add a font whose codes are its glyphs' numbers.
         """
         program = self._program_of(font_object)
         return "".join(f"{program.glyph_of(ch):04x}" for ch in text)

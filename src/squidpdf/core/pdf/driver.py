@@ -180,15 +180,15 @@ class PdfDriver(Protocol):
         ...
 
     def face_font(self, face: Face) -> FontProgram:
-        """A face we ship, opened to measure with: it measures what `add_font` draws."""
+        """A face we ship, opened to measure with: it measures what `add_face` draws."""
         ...
 
     def erase_text(self, page: int, boxes: list[Rect]) -> list[str]:
         """Delete the letters whose middle is inside these boxes, for real.
 
         Returns what `text_in` still reads in each box. Images, drawings, links, the file's own
-        redaction marks and the text under them stay, and each font `add_font` or `write_codes`
-        named keeps its resource name. A FreeText over the letters goes: it can hold the text.
+        redaction marks and the text under them stay, and each font `add_font`, `add_face` or
+        `write_codes` named keeps its resource name. A FreeText over a box goes: it holds text.
         """
         ...
 
@@ -265,6 +265,14 @@ class PdfDriver(Protocol):
         """
         ...
 
+    def add_face(self, page: int, face: Face, *, resource: str) -> FontResource:
+        """Add a face we ship to the page, whole, as `add_font` adds a font's file.
+
+        Returns the resource name it went under, and its PDF object. Raises
+        DriverError when the library won't add it.
+        """
+        ...
+
     def write_text(
         self,
         page: int,
@@ -279,9 +287,9 @@ class PdfDriver(Protocol):
     ) -> None:
         """Write each run from its origin, in its font, on top of the page, in order.
 
-        Each run's font is one `add_font` added. `scale_x` narrows each run from its own
-        start; an `opacity` of 1 is solid. `turn_ccw` turns each run counter-clockwise about
-        its origin. `letter_spacing` sets each letter that many points past its width.
+        Each run's font is one `add_font` or `add_face` added. `scale_x` narrows each run from
+        its own start; an `opacity` of 1 is solid. `turn_ccw` turns each run counter-clockwise
+        about its origin. `letter_spacing` sets each letter that many points past its width.
         """
         ...
 

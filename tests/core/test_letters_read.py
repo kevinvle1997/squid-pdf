@@ -151,6 +151,12 @@ _CHANGES = {
     "add_font": _Change(
         lambda driver, _ready, _folder: _added_font(driver), page=REFERENCED_PAGE
     ),
+    "add_face": _Change(
+        lambda driver, _ready, _folder: driver.add_face(
+            REFERENCED_PAGE, FACES["Carlito Regular"], resource="S1"
+        ),
+        page=REFERENCED_PAGE,
+    ),
     "write_text": _Change(_write_text, page=REFERENCED_PAGE, ready=_added_font),
     "write_codes": _Change(_write_codes, page=EMBEDDED_PAGE),
     "replace_font_file": _Change(_replace_font_file),
@@ -277,6 +283,12 @@ _PART_WRITES = {
     ),
     ("additions", "add_opacity_as_pymupdf"): _PartWrite(
         lambda file: file.additions.add_opacity_as_pymupdf(REFERENCED_PAGE, 0.5),
+        REFERENCED_PAGE,
+    ),
+    ("additions", "add_font_as_pymupdf"): _PartWrite(
+        lambda file: file.additions.add_font_as_pymupdf(
+            REFERENCED_PAGE, pymupdf.Font("tiro"), resource="S1"
+        ),
         REFERENCED_PAGE,
     ),
     ("additions", "add_drawing"): _PartWrite(
