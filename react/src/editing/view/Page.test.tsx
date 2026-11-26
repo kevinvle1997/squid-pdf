@@ -21,13 +21,14 @@ import {
   SENTENCES,
 } from "../../fixtures";
 import { animationsDone, colorOf, emulateTouchScreen, middleOf, tapAt } from "../../testing";
-import { NOTE_CLOSE_DELAY_MS, NOTE_DELAY_MS, PX_PER_PT } from "../constants";
+import { NOTE_CLOSE_DELAY_MS, NOTE_DELAY_MS } from "../constants";
 import { learnDateLanguages } from "../dateNames";
 import { createEditor, type Editor, undo } from "../editor";
 import { openFind, typeQuery } from "../find";
 import { setWarningMuted } from "../mutedWarnings";
 import { openNewTextAt } from "../newText";
 import { redact } from "../redaction";
+import { PX_PER_PT } from "../scale";
 import { loadShippedFaces } from "../shippedFaces";
 import { edit, finish, stepWayOut, typeInto } from "../typing";
 import { EditorContext } from "./context";

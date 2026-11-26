@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { ProblemError, pageImage, renderStrips, stillThere } from "../api/client";
 import type { Render } from "../api/types";
-import { A4, aDoc, aProblem } from "../fixtures";
+import { A4, aDoc, aFontList, aProblem } from "../fixtures";
 import { IMAGE_RETRY_FIRST_MS } from "./constants";
 import { closeEditor, createEditor, type Editor } from "./editor";
 import { imageFailed, imageLoaded, retryImages } from "./images";
@@ -11,6 +11,7 @@ vi.mock(import("../api/client"), async (original) => ({
   renderStrips: vi.fn(),
   stillThere: vi.fn(),
   pageImage: vi.fn(),
+  fontList: vi.fn(async () => aFontList()),
 }));
 
 const BUSY = "We can't work on files right now. Try again in a few minutes.";

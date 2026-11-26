@@ -5,7 +5,6 @@ import { Notice } from "../../ui/Notice";
 import { SkipLink } from "../../ui/SkipLink";
 import { Status } from "../../ui/Status";
 import { commandFor } from "../commands";
-import { MAX_SCALE, MIN_SCALE, PX_PER_PT } from "../constants";
 import { carriesFiles, pdfDropped } from "../dropped";
 import { announceOpening, closeEditor, createEditor } from "../editor";
 import { unexported } from "../export";
@@ -15,7 +14,7 @@ import { noticeLines } from "../notices";
 import { neverEdited } from "../page";
 import { pagesShown } from "../project";
 import { takesSelection } from "../redaction";
-import { loadShippedFaces } from "../shippedFaces";
+import { screenScale } from "../scale";
 import { isWork, readStoredAgain, restorePersisted, resumeWork, wouldLoseWork } from "../workPersistence";
 import { Bar } from "./Bar";
 import { EditorContext, useEditor, useEditorState } from "./context";
@@ -28,9 +27,6 @@ import { Page } from "./Page";
 import { PageList } from "./PageList";
 import { SplitHere } from "./SplitHere";
 import { ZoomControl } from "./Zoom";
-
-// Page images are drawn for this screen's pixels: sharp, and no larger than the API draws.
-const SCALE = Math.min(MAX_SCALE, Math.max(MIN_SCALE, Math.ceil(window.devicePixelRatio * PX_PER_PT)));
 
 /** The props of the editor: the document opened, what opens a PDF dropped on it, and work persisted here to restore. */
 interface Props {
@@ -45,7 +41,7 @@ interface Props {
  */
 export function EditorShell({ opened, onOpen, persisted }: Props) {
   const [editor] = useState(() => {
-    const made = createEditor(opened.file, opened.doc, SCALE);
+    const made = createEditor(opened.file, opened.doc, screenScale());
     if (persisted !== undefined && isWork(persisted.work))
       restorePersisted(made, { work: persisted.work, until: persisted.until });
     return made;
@@ -58,7 +54,6 @@ export function EditorShell({ opened, onOpen, persisted }: Props) {
   // The one effect, for what happens outside React; each listener says what it's for.
   useEffect(() => {
     addFaces(facesOf(editor.store.get().doc));
-    void loadShippedFaces(editor);
     resumeWork(editor);
     announceOpening(editor);
     const key = (event: KeyboardEvent) => {

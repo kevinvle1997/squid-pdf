@@ -25,16 +25,19 @@ import {
   paymentSaid,
 } from "./accounts/billing";
 import { SignInScreen } from "./accounts/view/SignInScreen";
+import { loadFirstPages } from "./api/client";
 import { forgetOrSayWhy, type Persisted, type PersistedWork, persistedDocument } from "./documents/localPersistence";
 import { type Landing, type Opened, openFile, type SignInFirst } from "./documents/open";
 import { Drop } from "./documents/view/Drop";
+import { screenScale } from "./editing/scale";
 import { isTermsPath, type TermsAnswer, termsAnswer, termsHrefOf } from "./terms/terms";
 import { TermsScreen } from "./terms/view/TermsScreen";
 import { Button } from "./ui/Button";
 import { ErrorBoundary } from "./ui/ErrorBoundary";
 import { SheetScreen } from "./ui/SheetScreen";
 
-// The editor's code comes in while the file uploads, so the landing loads only what it shows.
+// The editor's code comes in while the file uploads, or once there's work here to open again, so the landing
+// loads only what it shows.
 const loadEditor = () => import("./editing/view/EditorShell");
 const EditorShell = lazy(() => loadEditor().then((module) => ({ default: module.EditorShell })));
 
@@ -74,7 +77,13 @@ function Screens() {
   // Read as the landing first shows: it's outside React, in the browser's storage, and on the server.
   useEffect(() => {
     // Refused (a private window, say): nothing persisted, so nothing to offer.
-    persistedDocument().then(setPersisted, () => undefined);
+    persistedDocument().then(
+      (found) => {
+        setPersisted(found);
+        if (found !== null) void loadEditor();
+      },
+      () => undefined,
+    );
     termsAnswer().then(setTerms);
     accountAtStart(linkToken).then((started) => {
       // The landing's address: the token leaves the address bar, and a reload doesn't trade it again.
@@ -136,6 +145,7 @@ function Screens() {
     // A delete under way would take the work from under the editor.
     if (persisted === null || forgetting?.kind === "under way") return;
     void loadEditor();
+    loadFirstPages(persisted.doc, screenScale(), { order: persisted.order });
     setScreen({
       kind: "open",
       opened: { file: persisted.file, doc: persisted.doc },
@@ -166,6 +176,7 @@ function Screens() {
     const opening = await openFile(file, (sent, total) =>
       setScreen((now) => (now.kind === "opening" ? { ...now, sent, total } : now)),
     );
+    if (opening.kind === "open") loadFirstPages(opening.opened.doc, screenScale());
     setScreen(opening);
     // A file opened may have counted against the month: the landing shows its count afresh next time.
     if (documentsLeft(account) === null) return;

@@ -63,14 +63,15 @@ export function isWork(persisted: unknown): persisted is Work {
 
 /** Persist the work as it is now, the file too the first time: once written, leaving loses none of it. */
 export async function persistWork(editor: Editor): Promise<void> {
-  const { history, doc, mutedFonts } = editor.store.get();
+  const { history, doc, mutedFonts, reading } = editor.store.get();
   const { persistence } = editor;
   const firstTime = !persistence.file;
   persistence.file = true;
   try {
     if (firstTime) await persistFile(editor.file);
     const fonts = await persistedFonts(editor.attached);
-    await persistState({ doc, work: { history, fonts, quietFonts: [...mutedFonts] }, until: persistence.until });
+    const work = { history, fonts, quietFonts: [...mutedFonts] };
+    await persistState({ doc, work, until: persistence.until, order: reading.order });
     persistence.history = history;
     forgetAtUntil(persistence);
   } catch {

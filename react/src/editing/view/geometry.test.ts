@@ -6,10 +6,10 @@ import {
   NEW_TEXT_ASCENT_EM,
   NEW_TEXT_DESCENT_EM,
   NEW_TEXT_FIELD_MIN_EM,
-  PX_PER_PT,
   SLIP_GAP_PT,
   STRIP_PAD_PT,
 } from "../constants";
+import { PX_PER_PT } from "../scale";
 import {
   cropOf,
   fieldScaleOf,

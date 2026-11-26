@@ -26,7 +26,7 @@ import {
   persistState,
 } from "./documents/localPersistence";
 import { EMPTY_HISTORY, historyReducer } from "./editing/history";
-import { aDoc, aFont, anAccount, aProblem, aSignedIn, aSpan, TERMS } from "./fixtures";
+import { A4, aDoc, aFont, anAccount, aProblem, aSignedIn, aSpan, TERMS } from "./fixtures";
 import { animationsDone, emulateTouchScreen } from "./testing";
 
 vi.mock(import("./api/client"), async (original) => ({
@@ -84,7 +84,7 @@ async function persistedHere(until: number) {
     edits: [{ kind: "replace", span_id: "a", text: "is a" }],
   });
   await persistFile(new File(["%PDF-"], "contract.pdf", { type: "application/pdf" }));
-  await persistState({ doc: PERSISTED_DOC, work: { history, fonts: [] }, until });
+  await persistState({ doc: PERSISTED_DOC, work: { history, fonts: [] }, until, order: [0] });
 }
 
 /** A PDF chosen on the landing, as its file picker hands one over. */
@@ -153,6 +153,23 @@ test("a change is persisted in this browser as it's made, so the landing offers 
     .toBeVisible();
 });
 
+test("a document opened again asks first for the images of the first pages its download has", async () => {
+  const pages = aDoc({ id: "three", spans: [aSpan({ id: "a" })], fonts: [aFont("Times-Roman")], pages: [A4, A4, A4] });
+  vi.mocked(upload).mockResolvedValueOnce(pages);
+  const first = await render(<App />);
+  choose(first.container, "contract.pdf");
+  await first.getByRole("button", { name: "Delete page 1", exact: true }).click();
+  await expect.poll(async () => (await persistedDocument())?.file.name).toBe("contract.pdf");
+  await first.unmount();
+
+  const asked = vi.spyOn(HTMLImageElement.prototype, "src", "set");
+  onTestFinished(() => asked.mockRestore());
+  const again = await render(<App />);
+  await again.getByRole("button", { name: "Open it again" }).click();
+  const firstAsked = asked.mock.calls.slice(0, 2).map(([url]) => /\/pages\/(\d+)/.exec(url)?.[1]);
+  expect(firstAsked).toEqual(["1", "2"]);
+});
+
 test("a document persisted here opens again with its changes, without sending the file again", async () => {
   await persistedHere(Date.now() + 60_000);
   const screen = await render(<App />);
@@ -166,7 +183,7 @@ test("a document persisted before the server's sentences were renamed comes back
   const { sentences, ...rest } = PERSISTED_DOC;
   // The shape a browser stored it in before, which no type names now.
   const before = { ...rest, copy: sentences } as unknown as typeof PERSISTED_DOC;
-  await persistState({ doc: before, work: (await persistedDocument())?.work, until: Date.now() + 60_000 });
+  await persistState({ doc: before, work: (await persistedDocument())?.work, until: Date.now() + 60_000, order: [0] });
   expect((await persistedDocument())?.doc.sentences).toEqual(PERSISTED_DOC.sentences);
 });
 

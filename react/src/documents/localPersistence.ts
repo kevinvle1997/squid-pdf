@@ -9,6 +9,7 @@ export interface Persisted<Work> {
   readonly doc: Document;
   readonly work: Work;
   readonly until: number; // when the server forgets it too, in ms since the epoch
+  readonly order: readonly number[]; // the pages its download has, in order, as the work leaves them: the first to load
 }
 
 /** The work persisted with a document, and until when: what an editor opened again restores. */
@@ -86,6 +87,8 @@ export async function persistedDocument(): Promise<Persisted<unknown> | null> {
       doc: withSpanFields(renamed(state.doc)),
       work: state.work,
       until: state.until,
+      // Stored before the order was: the original's pages, which is where opening again starts all the same.
+      order: state.order ?? state.doc.pages.map((_: unknown, page: number) => page),
     };
   }
   // Past its hour, or half stored: nothing to open again, so nothing to keep.

@@ -117,9 +117,12 @@ export async function deleteFont(docId: string, fontName: string): Promise<Docum
   return (await response.json()) as Document;
 }
 
-/** Every face we ship, by family, under `build`: the same for every document, and kept by the browser as long as the build. */
+/**
+ * Every face we ship, by family, under `build`: the same for every document, and kept by the browser as long as the build.
+ * Asked for after what's on screen, as nothing waits on it.
+ */
 export async function fontList(build: string): Promise<FontList> {
-  const response = await send(`/api/fonts?${new URLSearchParams({ build })}`, { method: "GET" });
+  const response = await send(`/api/fonts?${new URLSearchParams({ build })}`, { method: "GET", priority: "low" });
   return (await response.json()) as FontList;
 }
 
@@ -174,6 +177,30 @@ function json(body: object): RequestInit {
 export function pageUrl(doc: Document, page: number, scale: number): string {
   const query = new URLSearchParams({ scale: String(scale), build: doc.build });
   return `/api/documents/${doc.id}/pages/${page}?${query}`;
+}
+
+// The first pages' images loaded as a document opens: as many as the window shows at first.
+const FIRST_PAGES = 2;
+// Held until the next document opens: an image nothing holds may be collected, and the page's own fetch it again.
+const firstPagesLoading = new Set<HTMLImageElement>();
+
+/**
+ * Load the images of `doc`'s first pages now, as it opens: they come while the editor is drawn, and its pages draw
+ * them from the browser's. The pages are the first `order` shows: the original's, but for work opened again.
+ */
+export function loadFirstPages(
+  doc: Document,
+  scale: number,
+  { order = doc.pages.map((_, page) => page) }: { order?: readonly number[] } = {},
+): void {
+  firstPagesLoading.clear();
+  for (const [index, page] of order.slice(0, FIRST_PAGES).entries()) {
+    const image = new Image();
+    // The page in view first: an image outside the page is never raised, as one in view is. A hint, where it's known.
+    if (index === 0) image.fetchPriority = "high";
+    image.src = pageUrl(doc, page, scale);
+    firstPagesLoading.add(image);
+  }
 }
 
 /** Ask for a page image again, only to learn why it failed: its Problem is thrown, as every call's is. */

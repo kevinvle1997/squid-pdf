@@ -51,7 +51,13 @@ test("on a touch screen, where a file is seldom dropped, the heading asks for on
 });
 
 test("a document persisted here is offered to open again, with deleting it quiet beside that", async () => {
-  const persisted = { file: new File(["%PDF-"], "contract.pdf"), doc: aDoc(), work: null, until: Date.now() + 60_000 };
+  const persisted = {
+    file: new File(["%PDF-"], "contract.pdf"),
+    doc: aDoc(),
+    work: null,
+    until: Date.now() + 60_000,
+    order: [0],
+  };
   const screen = await waiting({ persisted });
   const look = (name: string) => {
     const style = getComputedStyle(screen.getByRole("button", { name }).element());

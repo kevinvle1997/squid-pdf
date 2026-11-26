@@ -8,7 +8,6 @@ import {
   NEW_TEXT_ASCENT_EM,
   NEW_TEXT_DESCENT_EM,
   NEW_TEXT_FIELD_MIN_EM,
-  PX_PER_PT,
   SLIP_GAP_PT,
   STRIP_PAD_PT,
 } from "../constants";
@@ -16,6 +15,7 @@ import type { Layout } from "../editor";
 import { familyOf } from "../faces";
 import { type LineScale, letterSpacingPt, lineWidthPt, widthPt } from "../fit";
 import { type Box, fontOfNewText, newTextFaceOf, newTextLineOf } from "../newText";
+import { PX_PER_PT } from "../scale";
 
 /** Where a span's mark sits: over its line as drawn, so a replacement left long is pressed along its length. */
 export function markBoxOf(

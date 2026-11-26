@@ -27,6 +27,7 @@ import { inPageOrder, placedOnPage } from "./page";
 import { pageControlOf } from "./pageList";
 import type { NewTextReading, Reading } from "./project";
 import type { PageNewTextFits } from "./render";
+import { loadShippedFaces, NO_SHIPPED_FACES } from "./shippedFaces";
 import { fontOf } from "./spanFonts";
 import { type Drawing, drawingIn, drawingOf } from "./substitutes";
 import { EXACT, liveVerdictOf, type Verdict } from "./verdicts";
@@ -350,6 +351,13 @@ export function openNewTextAgain(editor: Editor, newTextId: number): void {
   const { reading, layout, shippedFaces } = editor.store.get();
   const text = keptNewTexts(reading).find((insert) => insert.newTextId === newTextId);
   if (text === undefined) return;
+  // Whether a face we ship is handwriting, set a step larger, is the font list's to say: it opens once that's in.
+  if (inShippedFace(text.edit) && shippedFaces === NO_SHIPPED_FACES) {
+    void loadShippedFaces(editor).then(() => {
+      if (editor.store.get().draft === null) openNewTextAgain(editor, newTextId);
+    });
+    return;
+  }
   const { page, origin, font_object: fontObject = null, size, color = BLACK } = text.edit;
   const font = fontNameOf(text.edit);
   const handwriting = inShippedFace(text.edit) && shippedFaces.handwriting.includes(font);
@@ -369,8 +377,9 @@ export function openNewTextAgain(editor: Editor, newTextId: number): void {
   });
 }
 
-/** Open `draft`'s field, its line's start on its page: an empty one has no width yet. */
+/** Open `draft`'s field, its line's start on its page: an empty one has no width yet. Its slip lists the font list's handwriting. */
 function open(editor: Editor, draft: NewTextDraft): void {
+  void loadShippedFaces(editor);
   const info = editor.store.get().doc.pages[draft.page];
   const origin =
     info === undefined ? draft.origin : keptOnPage(info, { origin: draft.origin, size: draft.style.size }, 0);

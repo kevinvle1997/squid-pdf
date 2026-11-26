@@ -190,6 +190,7 @@ export interface Editor {
   readonly retries: Map<number, ReturnType<typeof setTimeout>>; // by page: when its failed image is asked for again
   readonly finding: { timer?: ReturnType<typeof setTimeout> }; // when what's typed in "Find" is found, and "Change to" counted
   readonly ahead: ExportAhead; // the export started on the way to pressing Export
+  readonly fontList: { asked?: Promise<void> }; // the font list asked for, once: what handwriting new text waits on
   readonly persistence: Persistence; // what's persisted of it in this browser
 }
 
@@ -261,6 +262,7 @@ export function createEditor(file: File, opened: Document, scale: number): Edito
     retries: new Map(),
     finding: {},
     ahead: {},
+    fontList: {},
     persistence: { file: false, history: null, until: Date.parse(opened.expires_at), forgetting: null },
   };
   return editor;

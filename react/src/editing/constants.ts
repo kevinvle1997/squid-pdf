@@ -1,12 +1,5 @@
 // The editing feature's tuning. Thresholds the server owns come in Document.fit, never from here.
 
-/** CSS pixels per point: a page shows at its printed size on a 96 dpi screen. */
-export const PX_PER_PT = 4 / 3;
-
-/** The page image scales the API draws at, in pixels per point. */
-export const MIN_SCALE = 1;
-export const MAX_SCALE = 4;
-
 /** A strip reaches this far past a span's box, so accents and underlines come with it. */
 export const STRIP_PAD_PT = 2;
 

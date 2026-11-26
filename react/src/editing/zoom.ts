@@ -1,8 +1,9 @@
 // How large the pages show: as wide as each is printed, or narrower to fit the window, until the user
 // zooms to a share of the printed size. Zoomed past the window, the pages scroll sideways.
-import { MAX_SCALE, PX_PER_PT, ZOOM_SKIP, ZOOM_STEPS } from "./constants";
+import { ZOOM_SKIP, ZOOM_STEPS } from "./constants";
 import type { Editor, EditorState } from "./editor";
 import { shownNumberOf } from "./project";
+import { MAX_SCALE, PX_PER_PT } from "./scale";
 
 /** The share of its printed size asked for, null to fit the window; and the share the first page shows at. */
 export interface Zoom {

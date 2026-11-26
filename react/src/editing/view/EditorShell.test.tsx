@@ -14,7 +14,7 @@ import {
   stillThere,
   upload,
 } from "../../api/client";
-import type { Document, Render } from "../../api/types";
+import type { Document, FontList, Render } from "../../api/types";
 import { type PersistedWork, persistFile, persistState } from "../../documents/localPersistence";
 import {
   A4,
@@ -23,6 +23,7 @@ import {
   aFit,
   aFont,
   aFontList,
+  anInsert,
   aProblem,
   aRedaction,
   aReplace,
@@ -2463,6 +2464,26 @@ describe("new text", () => {
     under?.dispatchEvent(new PointerEvent("pointercancel", over));
     await expect.poll(() => mark.element().getBoundingClientRect().top).toBe(from.top);
     expect(vi.mocked(renderStrips).mock.calls.length).toBe(rendered);
+  });
+
+  test("a signature opened again before the font list comes, set in the page's font, takes the size it was styled from", async () => {
+    let listCame: (list: FontList) => void = () => undefined;
+    vi.mocked(fontList).mockReturnValue(new Promise((resolve) => (listCame = resolve)));
+    const signature = anInsert({ text: "M. Halvorsen", font: "Caveat Bold", size: 26, origin: [300, 300] });
+    const history = historyReducer(EMPTY_HISTORY, { kind: "add", edits: [signature] });
+    const screen = await openEditor({
+      doc: RED_DOC,
+      persisted: { work: { history, fonts: [] }, until: Date.now() + 60_000 },
+    });
+    const mark = screen.getByRole("button", { name: "M. Halvorsen" });
+    await expect.element(mark).toBeInTheDocument();
+    mark.element().focus();
+    await userEvent.keyboard("{Enter}");
+    listCame(aFontList());
+    await screen.getByRole("option", { name: "Times Roman" }).click();
+    await userEvent.keyboard("{Enter}");
+    // Caveat is drawn a step larger than the text it's styled from: back in the page's font, it's that size again.
+    await expect.poll(() => lastRendered()[0]).toMatchObject({ text: "M. Halvorsen", size: 20 });
   });
 
   test("a typed signature is in a handwriting face a step larger, chosen from the chip, and its margin note takes it out", async () => {

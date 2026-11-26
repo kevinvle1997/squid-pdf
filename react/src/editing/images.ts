@@ -5,6 +5,7 @@ import { sentenceOf } from "../bugs";
 import { IMAGE_RETRY_FIRST_MS, IMAGE_RETRY_MOST_MS } from "./constants";
 import { announcing, type Editor } from "./editor";
 import { warn } from "./notices";
+import { loadShippedFaces } from "./shippedFaces";
 
 /** A page whose image failed, until it loads. */
 export interface FailedImage {
@@ -12,8 +13,9 @@ export interface FailedImage {
   readonly failed: string | null; // why, in the server's words; null when it answered after all
 }
 
-/** A page's image failed to load, for any reason: find out why, say it on the page, and ask again later. */
+/** A page's image failed to load, for any reason: find out why, say it on the page, and ask again later; and the font list comes. */
 export async function imageFailed(editor: Editor, page: number): Promise<void> {
+  void loadShippedFaces(editor);
   const { reopener } = editor;
   const before = reopener.doc;
   try {
@@ -36,8 +38,9 @@ export async function imageFailed(editor: Editor, page: number): Promise<void> {
   }
 }
 
-/** A page's image loaded: nothing more to say of it, and nothing to ask again. */
+/** A page's image loaded: nothing more to say of it, nor to ask again; and the font list comes. */
 export function imageLoaded(editor: Editor, page: number): void {
+  void loadShippedFaces(editor);
   const { images } = editor.store.get();
   if (!images.has(page)) return;
   clearTimeout(editor.retries.get(page));
