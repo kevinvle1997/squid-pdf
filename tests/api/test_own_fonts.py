@@ -12,12 +12,15 @@ from fastapi.testclient import TestClient
 from httpx import Response
 
 from squidpdf.api import constants as limits
+from squidpdf.core import Engine, strip_subset
 from squidpdf.core.fonts.catalog import FACES, face_bytes
-from squidpdf.documents import constants, store
-from tests.api.conftest import upload
+from squidpdf.documents import attached as copies, constants, store
+from squidpdf.documents.attached import AttachedFiles
+from tests.api.conftest import InProcess, upload
 from tests.conftest import (
     POPPINS,
     POPPINS_TEXT,
+    StoreWith,
     name_two_byte_font,
     named_only,
     named_with_widths,
@@ -321,3 +324,28 @@ def test_a_font_stored_under_a_long_name_is_read_by_it(mine, tmp_path):
 
     assert_equal(len(font["name"].encode()), 120, "bytes in the font's name, as listed")
     assert_equal(font["why_code"], None, "why the font can't draw an edit")
+
+
+def test_a_render_lends_the_copies_it_read_the_letter_spacing_under(
+    app, mine, arial_doc, monkeypatch
+):
+    """A copy attached as a render opens: it draws with the copies it listed, and their spacing.
+
+    The spacing is kept under the copies the analysis judged with, and a copy can be a
+    span's own, which measures it: one listing for both, or they disagree.
+    """
+    monkeypatch.setattr(app.state, "pool", InProcess())  # so the store below reaches the job
+    name = strip_subset(_only_font(arial_doc)["name"])
+
+    def attached_as_it_opens(folder: Path, *, attached: AttachedFiles | None = None) -> Engine:
+        arrived = copies.arriving_font(folder)
+        arrived.write_bytes(face_bytes(FACES["Liberation Sans Regular"]))
+        copies.keep_font(folder, name, arrived)
+        return store.FOLDER_STORE.open_original(folder, attached=attached)
+
+    monkeypatch.setattr(app.state, "documents", StoreWith(opens_original=attached_as_it_opens))
+    fit = _fit(mine, arial_doc, _ARIAL_TEXT)
+
+    assert_equal(
+        fit["fidelity"], "substitute", "the fit, in the copies listed before the attach"
+    )

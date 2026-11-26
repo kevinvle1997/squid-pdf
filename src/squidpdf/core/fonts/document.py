@@ -131,8 +131,8 @@ class _FontCache:
     """What has been looked up about the document's fonts, each filled in on first use.
 
     A page's facts and text by page number, and the letters of the page last asked about;
-    a copy, and the name its copies share, by the whole `PageFont` its page lists; a look-alike
-    by the font's object and name; every letter of a font by the name its copies share.
+    a copy, and its copies' name, by the whole `PageFont` its page lists; a look-alike by the
+    font's object and name; a font's every letter by its copies' name; a span's spacing by id.
     """
 
     # What each page says, by page number, read when the page is first asked about.
@@ -153,6 +153,8 @@ class _FontCache:
     # The letters the page last asked about draws: one page's, since a page's are many,
     # and spans are judged page by page.
     glyphs: _PageGlyphs | None = field(default=None, repr=False)
+    # Each span's letter spacing per em, by its id: kept from the analysis, else read anew.
+    spacing_em: dict[str, float] = field(default_factory=dict, repr=False)
 
     def page(self, number: int, make: Callable[[], _PageFacts]) -> _PageFacts:
         """What page `number` says, read on first use."""
@@ -191,6 +193,14 @@ class _FontCache:
         """Keep every letter of the font whose copies share `copies_name`."""
         self.every_letter[copies_name] = letters
 
+    def letter_spacing_em(self, span_id: str, make: Callable[[], float]) -> float:
+        """A span's letter spacing per em, worked out on first use unless it was kept."""
+        return made_once(self.spacing_em, span_id, make)
+
+    def keep_letter_spacing_em(self, spacing_em: Mapping[str, float]) -> None:
+        """Keep each span's letter spacing per em, by its id, as someone else worked it out."""
+        self.spacing_em.update(spacing_em)
+
     def page_glyphs(self, page: int, make: Callable[[], list[DrawnGlyph]]) -> _GlyphsByHeight:
         """The letters `page` draws, with their shapes, read unless it's the page last asked."""
         if self.glyphs is None or self.glyphs.page != page:
@@ -210,6 +220,7 @@ class _FontCache:
         self.look_alikes.clear()
         self.every_letter.clear()
         self.glyphs = None
+        self.spacing_em.clear()
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -248,6 +259,10 @@ class DocumentFonts:
     def keep_text_lines(self, page: int, lines: list[list[TextPiece]]) -> None:
         """Keep the page's text as the index read it."""
         self.cache.keep_text_lines(page, lines)
+
+    def keep_letter_spacing_em(self, spacing_em: Mapping[str, float]) -> None:
+        """Keep each span's letter spacing per em, by its id, as the analysis worked it out."""
+        self.cache.keep_letter_spacing_em(spacing_em)
 
     def same_widths(self, span: Span, face: Face) -> bool:
         """Whether `face` sets the span's font's letters as wide as it does: a look-alike so."""
@@ -510,12 +525,19 @@ class DocumentFonts:
     def letter_spacing(self, span: Span, own: PooledFont | None) -> float:
         """How far past its width the page sets each letter of the span apart, per em.
 
-        Each letter measured as a redraw measures it, in `own`, and by the page's own box for
-        it, which a narrowed line narrows: kept only where both agree, and past kerning.
+        As the analysis kept it, else read from the page once, in `own`.
         """
         # New text, or a turned line: no letters of its own, or none set apart along the page.
         if not span.fragments or span.turned:
             return 0.0
+        return self.cache.letter_spacing_em(span.id, partial(self._spacing_on_page, span, own))
+
+    def _spacing_on_page(self, span: Span, own: PooledFont | None) -> float:
+        """The span's letter spacing, read from where its page draws each letter.
+
+        Each letter measured as a redraw measures it, in `own`, and by the page's own box for
+        it, which a narrowed line narrows: kept only where both agree, and past kerning.
+        """
         glyphs = self.cache.page_glyphs(span.page, partial(self.driver.drawn_glyphs, span.page))
         # In the order drawn: a line drawn twice over, as for a shadow, starts again.
         pairs = [(a, b) for a, b in pairwise(glyphs.inside(span.bbox)) if _within_a_word(a, b)]

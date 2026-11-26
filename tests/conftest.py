@@ -42,7 +42,8 @@ class StoreWith:
     """The folder store, with a test's own open, touch or sweep: a race, or a full disk."""
 
     opens_to_write: Callable[[Path], BinaryIO] = FOLDER_STORE.open_to_write
-    opens_original: Callable[[Path], Engine] = FOLDER_STORE.open_original
+    # Given the folder, and the user's copies as the caller listed them, by keyword.
+    opens_original: Callable[..., Engine] = FOLDER_STORE.open_original
     touches: Callable[[Path], float] = FOLDER_STORE.touch
     sweeps: Callable[[], None] = FOLDER_STORE.sweep
 
@@ -71,9 +72,9 @@ class StoreWith:
         """The folder store's."""
         FOLDER_STORE.delete(folder)
 
-    def open_original(self, folder: Path) -> Engine:
+    def open_original(self, folder: Path, *, attached: AttachedFiles | None = None) -> Engine:
         """The test's, or the folder store's."""
-        return self.opens_original(folder)
+        return self.opens_original(folder, attached=attached)
 
     def touch(self, folder: Path) -> float:
         """The test's, or the folder store's."""

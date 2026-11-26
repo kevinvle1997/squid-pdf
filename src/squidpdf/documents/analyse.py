@@ -124,7 +124,11 @@ def _analysed(
         for span in index
     ]
     kept = _kept_analysis(facts, spans)
-    store.save_analysis(folder, BUILD, kept, attached=files.key)
+    # Kept with it, so a render reads each span's spacing, not its page.
+    letter_spacing_em = {span_id: report.letter_spacing for span_id, report in reports.items()}
+    store.save_analysis(
+        folder, BUILD, kept, letter_spacing_em=letter_spacing_em, attached=files.key
+    )
     return kept
 
 

@@ -122,7 +122,8 @@ def test_a_save_cut_short_keeps_what_was_there_whole(monkeypatch, failure, raise
     """A reader must see the old file or the new one, never half: half reads as broken JSON."""
     _, folder = FOLDER_STORE.create("owner")
     first = KeptAnalysis(b'{"worked": "out"}', b"[]", "its-digest")
-    store.save_analysis(folder, "a-build", first, attached=attached.attached_files(folder).key)
+    key = attached.attached_files(folder).key
+    store.save_analysis(folder, "a-build", first, letter_spacing_em={}, attached=key)
     whole = sorted(path.name for path in folder.iterdir())
 
     def cut_short(*_paths: object) -> None:
@@ -131,9 +132,7 @@ def test_a_save_cut_short_keeps_what_was_there_whole(monkeypatch, failure, raise
     monkeypatch.setattr(store.os, "replace", cut_short)
     with pytest.raises(raised):
         again = KeptAnalysis(b'{"worked": "out again"}', b"[1]", "its-next-digest")
-        store.save_analysis(
-            folder, "a-build", again, attached=attached.attached_files(folder).key
-        )
+        store.save_analysis(folder, "a-build", again, letter_spacing_em={}, attached=key)
 
     assert_equal(store.load_analysis(folder, "a-build"), first, "the analysis kept")
     names = sorted(path.name for path in folder.iterdir())
@@ -209,6 +208,7 @@ def test_writing_into_a_document_deleted_meanwhile_says_it_is_gone(engine):
             folder,
             "a-build",
             KeptAnalysis(b"{}", b"[]", "its-digest"),
+            letter_spacing_em={},
             attached=attached.attached_files(folder).key,
         )
 
@@ -310,6 +310,25 @@ def test_every_room_kept_reads_back_to_the_last_bit():
 
     kept = store.load_free_space(folder, "a-build")
     assert_equal(kept, FreeSpace(rooms, lines), "the rooms and lines read back")
+
+
+def test_letter_spacing_kept_reads_back_to_the_last_bit_under_the_copies_it_was_judged_with():
+    """A redraw sets letters that far apart, in the span's own copy: one attached can be it."""
+    _, folder = FOLDER_STORE.create("owner")
+    spacing_em = {"a1b2c3d4e5f6": 1 / 3, "b2c3d4e5f6a1": 0.1 + 0.2, "c3d4e5f6a1b2": 0.0}
+    analysis = KeptAnalysis(b"{}", b"[]", "its-digest")
+    before = attached.attached_files(folder)
+    store.save_analysis(
+        folder, "a-build", analysis, letter_spacing_em=spacing_em, attached=before.key
+    )
+    arrived = attached.arriving_font(folder)
+    arrived.write_bytes(b"a font")
+    attached.keep_font(folder, "Arial", arrived)
+
+    read_back = store.load_letter_spacing_em(folder, "a-build", before)
+    since = store.load_letter_spacing_em(folder, "a-build", attached.attached_files(folder))
+    assert_equal(read_back, spacing_em, "the letter spacing read back")
+    assert_equal(since, {}, "under a copy attached since")
 
 
 def test_kept_indexes_that_forget_equal_fresh_ones(engine, tmp_path, kept_indexes):

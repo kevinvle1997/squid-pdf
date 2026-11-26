@@ -1,8 +1,8 @@
 """Where documents live: one folder each, deleted whole.
 
 A folder holds the original, its owner's hash, index, page list, the user's copies of its fonts,
-and per `build` and tuning, each span's room and an analysis per set of copies. Files worked out
-are named for their format. The folder's mtime, touched each visit, is the idle clock.
+and per `build` and tuning rooms and lines, per set of copies an analysis and letter spacing.
+Files worked out are named for their format. Its mtime, touched each visit, is the idle clock.
 """
 
 from __future__ import annotations
@@ -14,11 +14,13 @@ import secrets
 import shutil
 import tempfile
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from functools import cache, partial
 from pathlib import Path
 from typing import BinaryIO, Protocol
+
+import orjson
 
 from squidpdf.core import (
     ANALYSIS_TUNING,
@@ -94,8 +96,11 @@ class DocumentStore(Protocol):
         """The document's original, open to be judged, fetching what it lends; or Gone."""
         ...
 
-    def open_original(self, folder: Path) -> Engine:
-        """The document's original, open for editing, lending only what's fetched; or Gone."""
+    def open_original(self, folder: Path, *, attached: AttachedFiles | None = None) -> Engine:
+        """The document's original, open for editing, lending only what's fetched; or Gone.
+
+        `attached`, the user's copies as the caller listed them; listed now when not given.
+        """
         ...
 
     def touch(self, folder: Path) -> float:
@@ -166,16 +171,17 @@ class FolderStore:
         except FileNotFoundError as exc:
             raise Gone from exc
 
-    def open_original(self, folder: Path) -> Engine:
+    def open_original(self, folder: Path, *, attached: AttachedFiles | None = None) -> Engine:
         """The document's original, open for editing. Raises Gone if it was deleted meanwhile.
 
-        Google's copy of a font lends the letters its copies in the file lack, from
-        the cache the analysis filled: a render never waits on the network.
+        Google's copy of a font lends the letters its copies in the file lack, from the cache
+        the analysis filled: a render never waits on the network. `attached` as for the store.
         """
         google = google_fonts(
             folder=root() / _GOOGLE_FONTS, cache_only=True, download=self.google_download
         )
-        sources = FontSources(google=google, attached=attached_files(folder))
+        listed = attached_files(folder) if attached is None else attached
+        sources = FontSources(google=google, attached=listed)
         try:
             return open_pdf(
                 str(folder / ORIGINAL), sources=sources, driver_factory=self.driver_factory
@@ -434,21 +440,44 @@ def load_free_space(folder: Path, build: str) -> FreeSpace | None:
     return free_space_from_json(saved)
 
 
-def save_analysis(folder: Path, build: str, kept: KeptAnalysis, *, attached: str) -> None:
+def save_analysis(
+    folder: Path,
+    build: str,
+    kept: KeptAnalysis,
+    *,
+    letter_spacing_em: Mapping[str, float],
+    attached: str,
+) -> None:
     """Keep what was worked out under this build and set of copies (`AttachedFiles.key`).
 
-    Another build, tuning or set of copies works it out again. The digest last: a
-    304 reads it alone, so its file says the rest is there.
+    With each span's letter spacing per em, unrounded, as a redraw sets it. Another build,
+    tuning or set of copies works it out again. The digest last: a 304 reads it alone, so its
+    file says the rest is there.
     """
-    judged_with = f"{build}.{attached}"
+    judged_with = _judged_with(build, attached)
+    _write_whole(folder / _spacing_file(judged_with), orjson.dumps(letter_spacing_em))
     _write_whole(folder / _spans_file(judged_with), kept.spans)
     _write_whole(folder / _analysis_file(judged_with), kept.facts)
     _write_whole(folder / _digest_file(judged_with), kept.digest.encode())
 
 
+def load_letter_spacing_em(
+    folder: Path, build: str, attached: AttachedFiles
+) -> dict[str, float]:
+    """Each span's letter spacing per em, by id, as the analysis under these copies kept it.
+
+    None kept, the analysis under them is still to come: each span is read from its page.
+    """
+    try:
+        saved = (folder / _spacing_file(_judged_with(build, attached.key))).read_bytes()
+    except FileNotFoundError:  # a new build, format or set of copies, or never analysed
+        return {}
+    return orjson.loads(saved)
+
+
 def load_analysis(folder: Path, build: str) -> KeptAnalysis | None:
     """The analysis saved under this build, format and the copies attached now, or None."""
-    judged_with = f"{build}.{attached_files(folder).key}"
+    judged_with = _judged_with(build, attached_files(folder).key)
     try:
         digest = (folder / _digest_file(judged_with)).read_text()
         facts = (folder / _analysis_file(judged_with)).read_bytes()
@@ -460,11 +489,16 @@ def load_analysis(folder: Path, build: str) -> KeptAnalysis | None:
 
 def load_analysis_digest(folder: Path, build: str) -> str | None:
     """The analysis's digest under this build, format and copies attached now, or None."""
-    judged_with = f"{build}.{attached_files(folder).key}"
+    judged_with = _judged_with(build, attached_files(folder).key)
     try:
         return (folder / _digest_file(judged_with)).read_text()
     except FileNotFoundError:  # a new build, format or set of copies, or never analysed
         return None
+
+
+def _judged_with(build: str, attached: str) -> str:
+    """What an analysis is kept under: its build and its set of copies (`AttachedFiles.key`)."""
+    return f"{build}.{attached}"
 
 
 def _index_file() -> str:
@@ -491,6 +525,11 @@ def _source_digest() -> bytes:
 def _free_space_file(build: str) -> str:
     """The file the rooms and lines under `build` are kept in, beside `_analysis_file`."""
     return _analysis_kept_as(f"free-space-{build}.json")
+
+
+def _spacing_file(build: str) -> str:
+    """The file each span's letter spacing under `build` is kept in, beside `_analysis_file`."""
+    return _analysis_kept_as(f"spacing-{build}.json")
 
 
 def _analysis_file(build: str) -> str:

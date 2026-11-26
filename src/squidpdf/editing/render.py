@@ -25,7 +25,7 @@ from squidpdf.core import (
     Workers,
     words,
 )
-from squidpdf.documents import store
+from squidpdf.documents import attached, store
 from squidpdf.documents.errors import NoSuchPage, is_page
 from squidpdf.documents.free_space import kept_free_space
 from squidpdf.documents.page_image import page_scale
@@ -142,7 +142,11 @@ def _draw_regions(
     """
     index = store.require_index(folder)
     free_space = kept_free_space(documents, folder, index)
-    with documents.open_original(folder) as engine:
+    # Listed once: the spacing kept under these copies is the one they draw with.
+    files = attached.attached_files(folder)
+    letter_spacing_em = store.load_letter_spacing_em(folder, BUILD, files)
+    with documents.open_original(folder, attached=files) as engine:
+        engine.keep_letter_spacing_em(letter_spacing_em)
         resolved = resolve(engine, index, free_space=free_space, edits=edits)
         fits = fits_of(engine, resolved)  # before run: erasing can drop the fonts it measures
         steps = plan(engine, resolved, fits, strips=strips)

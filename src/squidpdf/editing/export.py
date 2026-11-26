@@ -16,6 +16,7 @@ from io import BufferedReader
 from pathlib import Path
 
 from squidpdf.core import (
+    BUILD,
     DriverFactory,
     Engine,
     Fidelity,
@@ -33,7 +34,7 @@ from squidpdf.core import (
     tally,
     words,
 )
-from squidpdf.documents import store
+from squidpdf.documents import attached, store
 from squidpdf.documents.errors import NoSuchPage, is_page
 from squidpdf.documents.free_space import kept_free_space
 from squidpdf.documents.store import DocumentStore
@@ -139,8 +140,12 @@ def _make_pdf(
     """
     index = store.require_index(folder)
     free_space = kept_free_space(documents, folder, index)
+    # Listed once: the spacing kept under these copies is the one they draw with.
+    files = attached.attached_files(folder)
+    letter_spacing_em = store.load_letter_spacing_em(folder, BUILD, files)
 
-    with documents.open_original(folder) as engine:
+    with documents.open_original(folder, attached=files) as engine:
+        engine.keep_letter_spacing_em(letter_spacing_em)
         # Outside the document's folder: deleting it while the file is open can't take the save.
         out = scratch / _EXPORTED
         saved = save_edited(

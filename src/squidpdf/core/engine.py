@@ -95,6 +95,13 @@ class Engine:
             self.fonts.keep_text_lines(page, lines)
         return build_index(lines_by_page)
 
+    def keep_letter_spacing_em(self, spacing_em: Mapping[str, float]) -> None:
+        """Keep each span's letter spacing per em, by its id, as the analysis worked it out.
+
+        A fit or a draw then reads no page for it: only a span not kept is read.
+        """
+        self.fonts.keep_letter_spacing_em(spacing_em)
+
     def page_count(self) -> int:
         """How many pages the document has, without reading any of them."""
         return self.driver.page_count()

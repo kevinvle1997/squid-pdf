@@ -29,6 +29,7 @@ from squidpdf.core.fonts.catalog import FACES, face_bytes
 from squidpdf.core.pdf.driver import PdfDriver
 from squidpdf.core.pdf.mupdf import open_driver
 from squidpdf.documents import constants as documents_constants, store
+from squidpdf.documents.attached import AttachedFiles
 from squidpdf.editing import constants as editing_constants, export
 from tests.api.conftest import (
     InProcess,
@@ -1066,8 +1067,8 @@ def test_a_document_deleted_while_its_export_runs_still_downloads(app, mine, doc
     """
     monkeypatch.setattr(app.state, "pool", InProcess())  # so the patch below reaches it
 
-    def deleted_once_open(folder: Path) -> Engine:
-        engine = store.FOLDER_STORE.open_original(folder)
+    def deleted_once_open(folder: Path, *, attached: AttachedFiles | None = None) -> Engine:
+        engine = store.FOLDER_STORE.open_original(folder, attached=attached)
         store.FOLDER_STORE.delete(folder)
         return engine
 
