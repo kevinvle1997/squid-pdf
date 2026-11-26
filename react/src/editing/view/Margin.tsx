@@ -3,7 +3,7 @@ import { Button, Group } from "react-aria-components";
 import type { PageInfo } from "../../api/types";
 import { Tip } from "../../ui/Tooltip";
 import type { Editor } from "../editor";
-import { joinedRuns, marginNotesOf, notePlaces } from "../margin";
+import { type Cut, inLine, joinedRuns, marginNotesOf, notePlaces, UNCUT } from "../margin";
 import type { NewTextReading, SpanReading } from "../project";
 import { sentenceOrNothing } from "../words";
 import { useEditor, useEditorState } from "./context";
@@ -35,7 +35,11 @@ export function Margin({ info, changes, newTexts, noteHeightPt, pageNumber }: Pr
     <Group className={styles.margin} aria-label={`Changes on page ${pageNumber}`}>
       {notes.map(({ key, note, undo }, index) => (
         <div key={key} className={styles.place} style={topOf(places[index] ?? 0, info)}>
-          <Tip heading={note.was.length === 0 ? newText : `Was “${joinedRuns(note.was)}”`} detail={`Now “${note.now}”`}>
+          <Tip
+            heading={note.was.length === 0 ? newText : `Was “${inLine(joinedRuns(note.was), note.cut)}”`}
+            detail={`Now “${inLine(note.now, note.cut)}”`}
+            changed={note.was.length > 0}
+          >
             <UndoNote label={note.label} undo={undo}>
               {/* Beside the page a note is only the words changed: pointed at or focused, it shows it undoes. */}
               <UndoMark />
@@ -57,12 +61,13 @@ export function Margin({ info, changes, newTexts, noteHeightPt, pageNumber }: Pr
 }
 
 /**
- * Words taken out, struck through: each run on its own, the ellipsis between them not, since it was never there.
- * Beside the page each run shrinks to its share, so a long first run can't hide the next.
+ * Words taken out, struck through: each run on its own, the ellipsis between them or where the line was `cut` not,
+ * since it was never there. Beside the page each run shrinks to its share, so a long first run can't hide the next.
  */
-function Struck({ runs }: { runs: readonly string[] }) {
+function Struck({ runs, cut = UNCUT }: { runs: readonly string[]; cut?: Cut }) {
   return (
     <span className={styles.old}>
+      {cut.before && <span className={styles.between}>… </span>}
       {runs.map((run, index) => (
         // By its place in the line: two runs may read the same.
         <Fragment key={index}>
@@ -70,6 +75,7 @@ function Struck({ runs }: { runs: readonly string[] }) {
           <span className={styles.run}>{run}</span>
         </Fragment>
       ))}
+      {cut.after && <span className={styles.between}> …</span>}
     </span>
   );
 }
@@ -98,9 +104,9 @@ export function ChangeList({
                   {newText}
                 </span>
               ) : (
-                <Struck runs={note.was} />
+                <Struck runs={note.was} cut={note.cut} />
               )}
-              <span className={styles.now}>{note.now}</span>
+              <span className={styles.now}>{inLine(note.now, note.cut)}</span>
               {/* With no Cmd+Z on a phone, each line says it's pressed to undo. */}
               <span className={styles.undo}>Undo</span>
             </UndoNote>

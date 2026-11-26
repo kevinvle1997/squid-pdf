@@ -17,6 +17,7 @@
 .shared::after { content: ""; position: absolute; inset-inline: 0; top: 100%; height: var(--note-gap); }
 .shared[data-placement="bottom"]::after { top: auto; bottom: 100%; }
 .heading { font-weight: 600; color: var(--ink); }
+.became { flex: none; align-self: flex-start; }
 /* The shadow is dropped here, so an outline keeps the note apart from the page under it. */
 @media (forced-colors: active) {
   .note { outline: 1px solid CanvasText; }

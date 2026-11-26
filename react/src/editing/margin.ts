@@ -1,5 +1,6 @@
 // The margin's notes, one per changed span and piece of new text, placed as a proof has them: level with
 // the line they're about, and nudged down just enough that no two overlap.
+import { NOTE_WORDS_AROUND } from "./constants";
 import { type Editor, putBack } from "./editor";
 import { newTextLineOf, takeOutNewText } from "./newText";
 import type { NewTextReading, SpanReading } from "./project";
@@ -40,6 +41,43 @@ export function changedWordsIn(original: string, now: string): string {
   return original.slice(first.index, last.index + last[0].length);
 }
 
+/** Whether a note's words were cut from a longer line, before them and after: an ellipsis says so. */
+export interface Cut {
+  readonly before: boolean;
+  readonly after: boolean;
+}
+
+/** Words shown whole, cut from nothing. */
+export const UNCUT: Cut = { before: false, after: false };
+
+/**
+ * What `original` and `now` read around an edit between them: the words it changed and `NOTE_WORDS_AROUND`
+ * either side, whole, from the same word in both, and where the line goes on past them.
+ */
+export function excerptsOf(original: string, now: string): { was: string; now: string; cut: Cut } {
+  const { originalWords, nowWords, keptAtStart, keptAtEnd } = wordsKept(original, now);
+  const from = Math.max(keptAtStart - NOTE_WORDS_AROUND, 0);
+  const wasTo = Math.min(originalWords.length - keptAtEnd + NOTE_WORDS_AROUND, originalWords.length);
+  const nowTo = Math.min(nowWords.length - keptAtEnd + NOTE_WORDS_AROUND, nowWords.length);
+  // Both are cut at the same kept words, so where one goes on the other does too.
+  const cut = { before: from > 0, after: wasTo < originalWords.length };
+  return { was: wordsBetween(original, { from, to: wasTo }), now: wordsBetween(now, { from, to: nowTo }), cut };
+}
+
+/** `text` from its word `from` up to its word `to`, its own spacing kept; all of it with no words to cut at. */
+function wordsBetween(text: string, { from, to }: { from: number; to: number }): string {
+  const words = [...text.matchAll(/\S+/g)];
+  const first = words[from];
+  const last = words[to - 1];
+  if (first === undefined || last === undefined) return text;
+  return text.slice(first.index, last.index + last[0].length);
+}
+
+/** `words` as a note says them: an ellipsis on each side they were cut from the line. */
+export function inLine(words: string, cut: Cut): string {
+  return `${cut.before ? "… " : ""}${words}${cut.after ? " …" : ""}`;
+}
+
 /** The words an edit to `now` only added to `original`, nothing of it taken out; null when it changed any. */
 export function insertedWordsIn(original: string, now: string): string | null {
   const { originalWords, nowWords, keptAtStart, keptAtEnd } = wordsKept(original, now);
@@ -54,10 +92,11 @@ export interface NoteWords {
   // The original's words it took out, struck through beside the page: a run each, an ellipsis between left unstruck.
   readonly struck: readonly string[];
   readonly inserted: string | null; // the words it only added, nothing taken out: shown with a caret instead
-  // What the span read, whole, or each run of words a redaction took: struck in the list under the page, and shown
-  // with `now` on hover and focus. None for new text.
+  // What the span read around the change, or each run of words a redaction took: struck in the list under the page,
+  // and shown over `now` on hover and focus. None for new text.
   readonly was: readonly string[];
-  readonly now: string; // what the span reads now, in the list under the page
+  readonly now: string; // what the span reads now around the change, in the list under the page
+  readonly cut: Cut; // whether `was` and `now` were cut from a longer line
 }
 
 /** Runs of words as one line, an ellipsis between, as a note's name and its hover say them. */
@@ -74,11 +113,14 @@ export function noteOf({ span, text, redacted }: SpanReading): NoteWords {
   if (redacted !== null) {
     const runs = redacted === "whole" ? [span.text] : redacted.map(({ start, end }) => span.text.slice(start, end));
     const label = `Undo: “${joinedRuns(runs)}” is no longer redacted`;
-    return { label, struck: runs, inserted: null, was: runs, now: "Redacted" };
+    return { label, struck: runs, inserted: null, was: runs, now: "Redacted", cut: UNCUT };
   }
-  const was = span.text;
-  const label = `Undo: “${text}” goes back to “${was}”`;
-  return { label, struck: [changedWordsIn(was, text)], inserted: insertedWordsIn(was, text), was: [was], now: text };
+  const original = span.text;
+  // A screen reader hears the whole line: the note's name is all it has to go on.
+  const label = `Undo: “${text}” goes back to “${original}”`;
+  const { was, now, cut } = excerptsOf(original, text);
+  const struck = [changedWordsIn(original, text)];
+  return { label, struck, inserted: insertedWordsIn(original, text), was: [was], now, cut };
 }
 
 /** How many of `words` from the start, up to `limit`, `now` has too, in the same places. */
@@ -90,7 +132,8 @@ function sharedCount(words: readonly RegExpExecArray[], now: readonly string[], 
 
 /** What new text's note says: its name, for what pressing it undoes, and the words added, marked as a proof marks an insertion. */
 export function newTextNoteOf({ edit }: NewTextReading): NoteWords {
-  return { label: `Undo: take out “${edit.text}”`, struck: [], inserted: edit.text, was: [], now: edit.text };
+  const label = `Undo: take out “${edit.text}”`;
+  return { label, struck: [], inserted: edit.text, was: [], now: edit.text, cut: UNCUT };
 }
 
 /** One note in the margin: what it says, the line it's about, and what pressing it undoes. */

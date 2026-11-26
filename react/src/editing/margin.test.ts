@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { anInsert, aSpan } from "../fixtures";
 import { NEW_TEXT_ASCENT_EM, NEW_TEXT_DESCENT_EM } from "./constants";
-import { changedWordsIn, insertedWordsIn, marginNotesOf, noteOf, notePlaces } from "./margin";
+import { changedWordsIn, excerptsOf, inLine, insertedWordsIn, marginNotesOf, noteOf, notePlaces } from "./margin";
 import type { SpanReading } from "./project";
 
 const changeAt = (id: string, y0: number): SpanReading => ({
@@ -46,6 +46,45 @@ describe("what a note shows of the original", () => {
   });
 });
 
+describe("what a note shows of the change, over what it became", () => {
+  const shown = (original: string, now: string) => {
+    const { was, now: became, cut } = excerptsOf(original, now);
+    return { was: inLine(was, cut), now: inLine(became, cut) };
+  };
+
+  test("the words changed and one either side, cut at spaces, an ellipsis where the line goes on", () => {
+    const line = "white box. When you replace a line, the server removes the old glyphs";
+    expect(shown(line, line.replace("replace", "replssace"))).toEqual({
+      was: "… you replace a …",
+      now: "… you replssace a …",
+    });
+  });
+
+  test("no ellipsis on a side the change reaches the line's end at", () => {
+    expect(shown("Paid on 14 March", "Paid on 2 April")).toEqual({ was: "… on 14 March", now: "… on 2 April" });
+    expect(shown("Draft terms of sale", "Final terms of sale")).toEqual({ was: "Draft terms …", now: "Final terms …" });
+  });
+
+  test("words only added or only taken out: the words around where they were", () => {
+    expect(shown("one two three four", "one two and a half three four")).toEqual({
+      was: "… two three …",
+      now: "… two and a half three …",
+    });
+    expect(shown("one two three four five", "one two five")).toEqual({
+      was: "… two three four five",
+      now: "… two five",
+    });
+  });
+
+  test("a short line is shown whole, and its own spacing stays", () => {
+    expect(shown("was  here", "is  here")).toEqual({ was: "was  here", now: "is  here" });
+  });
+
+  test("a line emptied shows what it read, and nothing for now", () => {
+    expect(shown("was here", "")).toEqual({ was: "was here", now: "" });
+  });
+});
+
 describe("what a note says", () => {
   test("a change's note strikes the words it took out, and is named for what pressing it undoes", () => {
     const change = {
@@ -57,8 +96,9 @@ describe("what a note says", () => {
       label: "Undo: “Paid on 2 April” goes back to “Paid on 14 March”",
       struck: ["14 March"],
       inserted: null,
-      was: ["Paid on 14 March"],
-      now: "Paid on 2 April",
+      was: ["on 14 March"],
+      now: "on 2 April",
+      cut: { before: true, after: false },
     });
   });
 
@@ -74,6 +114,7 @@ describe("what a note says", () => {
       inserted: null,
       was: ["John Smith"],
       now: "Redacted",
+      cut: { before: false, after: false },
     });
   });
 
@@ -90,6 +131,7 @@ describe("what a note says", () => {
       inserted: null,
       was: ["4421", "9918"],
       now: "Redacted",
+      cut: { before: false, after: false },
     });
   });
 
