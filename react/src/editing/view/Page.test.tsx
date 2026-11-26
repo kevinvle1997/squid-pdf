@@ -18,12 +18,14 @@ import {
   aReply,
   aSpan,
   halfWideGlyphs,
+  RULES,
   SENTENCES,
 } from "../../fixtures";
 import { animationsDone, colorOf, emulateTouchScreen, middleOf, tapAt } from "../../testing";
-import { NOTE_CLOSE_DELAY_MS, NOTE_DELAY_MS } from "../constants";
+import { FIELD_SPARE_EM, NOTE_CLOSE_DELAY_MS, NOTE_DELAY_MS } from "../constants";
 import { learnDateLanguages } from "../dateNames";
 import { createEditor, type Editor, undo } from "../editor";
+import { addFaces, familyOf } from "../faces";
 import { openFind, typeQuery } from "../find";
 import { setWarningMuted } from "../mutedWarnings";
 import { openNewTextAt } from "../newText";
@@ -32,6 +34,7 @@ import { PX_PER_PT } from "../scale";
 import { loadShippedFaces } from "../shippedFaces";
 import { edit, finish, stepWayOut, typeInto } from "../typing";
 import { EditorContext } from "./context";
+import { fieldWidthPt, letterByLetterWidthOf } from "./geometry";
 import { onBarePaper } from "./keys";
 import { Page } from "./Page";
 
@@ -866,6 +869,62 @@ describe("a page", () => {
     // The original's 80 pt and the 40 pt the server drew past it, on the A4 page's 595.
     const mark = screen.getByRole("button", { name: "was here and more" });
     await expect.poll(() => Number.parseFloat(mark.element().style.width)).toBeCloseTo((120 / A4.width) * 100);
+  });
+
+  describe("a line with kerned pairs, as the server sets it: letter by letter, each at its own width", () => {
+    const KERNED = "AVATAR WAVE To Ty Wa AV LT";
+    const FACE = "Liberation Serif Regular";
+    const wide = aSpan({ ...span, bbox: { x0: 40, y0: 100, x1: 560, y1: 124 }, room_pt: 400 });
+    const kernedDoc = aDoc({ spans: [wide], fonts: [aFont("Times-Roman", { glyphs: halfWideGlyphs(KERNED) })] });
+
+    /** How wide `text` is set at `sizePt` in the preview's face, a letter at a time: no pair moves closer. */
+    function letterByLetterPt(text: string, sizePt: number): number {
+      const ruler = document.createElement("canvas").getContext("2d") as CanvasRenderingContext2D;
+      ruler.font = `${sizePt}px ${familyOf(FACE)}`;
+      return [...text].reduce((total, letter) => total + ruler.measureText(letter).width, 0);
+    }
+
+    beforeEach(async () => {
+      addFaces([FACE]);
+      await document.fonts.load(`20px ${familyOf(FACE)}`);
+      openDocument(kernedDoc);
+    });
+
+    test("previews as wide as the server draws it", async () => {
+      const screen = await draw();
+      await expect.element(screen.getByRole("button", { name: WORDS })).toBeInTheDocument();
+      edit(editor, wide.id, null);
+      typeInto(editor, KERNED);
+      finish(editor, true);
+      const preview = () => screen.container.querySelector<HTMLElement>("[data-preview]");
+      await expect.poll(() => preview()?.textContent).toBe(KERNED);
+      const words = document.createRange();
+      words.selectNodeContents(preview() as HTMLElement);
+      const sheet = sheetOf(preview() as HTMLElement).getBoundingClientRect();
+      const previewPt = (words.getBoundingClientRect().width / sheet.width) * A4.width;
+      expect(Math.abs(previewPt - letterByLetterPt(KERNED, wide.size))).toBeLessThan(RULES.tolerance_pt);
+    });
+
+    test("measures letters a face would join apart, where the canvas can't be told to join none", async () => {
+      // A face whose ligatures (fi, ffl, ...) are each narrower than their letters.
+      const JOINING = "EB Garamond Regular";
+      addFaces([JOINING]);
+      await document.fonts.load(`100px ${familyOf(JOINING)}`);
+      const canvas = document.createElement("canvas").getContext("2d") as CanvasRenderingContext2D;
+      canvas.font = `100px ${familyOf(JOINING)}`;
+      canvas.fontKerning = "none";
+      const text = "office affluent fifty";
+      const letters = [...text].reduce((total, letter) => total + canvas.measureText(letter).width, 0);
+      expect(letterByLetterWidthOf(canvas, text)).toBeCloseTo(letters, 0);
+    });
+
+    test("opens a field as wide as the server draws it, with the room past it the caret takes", () => {
+      // Narrower than what's typed, and with no widths of its own, so the browser's measure sets the field.
+      const narrow = { ...wide, bbox: { ...wide.bbox, x1: wide.bbox.x0 + 10 } };
+      const widthPt = fieldWidthPt(narrow, { text: KERNED, face: FACE, glyphs: {} });
+      const drawnPt = letterByLetterPt(KERNED, wide.size) + wide.size * FIELD_SPARE_EM;
+      expect(Math.abs(widthPt - drawnPt)).toBeLessThan(RULES.tolerance_pt);
+    });
   });
 
   test("a preview sets its words on the span's own line, so they don't move when the render lands", async () => {

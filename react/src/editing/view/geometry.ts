@@ -403,6 +403,9 @@ function rgbOf(color: readonly number[]): string {
   return `rgb(${red * 255} ${green * 255} ${blue * 255})`;
 }
 
+// New words are set as the server sets them, each letter at its own width: no pair kerned closer, no two joined.
+const LETTER_BY_LETTER: CSSProperties = { fontKerning: "none", fontVariantLigatures: "none" };
+
 /** Text drawn where a span is, as the page has it: its place, its size and colour, in `face`. */
 export function spanTextStyle(span: SpanInfo, page: PageInfo, face: string): CSSProperties {
   const box = boxOf(span.bbox, page);
@@ -412,6 +415,7 @@ export function spanTextStyle(span: SpanInfo, page: PageInfo, face: string): CSS
     height: box.height,
     fontSize: points(span.size, page),
     fontFamily: familyOf(face),
+    ...LETTER_BY_LETTER,
     color: rgbOf(span.color),
     // In ems of its size, so a way out that sets it smaller spaces it closer, as the server does.
     letterSpacing: span.letter_spacing_em === 0 ? undefined : `${span.letter_spacing_em}em`,
@@ -443,13 +447,34 @@ export function previewStyleOf(
 // One canvas measures every field's text: it draws nothing, so it never joins the page.
 let ruler: CanvasRenderingContext2D | null | undefined;
 
-/** How wide `text` draws in `face` at `sizePt`, in points, as the browser sets it: a letter `face` lacks in its fallback. */
+/** How wide `text` draws in `face` at `sizePt`, in points, set letter by letter as the server sets new words: a letter `face` lacks in its fallback. */
 function shownWidthPt(text: string, face: string, sizePt: number): number {
-  if (ruler === undefined) ruler = document.createElement("canvas").getContext("2d");
+  if (ruler === undefined) ruler = letterByLetterRuler(document.createElement("canvas").getContext("2d"));
   if (ruler == null) return 0;
   // Width grows with size, so text set at `sizePt` px measures in points.
   ruler.font = `${sizePt}px ${familyOf(face)}`;
-  return ruler.measureText(text).width;
+  return letterByLetterWidthOf(ruler, text);
+}
+
+/** `canvas`, kerning no pair and joining no two letters where it can be told so. */
+function letterByLetterRuler(canvas: CanvasRenderingContext2D | null): CanvasRenderingContext2D | null {
+  if (canvas === null) return null;
+  // Both newer than some browsers this app runs in, so each is looked for first.
+  if ("fontKerning" in canvas) canvas.fontKerning = "none";
+  if ("textRendering" in canvas) canvas.textRendering = "optimizeSpeed";
+  return canvas;
+}
+
+// Kept between every two letters where a canvas joins them still: zero width, and no ligature reaches across it.
+const APART = "\u200c";
+
+/** How wide `text` is on `ruler`, letter by letter: where the ruler can't be told to join none, each kept apart. */
+export function letterByLetterWidthOf(
+  ruler: Pick<CanvasRenderingContext2D, "measureText" | "textRendering">,
+  text: string,
+): number {
+  const apart = ruler.textRendering === "optimizeSpeed" ? text : [...text].join(APART);
+  return ruler.measureText(apart).width;
 }
 
 /** How wide the field typing `text` over a span is, in points: never narrower than the span, with room past what's typed. */
@@ -547,6 +572,7 @@ export function newTextStyleOf(
     fontSize: points(insert.size, page),
     lineHeight: points(insert.size * (NEW_TEXT_ASCENT_EM + NEW_TEXT_DESCENT_EM), page),
     fontFamily: familyOf(face),
+    ...LETTER_BY_LETTER,
     color: rgbOf(insert.color ?? [0, 0, 0]),
   };
 }
