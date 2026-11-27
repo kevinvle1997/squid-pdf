@@ -314,6 +314,23 @@ export function halfWideGlyphs(letters: string): Record<string, number> {
   return Object.fromEntries([...letters].map((letter) => [letter, 500]));
 }
 
+/**
+ * A sentence in three runs, the middle one bold, one line (`Document.lines`), every letter half the size wide: at
+ * 10 pt, "Text is grouped into " is 105 pt from 72, "spans" 25 pt, " (one style)" 60 pt, and the line has 20 pt more.
+ */
+export function aBoldSentence(): Pick<Document, "spans" | "lines" | "fonts"> {
+  const glyphs = halfWideGlyphs("abcdefghijklmnopqrstuvwxyzT() ");
+  const run = (id: string, { text, font, x0 }: { text: string; font: string; x0: number }) =>
+    aSpan({ id, text, font, bbox: { x0, y0: 100, x1: x0 + 5 * text.length, y1: 112 }, origin: [x0, 110] });
+  const spans = [
+    run("before", { text: "Text is grouped into ", font: "Times-Roman", x0: 72 }),
+    run("bold", { text: "spans", font: "Times-Bold", x0: 177 }),
+    run("after", { text: " (one style)", font: "Times-Roman", x0: 202 }),
+  ];
+  const lines = [{ span_ids: spans.map(({ id }) => id), room_pt: 20 }];
+  return { spans, lines, fonts: [aFont("Times-Roman", { glyphs }), aFont("Times-Bold", { glyphs })] };
+}
+
 /** An edit that replaces a span's words. */
 export function aReplace(spanId: string, text = "now", fields: Partial<Replace> = {}): Replace {
   return { kind: "replace", span_id: spanId, text, ...fields };

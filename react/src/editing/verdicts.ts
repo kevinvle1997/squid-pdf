@@ -65,6 +65,17 @@ function setApartBy(span: SpanInfo, leftOut: readonly string[]): Verdict["why"] 
   return own?.code === "spaced_text" ? own : null;
 }
 
+// How far each verdict is from matching: a line's edit is said by its runs' furthest.
+const DISTANCE: Record<Verdict["fidelity"], number> = { exact: 0, approximate: 1, substitute: 2 };
+
+/** The furthest of `verdicts` from matching, the first where two tie: what a line's edit is said by; exact with none. */
+export function worstOf(verdicts: readonly Verdict[]): Verdict {
+  return verdicts.reduce<Verdict>(
+    (worst, each) => (DISTANCE[each.fidelity] > DISTANCE[worst.fidelity] ? each : worst),
+    EXACT,
+  );
+}
+
 /** What the chip says of an edit that will match, where it says the short warning of one that won't: Find's own words. */
 export const LOOKS_IDENTICAL = "looks identical";
 

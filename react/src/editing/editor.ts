@@ -109,6 +109,7 @@ export interface Unredacting {
 /** What a field reads as typed, and where the caret was: typed in again once the field opens. */
 export interface Typed {
   readonly text: string;
+  readonly runs: readonly string[] | null; // a line's, its words a run each; none for a span alone
   readonly caret: number | null; // in the field's units; none known
 }
 
@@ -339,14 +340,19 @@ export function change(editor: Editor, action: HistoryAction | readonly HistoryA
   void persistWork(editor);
 }
 
-/** Put a span back as the document had it, from its margin note; focus goes to the span. */
+/** Put a span back as the document had it, with the rest of its line, from its margin note; focus goes to its mark. */
 export function putBack(editor: Editor, spanId: string): void {
   const { history, layout, doc } = editor.store.get();
-  const text = layout.spans.get(spanId)?.text ?? "";
+  const span = layout.spans.get(spanId);
+  // A span of a line goes back with the rest of it, as the line was edited: as one.
+  const line = layout.lines.get(spanId);
+  const spans = line?.spans ?? (span === undefined ? [] : [span]);
+  const ids = new Set(spans.flatMap(({ id }) => [...touching(history, id)]));
+  const text = spans.map((each) => each.text).join("");
   change(
     editor,
-    { kind: "remove", ids: touching(history, spanId) },
-    { announcement: announcing(fill(doc.sentences.put_back, { text })), focusTo: { spanId } },
+    { kind: "remove", ids },
+    { announcement: announcing(fill(doc.sentences.put_back, { text })), focusTo: { spanId: line?.id ?? spanId } },
   );
 }
 

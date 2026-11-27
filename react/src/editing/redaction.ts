@@ -5,8 +5,9 @@ import { readDocumentDates } from "./documentDates";
 import { announcing, change, type Editor, type EditorState } from "./editor";
 import { matchesAcross } from "./find";
 import { entriesOf } from "./history";
+import type { Line } from "./lines";
 import { type CodePoints, type Redacted, type RedactedRange, sameRange, textIn, unitsOf, wordsAt } from "./project";
-import { draftOf, spanDraftOf, typedState } from "./typing";
+import { draftOf, lineDraftOf, spanDraftOf, typedRunsState, typedState } from "./typing";
 import { fill } from "./words";
 
 /** A selection in a text field: where it starts and ends, in the field's units (UTF-16). */
@@ -44,10 +45,17 @@ export function wordsSelected(text: string, [start, end]: Selected): CodePoints 
   return wordsAround(text, [[...text.slice(0, start)].length, [...text.slice(0, end)].length]);
 }
 
-/** Whether `span`'s field reads as the page does, so a selection in it names the page's own words. */
+/** Whether `span`'s field, or its line's, reads as the page does, so a selection in it names the page's own words. */
 function fieldReadsAsPage(state: EditorState, span: SpanInfo): boolean {
   const draft = spanDraftOf(state);
-  return draft?.spanId === span.id && draft.text === span.text && textIn(state.reading, span) === span.text;
+  const spans = state.layout.lines.get(span.id)?.spans ?? [span];
+  const asPage = spans.every((each) => textIn(state.reading, each) === each.text);
+  return draft?.spanId === span.id && draft.text === wordsOf(spans) && asPage;
+}
+
+/** The words `spans` read on the page, as one. */
+function wordsOf(spans: readonly SpanInfo[]): string {
+  return spans.map((span) => span.text).join("");
 }
 
 /**
@@ -57,7 +65,29 @@ function fieldReadsAsPage(state: EditorState, span: SpanInfo): boolean {
 export function takesSelection(state: EditorState, selected: Selected): boolean {
   const draft = spanDraftOf(state);
   const span = draft === null ? undefined : state.layout.spans.get(draft.spanId);
-  return span !== undefined && fieldReadsAsPage(state, span) && wordsSelected(span.text, selected) !== null;
+  const words = span === undefined ? "" : wordsOf(state.layout.lines.get(span.id)?.spans ?? [span]);
+  return span !== undefined && fieldReadsAsPage(state, span) && wordsSelected(words, selected) !== null;
+}
+
+/**
+ * A redaction of `words` of `line`, by code point of its words read as one: one per span they reach, its own words
+ * there without the spaces at their ends, of all of a span where they take all of its words; of every span with none.
+ */
+export function lineRedactsOf(line: Line, words: CodePoints | null): Redact[] {
+  let spanStart = 0;
+  return line.spans.flatMap((span): Redact[] => {
+    const length = [...span.text].length;
+    const from = Math.max((words?.[0] ?? 0) - spanStart, 0);
+    const to = Math.min((words?.[1] ?? Number.POSITIVE_INFINITY) - spanStart, length);
+    spanStart += length;
+    if (words === null) return [{ kind: "redact", span_id: span.id }];
+    const reached = from < to ? wordsAround(span.text, [from, to]) : null;
+    if (reached === null) return [];
+    const all = wordsAround(span.text, [0, length]);
+    const takesAll = all !== null && reached[0] === all[0] && reached[1] === all[1];
+    if (takesAll) return [{ kind: "redact", span_id: span.id }];
+    return [{ kind: "redact", span_id: span.id, range: [reached[0], reached[1]] }];
+  });
 }
 
 /** The words of `span` a redaction from its field takes, by code point: null for all of it. */
@@ -81,6 +111,11 @@ export function redact(
   const state = editor.store.get();
   const { draft, reading, layout, doc } = state;
   const target = draft?.kind === "span" ? draft.spanId : spanId;
+  const line = target === null ? undefined : layout.lines.get(target);
+  if (line !== undefined) {
+    redactLine(editor, line, { selected });
+    return;
+  }
   const span = target === null ? undefined : layout.spans.get(target);
   const was = span === undefined ? null : (reading.spans.get(span.id)?.redacted ?? null);
   if (span === undefined || was === "whole") return;
@@ -103,6 +138,32 @@ export function redact(
       draft: null,
       announcement: announcing(fill(doc.sentences.redacted, { text: quoted })),
       focusTo: { spanId: span.id },
+      unredacting: null,
+    },
+  );
+}
+
+/**
+ * Redact `line`, typed in or not: the words `selected` in its field, widened to whole words, while it reads as the
+ * page does, a redaction for each span they reach; else all of it. Words typed there go.
+ */
+function redactLine(editor: Editor, line: Line, { selected }: { selected: Selected | null }): void {
+  const state = editor.store.get();
+  const { reading, doc } = state;
+  const [first] = line.spans;
+  const words = wordsOf(line.spans);
+  const reads = first !== undefined && fieldReadsAsPage(state, first);
+  const taken = selected === null || !reads ? null : wordsSelected(words, selected);
+  const edits = lineRedactsOf(line, taken);
+  const quoted = taken === null ? line.spans.map((span) => textIn(reading, span)).join("") : wordsAt(words, taken);
+  change(
+    editor,
+    { kind: "add", edits },
+    // Typing into it ends unkept: redaction wins.
+    {
+      draft: null,
+      announcement: announcing(fill(doc.sentences.redacted, { text: quoted.trim() })),
+      focusTo: { spanId: line.id },
       unredacting: null,
     },
   );
@@ -165,13 +226,20 @@ export function editAnyway(editor: Editor): void {
   const span = unredacting === null ? undefined : layout.spans.get(unredacting.spanId);
   if (unredacting === null || span === undefined) return;
   readDocumentDates(editor);
-  const isRedaction = (edit: Edit) => edit.kind === "redact" && edit.span_id === span.id;
+  // A line's redactions go with it, each of its spans'.
+  const line = layout.lines.get(span.id);
+  const redacted = new Set((line?.spans ?? [span]).map(({ id }) => id));
+  const isRedaction = (edit: Edit) => edit.kind === "redact" && redacted.has(edit.span_id);
   const redactions = new Set(entriesOf(history).flatMap((entry) => (isRedaction(entry.edit) ? [entry.id] : [])));
   change(editor, { kind: "remove", ids: redactions }, (next) => {
-    const opened = draftOf(span, { reading: next.reading, press: unredacting.press });
-    const { typed } = unredacting;
+    const { reading } = next;
+    const { press, typed } = unredacting;
+    const opened = line === undefined ? draftOf(span, { reading, press }) : lineDraftOf(line, { reading, press });
     if (typed === null) return { unredacting: null, draft: opened, focusTo: null };
-    const typedIn = typedState({ ...next, draft: opened }, typed.text);
+    const typedIn =
+      typed.runs === null
+        ? typedState({ ...next, draft: opened }, typed.text)
+        : typedRunsState({ ...next, draft: opened }, typed.runs);
     return { ...typedIn, unredacting: null, draft: { ...typedIn.draft, caret: typed.caret }, focusTo: null };
   });
 }

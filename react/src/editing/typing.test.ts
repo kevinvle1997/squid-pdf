@@ -1,12 +1,32 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { renderStrips } from "../api/client";
 import type { Render } from "../api/types";
-import { A4, aDoc, aFont, aSpan, halfWideGlyphs, PSEUDO_SENTENCES, SENTENCES } from "../fixtures";
-import { createEditor, type Editor, undo } from "./editor";
+import {
+  A4,
+  aBoldSentence,
+  aDoc,
+  aFont,
+  aRedact,
+  aSpan,
+  halfWideGlyphs,
+  PSEUDO_SENTENCES,
+  SENTENCES,
+} from "../fixtures";
+import { change, createEditor, type Editor, undo } from "./editor";
 import { setWarningMuted } from "./mutedWarnings";
 import { openNewTextAt } from "./newText";
 import { deletePage } from "./pageDeletion";
-import { edit, enter, fieldFocused, finish, stepWayOut, troublesIn, typeInto, typeIntoNewText } from "./typing";
+import {
+  edit,
+  enter,
+  fieldFocused,
+  finish,
+  stepWayOut,
+  troublesIn,
+  typeInto,
+  typeIntoNewText,
+  typeIntoRuns,
+} from "./typing";
 import { fill } from "./words";
 
 vi.mock(import("../api/client"), async (original) => ({ ...(await original()), renderStrips: vi.fn() }));
@@ -289,5 +309,59 @@ describe("a signed document", () => {
     expect(heardOnFocus()).toBe(SENTENCES.edit_breaks_signature);
     deletePage(editor, 1);
     expect(heardOnFocus()).not.toContain(SENTENCES.edit_breaks_signature);
+  });
+});
+
+describe("a line of several runs", () => {
+  const line = aBoldSentence();
+  const words = ["Text is grouped into ", "spans", " (one style)"];
+
+  beforeEach(() => {
+    editor = createEditor(FILE, aDoc({ ...line, sentences: PSEUDO_SENTENCES }), 2);
+  });
+
+  test("any of its spans opens one field for the line, a run each, standing where its first span does", () => {
+    edit(editor, "bold", null);
+    expect(editor.store.get().draft).toMatchObject({
+      kind: "span",
+      spanId: "before",
+      runs: words,
+      text: words.join(""),
+    });
+  });
+
+  test("typed into, its runs change and its words are theirs as one", () => {
+    edit(editor, "after", null);
+    typeIntoRuns(editor, ["Text is grouped into ", "spans", " (one style!)"]);
+    expect(editor.store.get().draft).toMatchObject({
+      runs: ["Text is grouped into ", "spans", " (one style!)"],
+      text: "Text is grouped into spans (one style!)",
+    });
+  });
+
+  test("too long against the whole line's room, not the run's: what follows the run moves along", () => {
+    edit(editor, "before", null);
+    // Four letters, 20 pt, into the bold run: just the line's 20 pt of room, so not too long.
+    const fits = troublesIn(editor.store.get(), ["Text is grouped into ", "spansxxxx", " (one style)"]);
+    expect(fits.sentences).toEqual([]);
+    // Five, 25 pt: past it by 5 pt of the 25 pt changed, 20%.
+    const past = troublesIn(editor.store.get(), ["Text is grouped into ", "spansxxxxx", " (one style)"]);
+    expect(past.sentences).toEqual([fill(PSEUDO_SENTENCES.too_long, { percent: "20" })]);
+  });
+
+  test("before any change it says what any of its runs would come to: the worst of them", () => {
+    const similar = { fidelity: "substitute" as const, substitute: "Liberation Serif Regular", in_file: false };
+    const [before, bold, after] = line.spans;
+    if (before === undefined || bold === undefined || after === undefined) throw new Error("three runs");
+    editor = createEditor(FILE, aDoc({ ...line, spans: [before, { ...bold, ...similar }, after] }), 2);
+    edit(editor, "before", null);
+    expect(troublesIn(editor.store.get(), words).verdict).toMatchObject(similar);
+  });
+
+  test("a span of it redacted whole asks first, for the whole line", () => {
+    change(editor, { kind: "add", edits: [aRedact("bold")] });
+    edit(editor, "after", null);
+    expect(editor.store.get().draft).toBeNull();
+    expect(editor.store.get().unredacting).toMatchObject({ spanId: "before" });
   });
 });

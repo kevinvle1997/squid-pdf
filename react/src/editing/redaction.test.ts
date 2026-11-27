@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 import shared from "../../../tests/editing/redacted_words_cases.json";
 import { renderStrips } from "../api/client";
 import type { Render } from "../api/types";
-import { aDoc, aRedact, aRedaction, aSpan, PSEUDO_SENTENCES, SENTENCES } from "../fixtures";
+import { aBoldSentence, aDoc, aRedact, aRedaction, aSpan, PSEUDO_SENTENCES, SENTENCES } from "../fixtures";
 import { commandFor } from "./commands";
 import { createEditor, type Editor, redo, undo } from "./editor";
 import {
@@ -247,7 +247,7 @@ describe("editing a redacted span", () => {
     expect(state.unredacting).toEqual({
       spanId: "card",
       press: null,
-      typed: { text: "Card 4421 then 9918!", caret: null },
+      typed: { text: "Card 4421 then 9918!", runs: null, caret: null },
     });
     expect(state.announcement.text).toBe(PSEUDO_SENTENCES.undo_redacted_words);
   });
@@ -290,5 +290,34 @@ describe("editing a redacted span", () => {
     expect(state.unredacting).toBeNull();
     expect(state.reading.edits).toEqual([{ kind: "redact", span_id: "name" }]);
     expect(state.focusTo).toEqual({ spanId: "name" });
+  });
+});
+
+describe("redacting a line of several runs", () => {
+  const line = aBoldSentence();
+
+  beforeEach(() => {
+    editor = createEditor(new File(["%PDF-"], "contract.pdf"), aDoc({ ...line, sentences: PSEUDO_SENTENCES }), 2);
+  });
+
+  test("words selected across two runs are a redaction of each span they reach, all of one where they take all of it", () => {
+    edit(editor, "before", null);
+    // "into spans", from the regular run's "into" to the whole bold run.
+    redact(editor, null, { selected: [16, 26] });
+    expect(editor.store.get().reading.edits).toEqual([aRedact("before", { range: [16, 20] }), aRedact("bold")]);
+    expect(editor.store.get().focusTo).toEqual({ spanId: "before" });
+  });
+
+  test("with nothing selected, Redact takes all of the line, a span at a time", () => {
+    redact(editor, "before");
+    expect(editor.store.get().reading.edits).toEqual([aRedact("before"), aRedact("bold"), aRedact("after")]);
+  });
+
+  test("Edit anyway takes out the redaction of every span of the line, and opens the line", () => {
+    redact(editor, "before", { selected: null });
+    edit(editor, "bold", null);
+    editAnyway(editor);
+    expect(editor.store.get().reading.edits).toEqual([]);
+    expect(editor.store.get().draft).toMatchObject({ spanId: "before", runs: line.spans.map(({ text }) => text) });
   });
 });

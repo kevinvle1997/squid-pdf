@@ -2,6 +2,7 @@
 // edit (`editNote`), the bar's count saying it before (Rule 1). A new kind of span is a case here and a class.
 import type { FitInfo, FontInfo, RedactionInfo, Sentences, SpanInfo } from "../api/types";
 import type { SpanReading } from "./project";
+import { type FontsByObject, fontOf } from "./spanFonts";
 import { liveVerdictOf, type Verdict, verdictOf } from "./verdicts";
 import { fill } from "./words";
 
@@ -101,4 +102,42 @@ function fidelityNote(
   const why = font?.substitute == null ? null : font.why;
   // Warned whatever the widths: the file's own font doesn't draw it (`decisions/product.md`, The fidelity contract).
   return { warn: true, sentence: fill(substituteSentence, { font: verdict.substitute }), why };
+}
+
+/** A line to mark: its spans, and what each reads now, the server's verdicts on them, and the fonts they're in. */
+interface MarkedLine {
+  readonly spans: readonly SpanInfo[];
+  readonly fonts: FontsByObject;
+  readonly readings: ReadonlyMap<string, SpanReading>; // only the spans an edit changed
+  readonly fits: Readonly<Record<string, FitInfo>>; // by span: the server's verdict on its run of the line's edit
+  readonly redactions: Readonly<Record<string, RedactionInfo>>; // by span: the server's verdict on its redaction
+  readonly sentences: Sentences;
+}
+
+/**
+ * What a line's one mark shows: each line its spans' marks would draw, and the first note among them, in the line's
+ * order. Redacted whole only when every span is; some words redacted when some are.
+ */
+export function lineLookOf({ spans, fonts, readings, fits, redactions, sentences }: MarkedLine): Look {
+  const looks = spans.map((span) =>
+    lookOf({
+      span,
+      font: fontOf(fonts, span),
+      reading: readings.get(span.id),
+      fit: fits[span.id],
+      redaction: redactions[span.id],
+      sentences,
+    }),
+  );
+  const any = (part: (look: Look) => boolean) => looks.some(part);
+  const redacted = looks.length > 0 && looks.every((look) => look.redacted);
+  return {
+    formField: any((look) => look.formField),
+    changed: any((look) => look.changed),
+    trouble: any((look) => look.trouble),
+    redacted,
+    wordsRedacted: !redacted && any((look) => look.redacted || look.wordsRedacted),
+    unredacted: any((look) => look.unredacted),
+    note: looks.find((look) => look.note !== null)?.note ?? null,
+  };
 }

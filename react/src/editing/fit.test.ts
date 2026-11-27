@@ -1,7 +1,18 @@
 import { describe, expect, test } from "vitest";
 import shared from "../../../tests/editing/fit_cases.json";
 import { aFont, aSpan, halfWideGlyphs, RULES, SENTENCES as sentences } from "../fixtures";
-import { fitOf, missingIn, optionsFor, setAs, settingOf, troublesOf, wayDrawn, waysOffered, widthPt } from "./fit";
+import {
+  fitOf,
+  lineFitOf,
+  missingIn,
+  optionsFor,
+  setAs,
+  settingOf,
+  troublesOf,
+  wayDrawn,
+  waysOffered,
+  widthPt,
+} from "./fit";
 import { fill } from "./words";
 
 // Every letter half the size wide, so a width is easy to work out: 10 letters at 10 pt is 50 pt.
@@ -155,5 +166,35 @@ describe("a line is too long only past its room, as the server says", () => {
     const expected = too_long_percent === null ? [] : [fill(sentences.too_long, { percent: String(too_long_percent) })];
     expect(troublesOf(fit, { ...TROUBLE_WORDING, rules: shared.rules })).toEqual(expected);
     expect(optionsFor(delta_pt, { originalPt: original_pt, roomPt: room_pt, rules: shared.rules })).toEqual(options);
+  });
+});
+
+describe("a line's fit", () => {
+  // "abcde" then "fghij" in a second run: 25 pt each at 10 pt, the line's room 4 pt past its end.
+  const first = aSpan({ id: "first", text: "abcde", bbox: { x0: 0, y0: 0, x1: 25, y1: 12 } });
+  const second = aSpan({ id: "second", text: "fghij", bbox: { x0: 25, y0: 0, x1: 50, y1: 12 } });
+  const lineRoom = { roomPt: 4, rules: RULES };
+
+  test("is the runs changed, against the line's room: a run left as it was adds nothing", () => {
+    const fit = lineFitOf(
+      [
+        { span: first, font, text: "abcdexy" },
+        { span: second, font, text: "fghij" },
+      ],
+      lineRoom,
+    );
+    expect(fit).toMatchObject({ originalPt: 25, deltaPt: 10, roomPt: 4, missing: [] });
+  });
+
+  test("two runs changed are set against the room as one, and a letter either font lacks is missing", () => {
+    const fit = lineFitOf(
+      [
+        { span: first, font, text: "abc" },
+        { span: second, font, text: "fghij€" },
+      ],
+      lineRoom,
+    );
+    // The first 10 pt shorter; the second as long, its euro, which these widths lack, counted as nothing.
+    expect(fit).toMatchObject({ originalPt: 50, deltaPt: -10, missing: ["€"] });
   });
 });

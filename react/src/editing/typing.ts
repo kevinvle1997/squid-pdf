@@ -4,9 +4,21 @@ import type { FitRules, FontInfo, Insert, Replace, SpanInfo, Strategy } from "..
 import { type Press, selectionAt } from "./caret";
 import { readDocumentDates } from "./documentDates";
 import { type Also, announce, announcing, change, type Editor, type EditorState, type FocusTo } from "./editor";
-import { type Fit, fitOf, letterTroublesOf, runsPast, troublesOf, wayDrawn, waysOffered } from "./fit";
+import {
+  type Fit,
+  fitOf,
+  letterTroublesOf,
+  lineFitOf,
+  missingIn,
+  runsPast,
+  type TypedRun,
+  troublesOf,
+  wayDrawn,
+  waysOffered,
+} from "./fit";
 import { editableValueIn, emailCountIn, type HeldValue, heldOf, heldThrough, heldValueIn } from "./formattedValues";
 import type { HistoryAction } from "./history";
+import { type Line, runsRedrawn } from "./lines";
 import { editNote, type Note } from "./marks";
 import {
   fontOfNewText,
@@ -23,7 +35,7 @@ import { type Reading, textIn } from "./project";
 import { landedNewTextFitOf } from "./render";
 import { fontOf, shownNameIn } from "./spanFonts";
 import { drawingOf } from "./substitutes";
-import { editVerdictOf, shortWarningOf, type Verdict } from "./verdicts";
+import { editVerdictOf, shortWarningOf, type Verdict, worstOf } from "./verdicts";
 import { fill, sentenceOrNothing } from "./words";
 
 /** The text being typed into a span, not yet in the history. */
@@ -34,6 +46,7 @@ export interface SpanDraft {
   readonly press: Press | null; // the press that opened it, if one did: where the caret goes
   readonly caret: number | null; // where the caret goes as it opens, in the field's units, if typing put it there
   readonly text: string;
+  readonly runs: readonly string[] | null; // a line's: each of its spans' words, in order, `text` read as one; else none
   readonly strategy: Strategy | undefined; // the way out of a long line chosen, kept while it's offered
   readonly valueEditorOpen: boolean; // a date's or an amount's editor open in the slip (valueEditor.ts)
   readonly value: HeldValue | null; // the date or amount its editor is offered for, held once it's opened or typed in
@@ -56,13 +69,17 @@ export function edit(editor: Editor, spanId: string, press: Press | null): void 
   const { layout, reading, doc } = store.get();
   const span = layout.spans.get(spanId);
   if (span === undefined) return;
+  const line = layout.lines.get(spanId);
   // Un-redacting by accident is a leak: the one edit that asks first (quality.md, Modals and prompts).
-  if (reading.spans.get(spanId)?.redacted === "whole") {
-    store.set({ unredacting: { spanId, press, typed: null }, announcement: announcing(doc.sentences.undo_redaction) });
+  const redactedWhole = (line?.spans ?? [span]).some(({ id }) => reading.spans.get(id)?.redacted === "whole");
+  if (redactedWhole) {
+    const asking = { spanId: line?.id ?? spanId, press, typed: null };
+    store.set({ unredacting: asking, announcement: announcing(doc.sentences.undo_redaction) });
     return;
   }
   readDocumentDates(editor);
-  store.set({ draft: draftOf(span, { reading, press }), focusTo: null, unredacting: null });
+  const draft = line === undefined ? draftOf(span, { reading, press }) : lineDraftOf(line, { reading, press });
+  store.set({ draft, focusTo: null, unredacting: null });
 }
 
 /**
@@ -79,10 +96,51 @@ export function draftOf(span: SpanInfo, { reading, press }: { reading: Reading; 
     press,
     caret: null,
     text,
+    runs: null,
     strategy: now?.strategy,
     valueEditorOpen: false,
     value: null,
   };
+}
+
+/** Typing into `line` as its spans read in `reading`, opened by `press` from the line's start: one field, a run each. */
+export function lineDraftOf(line: Line, { reading, press }: { reading: Reading; press: Press | null }): SpanDraft {
+  const runs = line.spans.map((span) => textIn(reading, span));
+  const page = line.spans[0]?.page ?? 0;
+  const text = runs.join("");
+  const unchosen = { caret: null, strategy: undefined, valueEditorOpen: false, value: null };
+  return { kind: "span", spanId: line.id, page, press, text, runs, ...unchosen };
+}
+
+/** What a line's runs come to reading `typed`, each with its font: none while one's font is unknown. */
+function typedRunsIn(state: EditorState, { line, typed }: { line: Line; typed: readonly string[] }): TypedRun[] | null {
+  const runs = line.spans.flatMap((span, index) => {
+    const font = fontOf(state.layout.fonts, span);
+    return font === undefined ? [] : [{ span, font, text: typed[index] ?? "" }];
+  });
+  return runs.length === line.spans.length ? runs : null;
+}
+
+/** The line the draft types into, with its runs as `typed`: none for a span alone, or a font unknown. */
+function draftLineOf(state: EditorState, typed: readonly string[]): { line: Line; runs: TypedRun[] } | null {
+  const draft = spanDraftOf(state);
+  const line = draft === null ? undefined : state.layout.lines.get(draft.spanId);
+  const runs = line === undefined ? null : typedRunsIn(state, { line, typed });
+  return line === undefined || runs === null ? null : { line, runs };
+}
+
+/** Each run of a line typed as `runs` an edit redraws, with what it comes to, the way out `asked` taken while offered. */
+function redrawnVerdictsOf(
+  state: EditorState,
+  { runs, fit, asked }: { runs: readonly TypedRun[]; fit: Fit; asked: Strategy | undefined },
+): { run: TypedRun; verdict: Verdict }[] {
+  const changed = runs.map(({ span, text }) => text !== span.text);
+  const movesTheRest = wayDrawn(asked, fit) === "as-is" && fit.deltaPt !== 0;
+  const redrawn = runsRedrawn(changed, { movesTheRest });
+  return runs.flatMap((run, index) => {
+    if (!redrawn[index]) return [];
+    return [{ run, verdict: editVerdictOf(state.drawn, { ...run, strategy: asked }) }];
+  });
 }
 
 /**
@@ -95,7 +153,8 @@ export function draftOf(span: SpanInfo, { reading, press }: { reading: Reading; 
 function heldIn(state: EditorState & { draft: SpanDraft }, text: string): { value: HeldValue | null; lost: boolean } {
   const { draft, layout, reading, dates } = state;
   const span = layout.spans.get(draft.spanId);
-  if (span === undefined) return { value: null, lost: false };
+  // A line's words are its runs', in their own fonts: its dates and amounts aren't offered an editor.
+  if (span === undefined || draft.runs !== null) return { value: null, lost: false };
   const held = draft.value === null ? null : heldThrough(draft.value, { before: draft.text, after: text });
   const glyphs = fontOf(layout.fonts, span)?.glyphs ?? {};
   const at = draft.press === null ? undefined : selectionAt(textIn(reading, span), draft.press, { glyphs, span })[0];
@@ -119,7 +178,10 @@ export function draftSpanOf(state: EditorState): { draft: SpanDraft; span: SpanI
 function draftFitOf(state: EditorState): Fit | undefined {
   const typing = draftSpanOf(state);
   if (typing === undefined) return undefined;
-  return fitOf(typing.span, { font: typing.font, text: typing.draft.text, rules: state.doc.fit });
+  const { draft, span, font } = typing;
+  const typedLine = draft.runs === null ? null : draftLineOf(state, draft.runs);
+  if (typedLine !== null) return lineFitOf(typedLine.runs, { roomPt: typedLine.line.roomPt, rules: state.doc.fit });
+  return fitOf(span, { font, text: draft.text, rules: state.doc.fit });
 }
 
 /** The way out the draft's line is drawn with: the one chosen while it's offered, else as typed. */
@@ -167,8 +229,10 @@ interface Troubles {
   readonly verdict: Verdict | null; // none while nothing's typed in, or its font is unknown
 }
 
-/** What the draft's span would get wrong reading `text`, the ways out it offers, and what it comes to. */
-export function troublesIn(state: EditorState, text: string): Troubles {
+/** What the draft's span would get wrong reading `typed`, a line's as its runs, the ways out it offers, and what it comes to. */
+export function troublesIn(state: EditorState, typed: string | readonly string[]): Troubles {
+  if (typeof typed !== "string") return lineTroublesIn(state, typed);
+  const text = typed;
   if (state.draft?.kind === "newText") return newTextTroublesIn(state, state.draft, text);
   const typing = draftSpanOf(state);
   if (typing === undefined) return { sentences: [], kind: "", offers: false, verdict: null };
@@ -189,6 +253,34 @@ export function troublesIn(state: EditorState, text: string): Troubles {
   return {
     sentences: [...troublesOf(fit, { rules, sentences, drawing, way }), ...email],
     kind: `${troubleKindOf(fit, rules)} ${way} ${shortWarningOf(verdict) ?? ""} ${email.length}`,
+    offers: waysOffered(fit).length > 0,
+    verdict,
+  };
+}
+
+/** What the draft's line would get wrong reading `typed`, a run each, and what its runs redrawn come to: the worst of them. */
+function lineTroublesIn(state: EditorState, typed: readonly string[]): Troubles {
+  const draft = spanDraftOf(state);
+  const typedLine = draftLineOf(state, typed);
+  if (draft === null || typedLine === null) return { sentences: [], kind: "", offers: false, verdict: null };
+  const { line, runs } = typedLine;
+  const { fit: rules, sentences } = state.doc;
+  // Before a change, any run may be redrawn: each says so as the field opens.
+  const unedited = { offers: false, verdict: worstOf(line.spans) };
+  if (isEmpty(typed.join(""))) return { sentences: [sentences.empty], kind: "empty", ...unedited };
+  const fit = lineFitOf(runs, { roomPt: line.roomPt, rules });
+  const way = wayDrawn(draft.strategy, fit);
+  const changed = runs.filter(({ span, text }) => text !== span.text);
+  const drawings = changed.map(({ span, font, text }) =>
+    drawingOf(span, { font, text, missing: missingIn(text, font.glyphs) }),
+  );
+  const letters = [...new Set(drawings.flatMap((drawing) => letterTroublesOf(drawing, sentences)))];
+  // Too long is the whole line's, said once: its letters are each run's, above.
+  const tooLong = troublesOf(fit, { rules, sentences, drawing: { face: "", switched: [], leftOut: [] }, way });
+  const verdict = worstOf(redrawnVerdictsOf(state, { runs, fit, asked: draft.strategy }).map((each) => each.verdict));
+  return {
+    sentences: [...letters, ...tooLong],
+    kind: `${troubleKindOf(fit, rules)} ${way} ${shortWarningOf(verdict) ?? ""} ${letters.join("")}`,
     offers: waysOffered(fit).length > 0,
     verdict,
   };
@@ -231,7 +323,7 @@ export function typeInto(editor: Editor, text: string, { caret = null }: { caret
     const undoesRedaction = state.reading.spans.get(draft.spanId)?.redacted != null && text !== draft.text;
     if (undoesRedaction) {
       const { sentences } = state.doc;
-      const unredacting = { spanId: draft.spanId, press: null, typed: { text: lineOf(text), caret } };
+      const unredacting = { spanId: draft.spanId, press: null, typed: { text: asOneLine(text), runs: null, caret } };
       finish(editor, false, {
         // A reading persisted by an earlier build lacks the question: the whole line's asks it too.
         also: { unredacting, announcement: announcing(sentences.undo_redacted_words ?? sentences.undo_redaction) },
@@ -241,8 +333,48 @@ export function typeInto(editor: Editor, text: string, { caret = null }: { caret
     editor.store.set(typedState({ ...state, draft }, text));
     return;
   }
-  const line = lineOf(text);
+  const line = asOneLine(text);
   editor.store.set({ draft: { ...draft, text: line }, announcement: heardAsTyped({ ...state, draft }, line) });
+}
+
+/**
+ * Type into a line's field, so its runs read `runs`, the caret left at `caret` across them: what it warns of is heard as
+ * it changes. With any of its spans' words redacted, it asks first, and what's typed waits for the answer.
+ */
+export function typeIntoRuns(
+  editor: Editor,
+  runs: readonly string[],
+  { caret = null }: { caret?: number | null } = {},
+): void {
+  const state = editor.store.get();
+  const draft = spanDraftOf(state);
+  const line = draft === null ? undefined : state.layout.lines.get(draft.spanId);
+  if (draft === null || draft.runs === null || line === undefined) return;
+  const changes = runs.some((run, index) => run !== draft.runs?.[index]);
+  const undoesRedaction = changes && line.spans.some(({ id }) => state.reading.spans.get(id)?.redacted != null);
+  if (undoesRedaction) {
+    const { sentences } = state.doc;
+    const typed = runs.map(asOneLine);
+    const unredacting = { spanId: draft.spanId, press: null, typed: { text: typed.join(""), runs: typed, caret } };
+    finish(editor, false, {
+      also: { unredacting, announcement: announcing(sentences.undo_redacted_words ?? sentences.undo_redaction) },
+    });
+    return;
+  }
+  editor.store.set(typedRunsState({ ...state, draft }, runs));
+}
+
+/** What typing a line's draft to read `typed`, a run each, makes of the state: its runs, and a trouble heard as it appears. */
+export function typedRunsState(
+  state: EditorState & { draft: SpanDraft },
+  typed: readonly string[],
+): Pick<EditorState, "announcement"> & { draft: SpanDraft } {
+  const runs = typed.map(asOneLine);
+  const announcement = heardOfTroubles(state, {
+    was: troublesIn(state, state.draft.runs ?? []),
+    now: troublesIn(state, runs),
+  });
+  return { draft: { ...state.draft, runs, text: runs.join("") }, announcement };
 }
 
 /** What typing `typed` into a span's draft makes of the state: its text, and a trouble announced as it appears. */
@@ -250,7 +382,7 @@ export function typedState(
   state: EditorState & { draft: SpanDraft },
   typed: string,
 ): Pick<EditorState, "announcement"> & Partial<Pick<EditorState, "focusTo">> & { draft: SpanDraft } {
-  const text = lineOf(typed);
+  const text = asOneLine(typed);
   const announcement = heardAsTyped(state, text);
   // The value whose editor is open gone from the text, the editor goes with it, and focus goes to the field: where it
   // is when typed there, and never to the page's body from the editor going under it. Never another value's editor in
@@ -275,21 +407,27 @@ export function typeIntoNewText(
   const { draft, doc } = state;
   const info = draft?.kind === "newText" ? doc.pages[draft.page] : undefined;
   if (draft?.kind !== "newText" || info === undefined) return;
-  const text = lineOf(typed);
+  const text = asOneLine(typed);
   const widthPt = widthOf(insertOf({ ...draft, text }));
   const origin = keptOnPage(info, { origin: draft.origin, size: draft.style.size }, widthPt);
   editor.store.set({ draft: { ...draft, text, origin }, announcement: heardAsTyped({ ...state, draft }, text) });
 }
 
 /** What's typed as one line: a gap for each break, and nothing a line can't draw. */
-function lineOf(typed: string): string {
+export function asOneLine(typed: string): string {
   return typed.replace(SPACING_CONTROL, " ").replace(NOT_ON_A_LINE, "");
 }
 
 /** What typing `text` makes heard: a trouble as it appears or changes, the chip's short warning as it changes kind. */
 function heardAsTyped(state: EditorState & { draft: Draft }, text: string): EditorState["announcement"] {
-  const was = troublesIn(state, state.draft.text);
-  const now = troublesIn(state, text);
+  return heardOfTroubles(state, { was: troublesIn(state, state.draft.text), now: troublesIn(state, text) });
+}
+
+/** What a change from troubles `was` to `now` makes heard: what's new of them, never per letter. */
+function heardOfTroubles(
+  state: EditorState,
+  { was, now }: { was: Troubles; now: Troubles },
+): EditorState["announcement"] {
   // Never per letter: only what's new is heard.
   const offered = now.offers && !was.offers ? [WAYS_KEYS] : [];
   const warning = now.verdict === null ? null : shortWarningOf(now.verdict);
@@ -314,10 +452,39 @@ export function draftNoteOf(state: EditorState, verdict: Verdict): Note | null {
     const muted = mutedFonts.has(shownNameIn(layout.fonts, span));
     return editNote(span, { verdict, font: fontOfNewText(layout, insert), sentences: doc.sentences, muted });
   }
+  if (draft?.runs != null) return lineNoteOf(state, draft.runs).note;
   const span = draft === null ? undefined : layout.spans.get(draft.spanId);
   if (span === undefined) return null;
   const muted = mutedFonts.has(shownNameIn(layout.fonts, span));
   return editNote(span, { verdict, font: fontOf(layout.fonts, span), sentences: doc.sentences, muted });
+}
+
+/**
+ * What a line's draft reading `typed` warns of in full, in the chip: the note of each run it redraws that won't match,
+ * each font's once, and those fonts by the names shown, which "Don't show again" mutes. Nothing once they match.
+ */
+export function lineNoteOf(state: EditorState, typed: readonly string[]): { note: Note | null; fonts: string[] } {
+  const draft = spanDraftOf(state);
+  const typedLine = draftLineOf(state, typed);
+  if (draft === null || typedLine === null) return { note: null, fonts: [] };
+  const { line, runs } = typedLine;
+  const { layout, doc, mutedFonts } = state;
+  const fit = lineFitOf(runs, { roomPt: line.roomPt, rules: doc.fit });
+  const notes = new Map<string, Note>();
+  for (const { run, verdict } of redrawnVerdictsOf(state, { runs, fit, asked: draft.strategy })) {
+    const shown = shownNameIn(layout.fonts, run.span);
+    const muted = mutedFonts.has(shown);
+    const note = editNote(run.span, { verdict, font: run.font, sentences: doc.sentences, muted });
+    if (note !== null && !notes.has(shown)) notes.set(shown, note);
+  }
+  const said = [...notes.values()];
+  if (said.length === 0) return { note: null, fonts: [] };
+  const joined = (parts: (string | null)[]) => [...new Set(parts.filter((part) => part !== null))].join(" ");
+  const why = joined(said.map((note) => note.why));
+  return {
+    note: { warn: true, sentence: joined(said.map((note) => note.sentence)), why: why === "" ? null : why },
+    fonts: [...notes.keys()],
+  };
 }
 
 // What's heard of each verdict where no full warning is: the chip's short words, as the server says them whole.
@@ -347,7 +514,10 @@ export function fieldFocused(editor: Editor): void {
   const { draft, layout } = state;
   const span = draft?.kind === "span" ? layout.spans.get(draft.spanId) : undefined;
   if (draft === null || (draft.kind === "span" && span === undefined)) return;
-  const { sentences, verdict } = troublesIn(state, draft.text);
+  const { sentences, verdict } = troublesIn(
+    state,
+    draft.kind === "span" && draft.runs !== null ? draft.runs : draft.text,
+  );
   const comesTo = verdict ?? span;
   const note = comesTo === undefined ? null : draftNoteOf(state, comesTo);
   const trouble = sentences.join("\n");
@@ -379,7 +549,8 @@ export function isEmpty(text: string): boolean {
 export function keptEditOf(state: EditorState): Replace | null {
   const { layout, reading } = state;
   const draft = spanDraftOf(state);
-  if (draft === null) return null;
+  // A line's edit names every run: the server takes it as one (`replace_runs`).
+  if (draft === null || draft.runs !== null) return null;
   const now = reading.spans.get(draft.spanId);
   const was = now?.text ?? layout.spans.get(draft.spanId)?.text;
   // Only a way out on offer goes with the edit: the server draws any other as typed, and says so.

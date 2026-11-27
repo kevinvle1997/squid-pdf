@@ -118,6 +118,39 @@ export function fitOf(span: SpanInfo, { font, text, rules }: { font: FontInfo; t
   };
 }
 
+/** A run of a line as typed: its span, the font that sets it, and the words it reads. */
+export interface TypedRun {
+  readonly span: SpanInfo;
+  readonly font: FontInfo;
+  readonly text: string;
+}
+
+/**
+ * What would happen if a line's runs read `runs`' words: the runs changed, set against the line's room, as one. A run
+ * not changed adds nothing: it moves with the line, and a way out scales only the runs changed.
+ */
+export function lineFitOf(runs: readonly TypedRun[], { roomPt, rules }: { roomPt: number; rules: FitRules }): Fit {
+  const changed = runs.filter(({ span, text }) => text !== span.text);
+  const originalPt = sumOf(changed.map(({ span, font }) => lineWidthPt(span, span.text, font.glyphs)));
+  const typedPt = sumOf(
+    changed.map(({ span, font, text }) => lineWidthPt(span, spelledIn(text, font.glyphs), font.glyphs)),
+  );
+  const deltaPt = Math.round((typedPt - originalPt) * 100) / 100;
+  const missing = new Set(changed.flatMap(({ font, text }) => missingIn(text, font.glyphs)));
+  return {
+    originalPt,
+    deltaPt,
+    roomPt,
+    missing: [...missing],
+    options: optionsFor(deltaPt, { originalPt, roomPt, rules }),
+  };
+}
+
+/** The sum of `widths`. */
+function sumOf(widths: readonly number[]): number {
+  return widths.reduce((total, width) => total + width, 0);
+}
+
 /** The way out drawn: the one asked for if it's offered, else as typed. `_strategy_drawn` in editing/fit.py. */
 export function wayDrawn(asked: Strategy | undefined, { options }: Pick<Fit, "options">): Strategy {
   return asked !== undefined && options.includes(asked) ? asked : "as-is";
