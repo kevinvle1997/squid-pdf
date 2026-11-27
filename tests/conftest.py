@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import io
 import re
-from collections.abc import Callable, Collection, Iterator
+from collections.abc import Callable, Collection, Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO
@@ -33,6 +33,8 @@ _POPPINS_SIZE = 14.0
 REFERENCED_PAGE = 0  # fonts named but not in the file: edits use a substitute
 EMBEDDED_PAGE = 1  # one font in the file, trimmed to the letters the page uses
 TAGGED_LINES = ["First page", "Second page"]  # the tagged fixture's line on each page
+# A sentence with its middle word in bold: three spans, which the page draws as one line.
+SENTENCE = (("Text is grouped into ", "helv"), ("spans", "hebo"), (" (one style).", "helv"))
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,6 +104,23 @@ def no_fetch() -> Iterator[None]:
     with pytest.MonkeyPatch.context() as env:
         env.setenv("SQUIDPDF_NO_FETCH", "1")
         yield
+
+
+def write_runs(
+    page: pymupdf.Page,
+    runs: Sequence[tuple[str, str]],
+    *,
+    origin: tuple[float, float],
+    size: float,
+) -> list[float]:
+    """Each run in its font, from where the last ends; where each starts, and the last ends."""
+    x, baseline = origin
+    places = [x]
+    for text, font in runs:
+        page.insert_text((x, baseline), text, fontsize=size, fontname=font)
+        x += pymupdf.get_text_length(text, fontname=font, fontsize=size)
+        places.append(x)
+    return places
 
 
 def each_span(blocks: list[dict]) -> Iterator[dict]:

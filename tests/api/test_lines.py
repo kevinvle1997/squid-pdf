@@ -6,12 +6,12 @@ import pymupdf
 import pytest
 
 from tests.api.conftest import span_starting, upload
+from tests.conftest import SENTENCE, write_runs
 from tests.helpers import assert_at_least, assert_close, assert_equal
 
 _SIZE = 10
 _LEFT = 72
 _FAR_X = 480  # a word far right on the first line's row: the page's rightmost text
-_SENTENCE = (("Text is grouped into ", "helv"), ("spans", "hebo"), (" (one style).", "helv"))
 _CELLS = ("Apples", "12")  # a table's row: its cells a wide gap apart
 _CELL_X = 300
 # Four runs, each in another style from the ones beside it, so each is a span of its own.
@@ -29,19 +29,6 @@ _BIG, _SMALL = ("BIG", 20), (" small", 8)
 _BOX_X = 300  # where a box level with the big word, but above the small one, starts
 
 
-def _write(
-    page: pymupdf.Page, baseline: float, runs: tuple[tuple[str, str], ...]
-) -> list[float]:
-    """Each run in its font, from where the last ends; where each starts, and the last ends."""
-    x: float = _LEFT
-    places = [x]
-    for text, font in runs:
-        page.insert_text((x, baseline), text, fontsize=_SIZE, fontname=font)
-        x += pymupdf.get_text_length(text, fontname=font, fontsize=_SIZE)
-        places.append(x)
-    return places
-
-
 def _lines_page() -> bytes:
     """One page, a row of each case.
 
@@ -51,13 +38,13 @@ def _lines_page() -> bytes:
     """
     doc = pymupdf.open()
     page = doc.new_page()
-    _write(page, 100, _SENTENCE)
+    write_runs(page, SENTENCE, origin=(_LEFT, 100), size=_SIZE)
     page.insert_text((_FAR_X, 100), "far", fontsize=_SIZE)
     page.insert_text((_LEFT, 140), _CELLS[0], fontsize=_SIZE)
     page.insert_text((_CELL_X, 140), _CELLS[1], fontsize=_SIZE, fontname="hebo")
-    underlined = _write(page, 180, _UNDERLINED)
+    underlined = write_runs(page, _UNDERLINED, origin=(_LEFT, 180), size=_SIZE)
     page.draw_line((underlined[2], 181), (underlined[3], 181), width=0.5)
-    linked = _write(page, 220, _LINKED)
+    linked = write_runs(page, _LINKED, origin=(_LEFT, 220), size=_SIZE)
     area = pymupdf.Rect(linked[2], 210, linked[3], 222)
     page.insert_link({"kind": pymupdf.LINK_URI, "from": area, "uri": "https://example.com/"})
     page.insert_text((_LEFT, 260), _SQUARED[0], fontsize=_SIZE)
@@ -108,7 +95,7 @@ def _line_with(doc: dict, text: str) -> dict:
 
 
 def test_a_sentence_with_a_bold_word_is_one_line_of_its_three_spans(lines_doc):
-    sentence = [text.strip() for text, _font in _SENTENCE]
+    sentence = [text.strip() for text, _font in SENTENCE]
 
     lines = [[text.strip() for text in line] for line in _texts_of(lines_doc)]
 
@@ -137,7 +124,7 @@ def test_a_line_is_cut_only_where_moving_a_span_would_leave_something_behind(lin
 def test_a_lines_room_is_the_least_any_of_its_spans_has_with_the_line_moving_as_one(lines_doc):
     """The sentence's room runs up to the word far right of it; the big word's, to the box."""
     sentence = _line_with(lines_doc, "spans")
-    last = span_starting(lines_doc, 0, _SENTENCE[2][0])
+    last = span_starting(lines_doc, 0, SENTENCE[2][0])
     far = span_starting(lines_doc, 0, "far")
     big_line = _line_with(lines_doc, _BIG[0])
     big = span_starting(lines_doc, 0, _BIG[0])
