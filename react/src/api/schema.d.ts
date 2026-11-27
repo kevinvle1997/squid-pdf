@@ -1057,6 +1057,16 @@ export interface components {
             undo_redaction: string;
             /** Undo Redacted Words */
             undo_redacted_words: string;
+            /** Split Made */
+            split_made: string;
+            /** Split Joined */
+            split_joined: string;
+            /** Split Changed */
+            split_changed: string;
+            /** Split Cant Here */
+            split_cant_here: string;
+            /** Split Redacted */
+            split_redacted: string;
             /** Reopened */
             reopened: string;
             /** Export Left Out */
