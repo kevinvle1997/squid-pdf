@@ -1,11 +1,14 @@
 // A date's or an amount's editor in the slip, beside the field: it opens on the value being typed in,
 // and what's chosen there is written into the field's text, as typing it would be.
+import type { FontInfo, SpanInfo } from "../api/types";
 import { type AmountValue, withAmount } from "./amounts";
 import { type CalendarDay, type DateValue, daysIn, withDate } from "./dates";
 import type { Editor, EditorState } from "./editor";
-import { type Fit, fitOf, troublesAddedOf } from "./fit";
-import { type EditableValue, heldOf, heldWritten } from "./formattedValues";
-import { draftSpanOf, spanDraftOf, typedState } from "./typing";
+import { recorded } from "./fieldHistory";
+import { type Fit, fitOf, lineFitOf, troublesAddedOf } from "./fit";
+import { type EditableValue, heldOf, heldWritten, runExtents } from "./formattedValues";
+import { fontOf } from "./spanFonts";
+import { draftSpanOf, type SpanDraft, spanDraftOf, typedRunsState, typedState } from "./typing";
 
 /**
  * Open the editor for `value` in the slip, Alt+Down in the field: it takes focus as it's drawn, and open already, it's
@@ -52,13 +55,35 @@ function writeValue(
   const draft = spanDraftOf(state);
   // Closed already, by Escape: what it held then is left out.
   if (draft === null || !draft.valueEditorOpen) return;
-  const typed = typedState({ ...state, draft }, write(draft.text));
+  const typed =
+    draft.runs === null
+      ? typedState({ ...state, draft }, write(draft.text))
+      : writtenInRun({ ...state, draft }, value, { runs: draft.runs, text: write(draft.text) });
   const held = heldWritten(value, { before: draft.text, after: typed.draft.text });
   editor.store.set({
     ...typed,
     draft: { ...typed.draft, valueEditorOpen: false, value: held },
     ...(returnFocus && { focusTo: { spanId: draft.spanId } }),
   });
+}
+
+/** A line's draft reading `text`, `value` written over in the run it lies in, which keeps its style. */
+function writtenInRun(
+  state: EditorState & { draft: SpanDraft },
+  value: EditableValue,
+  { runs, text }: { runs: readonly string[]; text: string },
+): ReturnType<typeof typedRunsState> {
+  const longer = text.length - state.draft.text.length;
+  const written = runExtents(runs).map(({ start, end }, index) => {
+    const holds = start <= value.start && value.end <= end;
+    return holds ? text.slice(start, end + longer) : (runs[index] ?? "");
+  });
+  const next = typedRunsState(state, written);
+  // Undone in the field as its typing is.
+  const before = { runs, selected: [value.start, value.end] as const };
+  const caretAfter = value.end + longer;
+  const fieldHistory = recorded(state.draft.fieldHistory, { before, typed: "", caretAfter });
+  return { ...next, draft: { ...next.draft, fieldHistory } };
 }
 
 /**
@@ -121,19 +146,51 @@ function dateCheckOf(
 ): { added: (date: CalendarDay) => string[]; lacking: (words: string) => string } | undefined {
   const typing = draftSpanOf(state);
   if (typing === undefined) return undefined;
-  const { draft, span, font } = typing;
+  const { draft } = typing;
   const { fit: rules, sentences } = state.doc;
-  const rest = fitOf(span, { font, text: text.slice(0, value.start) + text.slice(value.end), rules });
-  const now = fitOf(span, { font, text, rules });
+  const { fitReading, span, font } = valueFitsOf(state, { typing, value, text });
+  const rest = fitReading(text.slice(0, value.start) + text.slice(value.end));
+  const now = fitReading(text);
   const addedTo = (fit: Fit) => troublesAddedOf(fit, { rest, now, asked: draft.strategy, rules, sentences });
   return {
-    added: (date) => addedTo(fitOf(span, { font, text: withDate(text, value, date), rules })),
+    added: (date) => addedTo(fitReading(withDate(text, value, date))),
     lacking: (words) => {
       // The line as it stands, lacking these letters: no longer, so it says only which.
       const { missing } = fitOf(span, { font, text: words, rules });
       return addedTo({ ...now, missing }).join("\n");
     },
   };
+}
+
+/**
+ * How the draft fits reading a variation of `text` that differs only at `value`: a span's by its own fit, a line's
+ * with the run `value` lies in reading what changed there, by the line's; and that run's span and font.
+ */
+function valueFitsOf(
+  state: EditorState,
+  { typing, value, text }: { typing: NonNullable<ReturnType<typeof draftSpanOf>>; value: DateValue; text: string },
+): { fitReading: (words: string) => Fit; span: SpanInfo; font: FontInfo } {
+  const { draft, span, font } = typing;
+  const rules = state.doc.fit;
+  const line = state.layout.lines.get(span.id);
+  const alone = { fitReading: (words: string) => fitOf(span, { font, text: words, rules }), span, font };
+  if (draft.runs === null || line === undefined) return alone;
+  const runs = draft.runs;
+  const extents = runExtents(runs);
+  const at = extents.findIndex(({ start, end }) => start <= value.start && value.end <= end);
+  const run = line.spans[at];
+  const runFont = run === undefined ? undefined : fontOf(state.layout.fonts, run);
+  const { start = 0, end = 0 } = extents[at] ?? {};
+  if (run === undefined || runFont === undefined) return alone;
+  const fitReading = (words: string) => {
+    const typed = line.spans.flatMap((each, index) => {
+      const eachFont = fontOf(state.layout.fonts, each);
+      const here = index === at ? words.slice(start, end + words.length - text.length) : (runs[index] ?? "");
+      return eachFont === undefined ? [] : [{ span: each, font: eachFont, text: here }];
+    });
+    return lineFitOf(typed, { roomPt: line.roomPt, rules });
+  };
+  return { fitReading, span: run, font: runFont };
 }
 
 /** The marked day whose reason shows, once `day`'s is shown or hidden: one at a time. */

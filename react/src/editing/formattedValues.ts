@@ -2,6 +2,7 @@
 // back as the page wrote it (dates.ts, amounts.ts), an email only to be checked as it's typed.
 import { type AmountValue, amountsIn } from "./amounts";
 import { type DateFormat, type DateReading, type DateValue, datesIn } from "./dates";
+import { runTypedInto } from "./lines";
 
 /** Where a formatted value lies in its text, in UTF-16 units as `slice` takes them. */
 export interface Extent {
@@ -58,6 +59,49 @@ export function editableValueIn(
   const editable = editableIn(text, { dates });
   const under = at === undefined ? undefined : editable.find((value) => value.start <= at && at <= value.end);
   return heldValueIn(text, { dates, held }) ?? under ?? editable[0];
+}
+
+/** Where each of `runs` starts and ends in them read as one. */
+export function runExtents(runs: readonly string[]): Extent[] {
+  let start = 0;
+  return runs.map((run) => {
+    const extent = { start, end: start + run.length };
+    start = extent.end;
+    return extent;
+  });
+}
+
+/** The dates and amounts of a line's `runs` read as one that lie in one run: one across two is none to write. */
+function editableInRuns(runs: readonly string[], { dates }: { dates: DateReading | null }): EditableValue[] {
+  const extents = runExtents(runs);
+  const within = ({ start, end }: Extent) => extents.some((run) => run.start <= start && end <= run.end);
+  return editableIn(runs.join(""), { dates }).filter(within);
+}
+
+/**
+ * The value a line's editor is offered for, as `editableValueIn` picks one, but only one that lies in a single run:
+ * writing over two would give one run's words the other's style.
+ */
+export function lineValueIn(
+  runs: readonly string[],
+  { dates, at, held }: { dates: DateReading | null; at: number | undefined; held: HeldValue | null },
+): EditableValue | undefined {
+  const editable = editableInRuns(runs, { dates });
+  const under = at === undefined ? undefined : editable.find((value) => value.start <= at && at <= value.end);
+  const kept = heldValueIn(runs.join(""), { dates, held });
+  const inARun = kept && editable.find((value) => value.kind === kept.kind && overlap(value, kept));
+  return (inARun && kept) ?? under ?? editable[0];
+}
+
+/** The value Alt+Down opens with the caret at `caret` in a line's runs: in the caret's own run, the one under it first. */
+export function caretRunValueIn(
+  runs: readonly string[],
+  { dates, caret }: { dates: DateReading | null; caret: number },
+): EditableValue | undefined {
+  const run = runExtents(runs)[runTypedInto(runs, caret)];
+  if (run === undefined) return undefined;
+  const inRun = editableInRuns(runs, { dates }).filter((value) => run.start <= value.start && value.end <= run.end);
+  return inRun.find((value) => value.start <= caret && caret <= value.end) ?? inRun[0];
 }
 
 /**

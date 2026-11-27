@@ -1994,6 +1994,29 @@ describe("a line of several runs", () => {
     expect(first && parseFloat(getComputedStyle(first).fontSize) * scale).toBeCloseTo(shownPx(10), 1);
   });
 
+  test("Alt+Down opens the editor of the amount in the caret's run, and Escape puts focus back in the field", async () => {
+    const amounts = aBoldSentence();
+    const [first, bold, after] = amounts.spans;
+    if (first === undefined || bold === undefined || after === undefined) throw new Error("three runs");
+    const glyphs = halfWideGlyphs("abcdefghijklmnopqrstuvwxyzT()$.,0123456789 ");
+    const fonts = amounts.fonts.map((font) => ({ ...font, glyphs }));
+    openDocument(aDoc({ ...amounts, fonts, spans: [first, bold, { ...after, text: " (costs $5.00)" }] }));
+    const screen = await draw();
+    const mark = screen.getByRole("button", { name: "Text is grouped into spans (costs $5.00)" });
+    await expect.element(mark).toBeInTheDocument();
+    mark.element().focus();
+    await userEvent.keyboard("{Enter}");
+    const field = screen.getByRole("textbox", { name: /^Change/ });
+    await expect.element(field).toHaveFocus();
+    // The caret at the line's end, in the last run, which holds the amount.
+    await userEvent.keyboard("{ArrowRight}{Alt>}{ArrowDown}{/Alt}");
+    await expect
+      .element(screen.getByRole("spinbutton").or(screen.getByRole("textbox", { name: /amount/i })))
+      .toBeVisible();
+    await userEvent.keyboard("{Escape}");
+    await expect.element(field).toHaveFocus();
+  });
+
   test("Escape puts it back as it was, and focus on the line's one mark", async () => {
     const screen = await draw();
     await editLine(screen);
