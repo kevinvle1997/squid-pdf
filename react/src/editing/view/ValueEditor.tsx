@@ -54,10 +54,8 @@ import styles from "./ValueEditor.module.css";
 
 const KIND = { date: "Date", amount: "Amount" } as const;
 
-// The weeks a month's days can span, in any calendar the reader's language starts its week in.
 const MOST_WEEKS = 6;
 
-/** The value's control in the slip, and its editor under it while open. */
 export function ValueEditor({ value, field }: { value: EditableValue; field: RefObject<HTMLElement | null> }) {
   const editor = useEditor();
   const open = useEditorState((state) => spanDraftOf(state)?.valueEditorOpen ?? false);
@@ -135,7 +133,6 @@ function DateEditor({ value, labelledBy }: { value: DateValue; labelledBy: strin
     markedDays(editor.store.get(), { value, text, year: date.year, month: date.month });
   const marked = reasonsIn(focused);
   const reason = shown === null ? undefined : marked.get(shown);
-  // Every reason a day can give, laid out in the reasons' row, so stepping months never changes the slip's height.
   const reserved = useMemo(
     () => reasonsAnyDayGives(editor.store.get(), { value, text, year: focused.year }),
     [editor, value, text, focused.year],
@@ -246,7 +243,7 @@ function AmountEditor({ value, labelledBy }: { value: AmountValue; labelledBy: s
         if (Number.isNaN(amount)) return;
         chooseAmount(editor, value, { amount, leaving: document.activeElement !== input.current });
       }}
-      // Enter gives the amount as it goes down and sends focus back as it comes up: the number field hands handlers the plain event.
+      // Enter gives the amount on key down, focus back on key up: the number field hands handlers the plain event.
       onKeyUp={(event) => {
         if (event.key === "Enter") closeValueEditor(editor);
       }}

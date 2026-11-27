@@ -102,7 +102,6 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
       void attachDropped(editor, span.font, dropped);
     },
   });
-  // Text dragged here is the field's own to take, as typing is: useDrop would swallow it.
   const filesOnly = (handler?: DragEventHandler<HTMLInputElement>) => (event: DragEvent<HTMLInputElement>) => {
     if (carriesFiles(event.dataTransfer)) handler?.(event);
   };
@@ -120,7 +119,6 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
     fieldFocused(editor);
   }
 
-  // Its size by CSS variables, which a touch screen's stylesheet sets it from (EditField.module.css).
   const { fontSize, height, ...where } = spanTextStyle(span, info, face);
   const widthPt = fieldWidthPt(span, { text, face, glyphs });
   return (
@@ -145,7 +143,6 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
           spellCheck={false}
           autoComplete="off"
           onKeyDown={(event) => fieldKeyDown(editor, event, { value })}
-          // Only leaving the field ends the typing: the value's editor in the slip goes on with it.
           onBlur={(event) => {
             const to = event.relatedTarget;
             if (to instanceof Node && chip.current?.contains(to)) return;

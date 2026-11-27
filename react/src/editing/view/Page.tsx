@@ -43,7 +43,6 @@ function useSheet(index: number, info: PageInfo, { nearPages }: { nearPages: Set
           const isNear = entry?.isIntersecting ?? false;
           if (isNear) nearPages.add(index);
           else nearPages.delete(index);
-          // In the background: a page's marks are dozens of buttons, drawn in slices the scroll can go between.
           startTransition(() => setNear(isNear));
         },
         { rootMargin: LAZY_MARGIN },
@@ -91,7 +90,6 @@ export const Page = memo(function Page({ index, info, shownNumber }: Props) {
   const [focusedIn, setFocusedIn] = useState(false);
   const [slipLayer, setSlipLayer] = useState<HTMLDivElement | null>(null);
   const { focusWithinProps } = useFocusWithin({ onFocusWithinChange: setFocusedIn });
-  // Its marks stay far off while it's typed in, focused or sent focus: else the words or focus go, or focus comes late.
   const sentFocus = page.focusTo !== null || page.focusNewText !== null;
   const keepMarks = sheet.near || page.typingIn !== null || focusedIn || sentFocus;
   const notes = keepMarks ? changes : NO_CHANGES;
@@ -106,7 +104,6 @@ export const Page = memo(function Page({ index, info, shownNumber }: Props) {
       style={sheetWidthOf(info)}
       data-page={index}
     >
-      {/* First, so Tab reaches it after the page above and before this page's own notes and lines. */}
       <DeletePage page={index} shownNumber={shownNumber} />
       {page.howToStart && <HowToStart beside />}
       <Margin

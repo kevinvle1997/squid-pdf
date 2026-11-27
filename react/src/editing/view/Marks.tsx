@@ -42,7 +42,6 @@ export function Marks({ page, info }: { page: PageState; info: PageInfo }) {
           return <RestingNewText key={placed.newTextId} text={placed} page={page} info={info} notes={notes} />;
         }
         const line = page.layout.lines.get(span.id);
-        // A line of several runs is one mark, or one field, where its first span stands.
         if (line !== undefined) {
           if (line.id !== span.id) return null;
           if (line.id === page.typingIn) return <RunsField key={line.id} line={line} info={info} />;
@@ -104,7 +103,6 @@ function Shown({
   const { shownMismatches: shown, changed, fonts, layout } = page;
   if (shown.size === 0) return null;
   const spans = shownAmong(page.spans, { shown, changed, readings, fits, fonts })
-    // Being typed into, alone or in its line: the field says how it won't match.
     .filter((span) => (layout.lines.get(span.id)?.id ?? span.id) !== page.typingIn)
     .map((span) => {
       const replaced = readings.get(span.id)?.replaced ?? false;
@@ -198,7 +196,6 @@ function UndoRedactionAt({
 }) {
   const span = spanIn(page, spanId);
   if (span === undefined) return null;
-  // A line asks for every span of it redacted: of all of one, as a span redacted whole asks.
   const spans = page.layout.lines.get(spanId)?.spans ?? [span];
   const redactions = spans.map(({ id }) => readings.get(id)?.redacted ?? null);
   const whole = redactions.includes("whole");

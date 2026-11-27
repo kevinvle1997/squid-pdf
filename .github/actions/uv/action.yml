@@ -25,11 +25,9 @@ runs:
         cache-python: true
         cache-dependency-glob: uv.lock
 
-    # From the root, even when the job's steps run in react/.
     - shell: bash
       working-directory: ${{ github.workspace }}
       run: uv sync --locked ${{ inputs.sync }}
       env:
-        # Fails on a locked version OSV lists as malware, and when OSV can't be asked.
         UV_MALWARE_CHECK: "1"
         UV_PREVIEW_FEATURES: malware-check

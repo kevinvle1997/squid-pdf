@@ -51,7 +51,6 @@ vi.mock(import("../../api/client"), async (original) => ({
   putFont: vi.fn(() => new Promise<never>(() => undefined)),
 }));
 
-// The page draws its margin each time it's drawn itself, so counting the margin counts the page.
 const drawn = vi.hoisted(() => ({ margins: 0 }));
 vi.mock(import("./Margin"), async (original) => {
   const module = await original();
@@ -119,7 +118,6 @@ async function settled() {
 
 async function imageLoadedOn(screen: Awaited<ReturnType<typeof draw>>, index = 0) {
   const region = screen.getByRole("region", { name: `Page ${index + 1}` });
-  // Its size is known, not only done: a broken image is `complete` too.
   await expect.poll(() => region.element().querySelector("img")?.naturalWidth).toBeGreaterThan(0);
 }
 
@@ -136,7 +134,7 @@ function contrastOnWhite(line: CSSStyleDeclaration): number {
   return 1.05 / (luminance + 0.05);
 }
 
-/** It leaves the field's words selected: a caller's {ArrowRight} puts the caret after them, where a Mac's {End} may scroll. */
+/** Leaves the words selected: a caller's {ArrowRight} puts the caret after them, where a Mac's {End} may scroll. */
 async function editSpan(screen: Awaited<ReturnType<typeof draw>>, words = WORDS) {
   const mark = screen.getByRole("button", { name: words });
   await expect.element(mark).toBeInTheDocument();
@@ -342,7 +340,6 @@ describe("a page", () => {
     const redact = screen.getByRole("button", { name: "Redact" });
     await expect.element(redact).toBeVisible();
     const chip = redact.element().closest("div");
-    // base.css's keyframes, which a module's own names would miss.
     const playing = chip?.getAnimations().map((animation) => (animation as CSSAnimation).animationName);
     expect(playing).toEqual(["arrive"]);
   });
@@ -449,7 +446,6 @@ describe("a page", () => {
     await userEvent.keyboard(" AND A GOOD DEAL MORE");
     const field = screen.getByRole("textbox").element() as HTMLInputElement;
     await expect.element(screen.getByRole("textbox")).toHaveValue(`${WORDS} AND A GOOD DEAL MORE`);
-    // A pixel spare: the field's width in points rounds to whole pixels either way.
     expect(field.scrollWidth).toBeLessThanOrEqual(field.clientWidth + 1);
     expect(field.scrollLeft).toBe(0);
   });
@@ -565,7 +561,6 @@ describe("a page", () => {
     farAway();
     const sheet = screen.getByRole("region", { name: "Page 1" }).element();
     await vi.waitFor(() => expect(sheet.querySelector("img")).toBeNull());
-    // What's in view: the browser keeps it still as the far page grows its change, so the window's scroll may not.
     const inView = () => spacer?.getBoundingClientRect().top;
     const before = inView();
     await pressMouse({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
@@ -1065,7 +1060,7 @@ describe("a page", () => {
       await page.viewport(1400, 900);
       const right = { ...dated, bbox: { x0: 400, y0: 300, x1: 570, y1: 324 } };
       const { control, slip } = await editTheDate(A4, right);
-      // Told after the slip's own observer, before the frame is painted; the calendar may grow over several rounds, the last where it settles.
+      // Told after the slip's own observer, before paint; the calendar may grow over several rounds, the last settled.
       const seen: number[] = [];
       const after = new ResizeObserver(() => seen.push(slip().left));
       const element = control.element().closest("[data-slip]");
@@ -1328,7 +1323,6 @@ describe("a page", () => {
     const mark = screen.getByRole("button", { name: "in arial" });
     await expect.element(mark).toBeInTheDocument();
     expect(getComputedStyle(mark.element(), "::after").backgroundImage).toBe("none");
-    // That hover opens no note is `lookOf`'s to hold (marks.test.ts): an absence can't be waited for.
     const note = screen.getByText("Edits here use Liberation Sans Regular", { exact: false });
     mark.element().focus();
     await userEvent.keyboard("{Enter}");
@@ -1688,7 +1682,6 @@ describe("a page", () => {
     await animationsDone();
     const { outlineWidth, outlineOffset } = getComputedStyle(mark.element());
     const ringTop = mark.element().getBoundingClientRect().top - parseFloat(outlineWidth) - parseFloat(outlineOffset);
-    // React Aria places the note on a whole pixel, as the ring is drawn.
     expect(note.element().getBoundingClientRect().bottom).toBeLessThanOrEqual(Math.round(ringTop));
   });
 
@@ -1702,7 +1695,6 @@ describe("a page", () => {
     await userEvent.keyboard(`${words}{Enter}`);
     const note = screen.getByRole("button", { name: `Undo: take out “${words}”` });
     await expect.element(note).toBeVisible();
-    // The box its words are set in: an ellipsis is drawn at the end of a block's line, not a flex box's.
     const shown = [...note.element().querySelectorAll("span")].find((box) =>
       [...box.childNodes].some((child) => child.nodeType === Node.TEXT_NODE && child.textContent === words),
     );
@@ -1736,7 +1728,6 @@ describe("a page", () => {
     }
     const lower = screen.getByRole("button", { name: "Undo: “is below” goes back to “was below”" });
     await expect.element(lower).toBeVisible();
-    // A press away from it first: after a key, React Aria opens no note on hover.
     await pressMouse({ x: 1, y: 1 });
     const box = lower.element().getBoundingClientRect();
     const at = middleOf(box);
@@ -1755,7 +1746,6 @@ describe("a line of several runs", () => {
     openDocument(aDoc(aBoldSentence()));
   });
 
-  /** The line's field, opened from the keyboard on its one mark, every word selected. */
   async function editLine(screen: Awaited<ReturnType<typeof draw>>) {
     const mark = screen.getByRole("button", { name: SENTENCE });
     await expect.element(mark).toBeInTheDocument();
@@ -1766,7 +1756,6 @@ describe("a line of several runs", () => {
     return field;
   }
 
-  /** The words each run of the line's field holds, in order. */
   function runsOf(field: Element): string[] {
     return [...field.querySelectorAll("[data-run]")].map((run) => run.textContent ?? "");
   }
@@ -1783,7 +1772,6 @@ describe("a line of several runs", () => {
   test("words typed at the end of the bold run go into it, and those after it stay their own", async () => {
     const screen = await draw();
     const field = await editLine(screen);
-    // From the end of the line, back past " (one style)" to the end of "spans".
     await userEvent.keyboard("{ArrowRight}");
     for (let step = 0; step < " (one style)".length; step++) await userEvent.keyboard("{ArrowLeft}");
     await userEvent.keyboard("!");
@@ -1795,7 +1783,6 @@ describe("a line of several runs", () => {
     const screen = await draw();
     const mark = screen.getByRole("button", { name: SENTENCE });
     await expect.element(mark).toBeInTheDocument();
-    // "spans" runs from 177 pt to 202 pt: two letters in, at 188 pt of the line's 72 to 262.
     const box = mark.element().getBoundingClientRect();
     const at = { x: box.left + ((188 - 72) / (262 - 72)) * box.width, y: box.top + box.height / 2 };
     await pressMouse(at);
@@ -1809,7 +1796,6 @@ describe("a line of several runs", () => {
     const field = await editLine(screen);
     await userEvent.keyboard("{ArrowRight}{Backspace}");
     expect(runsOf(field.element())).toEqual(["Text is grouped into ", "spans", " (one style"]);
-    // A word's delete is Option+Backspace on a Mac, Ctrl+Backspace elsewhere, as CI's Linux is.
     const wordKey = ALT === "⌥" ? "Alt" : "Control";
     await userEvent.keyboard(`{${wordKey}>}{Backspace}{/${wordKey}}`);
     expect(runsOf(field.element())).toEqual(["Text is grouped into ", "spans", " (one "]);
@@ -1818,7 +1804,6 @@ describe("a line of several runs", () => {
   test("typed past the whole line's room it's too long, and the room's end is marked", async () => {
     const screen = await draw();
     await editLine(screen);
-    // Five letters of 5 pt past the line's 20 pt of room.
     await userEvent.keyboard("{ArrowRight}");
     await userEvent.keyboard("abcde");
     await expect.element(screen.getByText(/too long for its place/)).toBeVisible();
@@ -1835,7 +1820,6 @@ describe("a line of several runs", () => {
       .element(screen.getByRole("button", { name: "Text is grouped into spansxx (one style)" }))
       .toHaveFocus();
     const previews = () => [...document.querySelectorAll<HTMLElement>("[data-preview]")];
-    // The bold run and the one it moved, 10 pt along; the run before is the page's own.
     await expect.poll(() => previews().map((each) => each.textContent)).toEqual(["spansxx", " (one style)"]);
     const layer = previews()[1]?.offsetParent;
     const leftPt = ((previews()[1]?.offsetLeft ?? 0) / (layer?.clientWidth ?? 1)) * A4.width;
@@ -1860,20 +1844,17 @@ describe("a line of several runs", () => {
     await expect.poll(lastRun).toBe(" (one style)");
     await userEvent.keyboard("{Control>}{Shift>}z{/Shift}{/Control}");
     await expect.poll(lastRun).toBe(" (one style) ");
-    // The caret goes where it was: typing goes on from there.
     await userEvent.keyboard("!");
     await expect.poll(lastRun).toBe(" (one style) !");
     expect(editor.store.get().history.done).toEqual([]);
   });
 
-  /** Compose `words` as an input method does, a part of them first, then commit them. */
   async function compose(words: string) {
     const part = words.slice(0, 2);
     await cdp().send("Input.imeSetComposition", { text: part, selectionStart: 2, selectionEnd: 2 });
     await cdp().send("Input.insertText", { text: words });
   }
 
-  /** From the end of the line, back to the end of "spans", and all of it selected. */
   async function selectBoldWord() {
     await userEvent.keyboard("{ArrowRight}");
     for (let step = 0; step < " (one style)".length; step++) await userEvent.keyboard("{ArrowLeft}");
@@ -1890,7 +1871,6 @@ describe("a line of several runs", () => {
     await userEvent.keyboard("!");
     const runs = ["Text is grouped into runs!", "", " (one style)"];
     await expect.poll(() => runsOf(field.element())).toEqual(runs);
-    // Nothing the input method wrote stands outside the runs.
     expect(field.element().textContent).toBe(runs.join(""));
     expect(editor.store.get().draft).toMatchObject({ runs });
   });
@@ -1932,7 +1912,6 @@ describe("a line of several runs", () => {
     const shownPx = (pt: number) => (pt / A4.width) * layer.width;
     await expect.poll(() => field.getBoundingClientRect().height).toBeCloseTo(shownPx(12), 0);
     expect(field.getBoundingClientRect().left).toBeCloseTo(layer.left + shownPx(72), 0);
-    // Its first run's letters drawn at 10 pt: 16 px, scaled down.
     const [first] = field.querySelectorAll<HTMLElement>("[data-run]");
     const scale = new DOMMatrix(getComputedStyle(field).transform).a;
     expect(first && parseFloat(getComputedStyle(first).fontSize) * scale).toBeCloseTo(shownPx(10), 1);
@@ -2041,7 +2020,6 @@ describe("a line of several runs", () => {
     await userEvent.keyboard("{Enter}");
     const field = screen.getByRole("textbox", { name: /^Change/ });
     await expect.element(field).toHaveFocus();
-    // The caret at the line's end, in the last run, which holds the amount.
     await userEvent.keyboard("{ArrowRight}{Alt>}{ArrowDown}{/Alt}");
     await expect
       .element(screen.getByRole("spinbutton").or(screen.getByRole("textbox", { name: /amount/i })))
@@ -2056,7 +2034,6 @@ describe("a line of several runs", () => {
     const [, bold] = field.querySelectorAll<HTMLElement>("[data-run]");
     const box = bold?.getBoundingClientRect();
     if (box === undefined) throw new Error("no bold run");
-    // A file dragged from the desktop has an entry in the file system; one built here has none.
     const entry = vi.spyOn(DataTransferItem.prototype, "webkitGetAsEntry");
     entry.mockReturnValue({ isFile: true } as FileSystemEntry);
     const font = new File(["a font"], "times-bold.ttf");

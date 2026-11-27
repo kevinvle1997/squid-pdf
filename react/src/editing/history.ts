@@ -1,4 +1,3 @@
-// Each edit has an id of its own, so it can be taken out wherever it stands, as putting a span back does.
 import type { Edit, Insert } from "../api/types";
 import { partKey } from "./splits";
 
@@ -35,7 +34,6 @@ export function historyReducer(history: History, action: HistoryAction): History
     case "revise": {
       const last = history.done.at(-1);
       const folded = action.folds && last?.length === 1 && last[0]?.id === action.replaces ? last[0] : undefined;
-      // Folded, it replaces what the last step replaced: one undo goes back past every nudge in a row.
       const replaces = folded === undefined ? action.replaces : folded.replaces;
       const entry: Entry = { id: history.next, edit: action.edit, ...(replaces !== undefined && { replaces }) };
       const done = folded === undefined ? history.done : history.done.slice(0, -1);

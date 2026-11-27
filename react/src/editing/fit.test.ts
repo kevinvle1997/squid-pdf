@@ -34,7 +34,7 @@ const span = aSpan({ id: "s1", text: "abcdefghij", bbox: { x0: 0, y0: 0, x1: 50,
 
 describe("a missing letter", () => {
   test("is a space too, as the server judges it, when the font has none of that kind", () => {
-    // The server sends a plain space in `glyphs` wherever it draws one: one not there, or a no-break space not mapped, is missing.
+    // `glyphs` has a plain space wherever the server draws one: one absent, or an unmapped no-break space, is missing.
     expect(missingIn("a a", { a: HALF, "\u00a0": HALF })).toEqual([" "]);
     expect(missingIn("a\u00a0a", { a: HALF, " ": HALF })).toEqual(["\u00a0"]);
     expect(missingIn("a a", { a: HALF, " ": HALF })).toEqual([]);
@@ -183,7 +183,6 @@ describe("a line edited as one, on the server's own cases", () => {
 });
 
 describe("a line's fit", () => {
-  // "abcde" then "fghij" in a second run: 25 pt each at 10 pt, the line's room 4 pt past its end.
   const first = aSpan({ id: "first", text: "abcde", bbox: { x0: 0, y0: 0, x1: 25, y1: 12 } });
   const second = aSpan({ id: "second", text: "fghij", bbox: { x0: 25, y0: 0, x1: 50, y1: 12 } });
   const lineRoom = { roomPt: 4, rules: RULES };
@@ -207,7 +206,6 @@ describe("a line's fit", () => {
       ],
       lineRoom,
     );
-    // The first 10 pt shorter; the second as long, its euro, which these widths lack, counted as nothing.
     expect(fit).toMatchObject({ originalPt: 50, deltaPt: -10, missing: ["€"] });
   });
 });

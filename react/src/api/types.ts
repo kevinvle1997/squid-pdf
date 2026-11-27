@@ -2,7 +2,6 @@ import type { components } from "./schema";
 
 type Schemas = components["schemas"];
 
-// Not read: `expires_at`. Nothing shows the hour, and a document the server lost opens again by itself.
 export type Document = Schemas["Document"];
 export type DocumentNoticeInfo = Schemas["DocumentNoticeInfo"];
 export type PageInfo = Schemas["PageInfo"];

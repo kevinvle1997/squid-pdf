@@ -1,4 +1,3 @@
-// The keys a field typed into answers, a span's or a line's: the same in each, as one field.
 import type { KeyboardEvent } from "react";
 import { flushSync } from "react-dom";
 import type { Editor } from "../editor";
@@ -14,12 +13,10 @@ export function fieldKeyDown(
   event: KeyboardEvent,
   { value }: { value: EditableValue | undefined },
 ): void {
-  // Alt+Down opens a picker, as it does in any field that has one.
   if (event.key === "ArrowDown" && event.altKey && openValueEditor(editor, value)) {
     event.preventDefault();
     return;
   }
-  // Up and Down choose how a long line fits; while it fits, they're the field's own.
   const step = { ArrowUp: -1, ArrowDown: 1 } as const;
   if ((event.key === "ArrowUp" || event.key === "ArrowDown") && stepWayOut(editor, step[event.key])) {
     event.preventDefault();

@@ -8,7 +8,6 @@ export const ALT = APPLE ? "⌥" : "Alt ";
 /** A slip's own keys come before a shortcut's: undo there would undo another edit with this one still open. */
 export function isTyping(target: EventTarget | null): boolean {
   if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return true;
-  // A line's field, its runs each in their own font.
   if (target instanceof HTMLElement && target.isContentEditable) return true;
   return target instanceof Element && target.closest("[data-slip]") !== null;
 }

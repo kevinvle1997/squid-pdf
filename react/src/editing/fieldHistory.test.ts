@@ -3,7 +3,6 @@ import { type FieldHistory, NO_TYPING, recorded, redone, type Typing, undone } f
 
 const at = (words: string, caret: number): Typing => ({ runs: [words], selected: [caret, caret] });
 
-/** `history` after typing each letter of `word` at the end of `words`, one at a time. */
 function typing(history: FieldHistory, words: string, word: string): FieldHistory {
   let after = history;
   let now = words;

@@ -88,7 +88,6 @@ export function Previews({
   const previews = differing(page.edits, page.drawnFrom).filter(
     ({ span }) => (lineOf(span.id)?.id ?? span.id) !== page.typingIn,
   );
-  // A line edited as one is drawn from its whole layout, once, since any run of it may have moved.
   const lines = new Map(previews.flatMap(({ span, lineEdit }) => (lineEdit ? [[lineOf(span.id)?.id, lineEdit]] : [])));
   const alone = previews.filter(({ lineEdit }) => lineEdit === undefined);
   const lineDrawings = [...lines].flatMap(([lineId, lineEdit]) => {
@@ -97,7 +96,6 @@ export function Previews({
     return [<LinePreview key={line.id} line={line} lineEdit={lineEdit} page={page} info={info} strips={strips} />];
   });
   const spanDrawings = alone.map(({ span, text, redacted, strategy }) => {
-    // A redaction leaves the page bare where its words were, as the download will.
     if (redacted === "whole") {
       return (
         <span
@@ -118,7 +116,6 @@ export function Previews({
           )}
           {redactedBoxes(span, { ranges: redacted, glyphs, redaction: page.redactions[span.id] }).map((box, index) => (
             <span
-              // By its place in the line: the ranges don't overlap, and keep their order.
               key={redacted[index]?.start}
               className={styles.preview}
               aria-hidden="true"
@@ -146,10 +143,6 @@ export function Previews({
   return [...lineDrawings, ...spanDrawings];
 }
 
-/**
- * A line edited as one, before its render: each run the edit redraws blanked where the page has it, then drawn where
- * it moves, every blank under every run's words; a run it leaves alone is the page's own, under any older strip.
- */
 function LinePreview({
   line,
   lineEdit,

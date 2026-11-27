@@ -65,11 +65,6 @@ export function mismatchKeyOf(place: MismatchPlace, fonts: FontsByObject): strin
   return reason === null ? fontKey(shownNameIn(fonts, place.span)) : reasonKey(reason);
 }
 
-/**
- * `span` as a place an edit won't match, as the bar counts places now; none where it will match. Before
- * any change, every such span in the document, by its own verdict; after, only those drawn again, by their edit's
- * (`verdictOf`): `fit` is the server's once a render of it as it reads now landed, and its letters missing.
- */
 export function placeOf(
   span: SpanInfo,
   {
@@ -111,7 +106,6 @@ export function shownAmong(
 }
 
 function reasonOf({ verdict }: MismatchPlace): MismatchReason["code"] | null {
-  // Drawn in a similar font: whatever else won't match, its font is what the reader can change.
   return verdict.fidelity === "approximate" && verdict.why !== null ? verdict.why.code : null;
 }
 

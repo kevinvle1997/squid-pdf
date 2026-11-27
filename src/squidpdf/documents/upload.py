@@ -36,7 +36,6 @@ class UploadController:
         chunks: AsyncIterable[bytes],
         language: str,
     ) -> Reply[bytes]:
-        # Read as module attributes, so a test can lower the limit.
         declared_too_large = declared is not None and declared > constants.MAX_FILE_BYTES
         if declared_too_large:
             raise TooLarge(constants.MAX_FILE_MB)
@@ -73,32 +72,26 @@ class UploadController:
             raise
 
     async def _analysed(self, folder: Path) -> KeptAnalysis:
-        """The upload analysed on a worker, or, when it's long, its pages a share a worker."""
         analysed = await self._enqueue_analyse_upload(folder)
-        # Too short to share out: judged where it was indexed, on one worker.
         if isinstance(analysed, KeptAnalysis):
             return analysed
         judged = await self._each_judged(folder, analysed)
-        # Off the server's thread: it joins every span and writes them out.
         return await asyncio.to_thread(keep_judged, folder, judged)
 
     async def _each_judged(self, folder: Path, shares: list[range]) -> list[JudgedPages]:
-        """Each share of the pages judged on a worker of its own, all at once, in order."""
         judging = [
             asyncio.ensure_future(self._enqueue_judge_pages(folder, pages=share))
             for share in shares
         ]
         try:
             return await asyncio.gather(*judging)
-        except BaseException:  # a share failed, or the browser left: the rest stop too
+        except BaseException:
             for share in judging:
                 share.cancel()
             await asyncio.gather(*judging, return_exceptions=True)
             raise
 
     async def _enqueue_analyse_upload(self, folder: Path) -> KeptAnalysis | list[range]:
-        """Index the upload on a worker, and judge it there unless it's long."""
-        # Read as module attributes, so a test can share out a short document.
         task = partial(
             analyse_upload,
             self.documents,
@@ -110,7 +103,6 @@ class UploadController:
         return await self.workers.run(constants.ANALYSE_TIMEOUT_S, task)
 
     async def _enqueue_judge_pages(self, folder: Path, *, pages: range) -> JudgedPages:
-        """Judge one share of the pages on a worker."""
         task = partial(judge_pages, self.documents, folder, pages)
         return await self.workers.run(constants.ANALYSE_TIMEOUT_S, task)
 

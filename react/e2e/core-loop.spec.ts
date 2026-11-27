@@ -19,10 +19,6 @@ async function open(page: Page, file: Upload = SAMPLE) {
   await expect(page.getByRole("region", { name: "Page 1" })).toBeVisible();
 }
 
-/**
- * Three pages, each one line in Helvetica naming it: one more page than the sample, so a page
- * deleted still leaves two to split. Written by hand.
- */
 function threePages(): Upload {
   const lines = ["First page", "Second page", "Third page"];
   const kids = lines.map((_, index) => `${4 + 2 * index} 0 R`).join(" ");
@@ -41,10 +37,6 @@ function threePages(): Upload {
   return pdfOf("three.pdf", objects);
 }
 
-/**
- * One line, "Text is grouped into spans (one style).", its middle word in Helvetica Bold and the rest in Helvetica:
- * three spans, one after another on one baseline. Written by hand.
- */
 function boldSentence(): Upload {
   const content = String.raw`BT /F1 12 Tf 72 720 Td (Text is grouped into ) Tj /F2 12 Tf (spans) Tj /F1 12 Tf ( \(one style\).) Tj ET`;
   const objects = [
@@ -58,7 +50,6 @@ function boldSentence(): Upload {
   return pdfOf("bold.pdf", objects);
 }
 
-/** A PDF named `name` of `objects`, the first its catalog, each one's place counted for the xref. */
 function pdfOf(name: string, objects: readonly string[]): Upload {
   let pdf = "%PDF-1.4\n";
   const places = objects.map((object, index) => {
@@ -147,7 +138,6 @@ test("an edit is drawn by the server, and undo puts the original back", async ({
   await edit(page, "This agreement is made on 2 April 2026 between");
   await expect(page.locator("img[data-strip]")).toHaveCount(1);
   await expect(page.getByText("1 change")).toBeVisible();
-  // Focus is back on the span, but its note would cover what was just typed.
   await expect(
     page.getByRole("button", { name: "This agreement is made on 2 April 2026 between", exact: true }),
   ).toBeFocused();
@@ -184,7 +174,6 @@ test("a span edited back to its own words is untouched: nothing is drawn over it
   const field = await startEdit(page, { line: "This agreement is made on 2 April 2026 between", exact: true });
   await field.fill(LINE);
   await field.press("Enter");
-  // Drawn again, the line would come back in the substitute while the page says nothing changed.
   await expect(page.locator("img[data-strip]")).toHaveCount(0);
   await expect(page.getByText("1 change")).toHaveCount(0);
 });
@@ -250,7 +239,6 @@ test("a date changed through the calendar downloads in the file's own font, and 
   page,
 }) => {
   await open(page);
-  // Page 2's line is in a subset of the file's own font, which drew only the digits it printed.
   const line = "Delivery begins 14 March 2026 and runs eighteen months.";
   const field = await startEdit(page, { line });
   await expect(page.getByRole("button", { name: "Date" })).toBeVisible();
@@ -450,7 +438,6 @@ test("a line with a bold word is edited in one field, each run in its own face, 
   await page.keyboard.press("Enter");
   const field = page.getByRole("textbox", { name: `Change “${sentence}”` });
   await expect(field).toBeFocused();
-  // From the line's end, back past " (one style)." to the end of the bold word, and a letter typed there.
   await page.keyboard.press("ArrowRight");
   for (const _letter of " (one style).") await page.keyboard.press("ArrowLeft");
   await page.keyboard.type("!");
@@ -466,7 +453,6 @@ test("a line with a bold word is edited in one field, each run in its own face, 
   const downloading = page.waitForEvent("download");
   await page.keyboard.press("ControlOrMeta+s");
   const { spans } = await reread(page, await bytesOf(await downloading));
-  // The bold word's new text in a span of its own, in its own font, the words either side still regular.
   const fontsOf = (text: string) => spans.filter((span) => span.text === text).map((span) => span.font);
   expect(fontsOf("spans!")).toEqual([expect.stringMatching(/Bold/)]);
   for (const regular of ["Text is grouped into ", " (one style)."]) {

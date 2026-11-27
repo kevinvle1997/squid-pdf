@@ -89,8 +89,8 @@ export interface Unredacting {
 
 export interface Typed {
   readonly text: string;
-  readonly runs: readonly string[] | null; // a line's, its words a run each; none for a span alone
-  readonly caret: number | null; // in the field's units; none known
+  readonly runs: readonly string[] | null;
+  readonly caret: number | null;
 }
 
 export interface Announcement {
@@ -125,9 +125,9 @@ export interface Layout {
   readonly splitKey?: string; // where it's split: the same while the splits are
   readonly pages: ReadonlyMap<number, readonly SpanInfo[]>;
   readonly fonts: FontsByObject;
-  readonly lines: ReadonlyMap<string, Line>; // each line of more than one span, by each of its spans
-  readonly warnedFonts: ReadonlySet<string>; // by name shown: the fonts an edit warns of, a similar font or no match
-  readonly mismatchesAtRest: Mismatches; // before any change, grouped: one object until the document changes
+  readonly lines: ReadonlyMap<string, Line>;
+  readonly warnedFonts: ReadonlySet<string>;
+  readonly mismatchesAtRest: Mismatches;
 }
 
 export interface EditorState {
@@ -374,7 +374,6 @@ export function relaid(
 export function putBack(editor: Editor, spanId: string): void {
   const { history, layout, doc } = editor.store.get();
   const span = layout.spans.get(spanId);
-  // A span of a line goes back with the rest of it, as the line was edited: as one.
   const line = layout.lines.get(spanId);
   const spans = line?.spans ?? (span === undefined ? [] : [span]);
   const ids = new Set(spans.flatMap(({ id }) => [...touching(history, id)]));
@@ -427,7 +426,6 @@ function stepped(
   const { layout, reading: before } = editor.store.get();
   const span = layout.spans.get(spanId);
   const redacting = step.some(({ edit }) => edit.kind === "redact");
-  // A redaction is said by the words it puts back or takes out, not by the line, which may keep others redacted.
   const redaction = redacting ? { was: before.spans.get(spanId)?.redacted ?? null } : null;
   const line = layout.lines.get(spanId);
   change(editor, action, ({ reading, doc }) => ({
@@ -448,7 +446,7 @@ function stepAnnouncement(
   }: {
     key: "back_to" | "changed_to";
     span: SpanInfo | undefined;
-    line: Line | undefined; // the line it's a run of, said whole
+    line: Line | undefined;
     reading: Reading;
     redaction: { was: Redacted | null } | null;
   },
@@ -473,7 +471,6 @@ function newTextStepped(
   change(editor, action, ({ reading, layout, doc }) => {
     const now = keptNewTexts(reading).find((text) => text.newTextId === newTextId);
     if (now !== undefined) {
-      // Nothing brings new text into view: on a far page, its mark isn't drawn to take focus until it's scrolled to.
       const markShown = on.marginNote && editor.near.has(now.edit.page);
       return {
         announcement: announcing(fill(doc.sentences[key], { text: now.edit.text })),
@@ -520,36 +517,27 @@ export function announce(editor: Editor, text: string): void {
   editor.store.set({ announcement: announcing(text) });
 }
 
-/** What's read of spans on the pages the download keeps, a line's runs left alone too: a page left out takes its edits. */
 function keptReadings(reading: Reading): SpanReading[] {
   return [...reading.spans.values()].filter(({ span }) => !reading.deleted.has(span.page));
 }
 
-/** The changed spans among them: a line's run left alone is no change of its own. */
 function keptChanges(reading: Reading): SpanReading[] {
   return keptReadings(reading).filter(({ replaced, redacted }) => replaced || redacted !== null);
 }
 
-/**
- * How many changes edits make of spans, and pieces of new text, on the pages the download keeps: until one does,
- * the bar forecasts, a page's delete or not.
- */
 export function changedWordsCount(state: EditorState): number {
   const changedSpans = keptChanges(state.reading).map(({ span }) => span.id);
   return lineCount(state.layout, changedSpans) + keptNewTexts(state.reading).length;
 }
 
-/** How many of the margin's changes `spanIds` make: one a line, however many of its spans changed or were drawn again. */
 function lineCount(layout: Pick<Layout, "lines">, spanIds: readonly string[]): number {
   return new Set(spanIds.map((id) => layout.lines.get(id)?.id ?? id)).size;
 }
 
-/** How many changes the bar counts: each line or lone span changed, each piece of new text, and each page left out, but none on it. */
 export function changedCount(state: EditorState): number {
   return changedWordsCount(state) + state.reading.deleted.size;
 }
 
-/** How many changes won't match: once one is in its own font, `different`, and all "will look different". */
 export function warnedCount(state: EditorState): { count: number; different: boolean } {
   const places = changedMismatches(state);
   const different = places.some(({ verdict }) => verdict.fidelity === "approximate");
@@ -580,30 +568,23 @@ export function atRestSentence({ count, reasons }: Mismatches, sentences: Senten
   return fillCounted(reasons.length > 0 ? sentences.at_rest_different : sentences.at_rest_similar, count);
 }
 
-/** How many changed spans the server drew past their room, left long as typed: each warned on its mark, and counted in the bar. */
 function runLongCount({ reading, drawn, layout }: Pick<EditorState, "reading" | "drawn" | "layout">): number {
   const long = keptChanges(reading).filter(({ span, replaced }) => {
     const fit = drawn.fits.get(span.page)?.[span.id];
     return replaced && fit?.message_parts.some((part) => part.code === "too_long") === true;
   });
-  // A line runs long as one, however many of its runs changed.
   return lineCount(
     layout,
     long.map(({ span }) => span.id),
   );
 }
 
-/**
- * The bar's count of the changes left long past their room, in the server's words: nothing when none is, or where a
- * reading persisted by an earlier build lacks it.
- */
 export function runLongSentence(state: Pick<EditorState, "reading" | "drawn" | "doc" | "layout">): string {
   const count = runLongCount(state);
   if (count === 0) return "";
   return fillCounted(state.doc.sentences.changes_too_long, count);
 }
 
-/** The spans drawn again whose edit won't match, in a similar font or set apart from the text around them, then the new text that won't. */
 export function changedMismatches({
   reading,
   drawn,

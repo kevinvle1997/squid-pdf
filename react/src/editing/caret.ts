@@ -8,7 +8,6 @@ export interface Press {
 
 type Measure = { glyphs: Record<string, number>; span: Pick<SpanInfo, "size" | "letter_spacing_em"> };
 
-/** A press `pressX` pixels into a span's mark, or a line's, shown `shownPx` wide, in points from its start: none unlaid. */
 export function pressOf(
   span: Pick<SpanInfo, "bbox">,
   { pressX, shownPx, selects }: { pressX: number; shownPx: number; selects: Press["selects"] },
@@ -22,16 +21,13 @@ export function selectionAt(text: string, press: Press, measure: Measure): [numb
   return [caret, caret];
 }
 
-/** One run of a line, as a press across the line is measured: where its span starts on the line, and its words. */
 export interface RunMeasure extends Measure {
-  readonly startPt: number; // from the line's start
+  readonly startPt: number;
   readonly text: string;
 }
 
-/** What `press`, from a line's start, selects across its `runs`, as the start and end of their words read as one. */
 export function selectionAcross(runs: readonly RunMeasure[], press: Press): [number, number] {
   const text = runs.map((run) => run.text).join("");
-  // The run pressed: the last to start at or before the press, else the first.
   let before = 0;
   let pressed = runs[0];
   let offset = 0;
@@ -49,7 +45,6 @@ export function selectionAcross(runs: readonly RunMeasure[], press: Press): [num
   return [caret, caret];
 }
 
-/** The gap between letters nearest `atPt` points from the start of `text`, as a field puts a click's caret. */
 function caretAt(text: string, atPt: number, { glyphs, span }: Measure): number {
   let widthSoFar = 0;
   let offset = 0;

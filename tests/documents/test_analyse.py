@@ -34,7 +34,6 @@ _HANG_S = 2.0
 
 
 def _analysed_upload(documents: DocumentStore, folder: Path) -> KeptAnalysis:
-    """An upload's analysis, judged on the one worker that indexed it, as a short one is."""
     analysed = analyse.analyse_upload(
         documents, folder, MAX_PAGES, most_shares=1, spans_per_share=1
     )
@@ -52,7 +51,6 @@ def folder(pdf):
 
 @pytest.fixture
 def in_google_families():
-    """Each line has a letter of its own, so no two read as one; none has a Y."""
     doc = pymupdf.open()
     page = doc.new_page()
     for number in range(len(_FAMILIES)):
@@ -135,7 +133,7 @@ def test_a_render_lends_what_the_analysis_fetched_and_no_more(
     in_google_families, google_through
 ):
     poppins = POPPINS.read_bytes()
-    google = google_through(lambda _url: poppins)  # only Poppins' file has its hash
+    google = google_through(lambda _url: poppins)
     _analysed_upload(google.store, in_google_families)
     cached = sorted(path.name for path in (store.root() / "fonts").rglob("*.ttf"))
     assert_equal(cached, ["Poppins-Regular.ttf"], "what the analysis cached")
@@ -212,12 +210,11 @@ class _UnreadPagesDriver:
 
 
 def _unread_pages(path: str) -> PdfDriver:
-    # A PdfDriver through __getattr__, which mypy reads and ty doesn't yet.
     return cast(PdfDriver, _UnreadPagesDriver(open_driver(path)))
 
 
 def test_a_document_past_the_page_limit_is_refused_before_its_pages_are_read(folder):
     with pytest.raises(TooManyPages):
-        analyse.analyse_upload(  # the sample has two pages
+        analyse.analyse_upload(
             FolderStore(_unread_pages), folder, 1, most_shares=1, spans_per_share=1
         )

@@ -57,13 +57,10 @@ interface PageLanded {
   readonly rules: FitRules;
 }
 
-/** Whether the render of a previewed span says something the browser's live check didn't. */
 function disagrees(each: Differing, landed: PageLanded): boolean {
   const { span, text, redacted } = each;
   const { reading, page, after, fonts, rules } = landed;
-  // A redaction previews bare, as it's drawn: there's no verdict to differ from.
   if (redacted) return false;
-  // The browser never foresees a notice or a skip.
   const noticed = after.notices.get(page)?.some((notice) => notice.kind === "span" && notice.span_id === span.id);
   const skipped = after.skipped.some(({ edit }) => {
     const sent = reading.edits[edit];
@@ -81,7 +78,6 @@ function disagrees(each: Differing, landed: PageLanded): boolean {
   });
 }
 
-/** The live check's fit of a previewed span: a line's run's is the whole line's, with the run's own letters. */
 function liveFitOf(
   { span, text, lineEdit }: Differing,
   { fonts, lines, rules, font }: PageLanded & { font: FontInfo },
@@ -96,7 +92,6 @@ function liveFitOf(
   return { ...fit, missing: text === span.text ? [] : missingIn(text, font.glyphs) };
 }
 
-/** Whether the render of new text previewed says something its live check didn't: the letters lacking, or the verdict's kind. */
 function newTextDisagrees(
   text: NewTextReading,
   { reading, page, after, layout }: PageLanded & { layout: Pick<Layout, "fonts" | "spans" | "lines"> },

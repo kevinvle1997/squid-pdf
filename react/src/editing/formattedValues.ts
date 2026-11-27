@@ -20,7 +20,6 @@ const EMAIL =
 
 export function formattedValuesIn(text: string, { dates }: { dates: DateReading | null }): FormattedValue[] {
   const found = [...(dates === null ? [] : datesIn(text, dates)), ...amountsIn(text), ...emailsIn(text)];
-  // A date first where two read the same letters: what's found earliest, then longest, keeps them.
   found.sort((a, b) => a.start - b.start || b.end - a.end);
   const kept: FormattedValue[] = [];
   for (const value of found) {
@@ -44,7 +43,6 @@ export function editableValueIn(
   return heldValueIn(text, { dates, held }) ?? under ?? editable[0];
 }
 
-/** Where each of `runs` starts and ends in them read as one. */
 export function runExtents(runs: readonly string[]): Extent[] {
   let start = 0;
   return runs.map((run) => {
@@ -54,17 +52,12 @@ export function runExtents(runs: readonly string[]): Extent[] {
   });
 }
 
-/** The dates and amounts of a line's `runs` read as one that lie in one run: one across two is none to write. */
 function editableInRuns(runs: readonly string[], { dates }: { dates: DateReading | null }): EditableValue[] {
   const extents = runExtents(runs);
   const within = ({ start, end }: Extent) => extents.some((run) => run.start <= start && end <= run.end);
   return editableIn(runs.join(""), { dates }).filter(within);
 }
 
-/**
- * The value a line's editor is offered for, as `editableValueIn` picks one, but only one that lies in a single run:
- * writing over two would give one run's words the other's style.
- */
 export function lineValueIn(
   runs: readonly string[],
   { dates, at, held }: { dates: DateReading | null; at: number | undefined; held: HeldValue | null },
@@ -76,7 +69,6 @@ export function lineValueIn(
   return (inARun && kept) ?? under ?? editable[0];
 }
 
-/** The value Alt+Down opens with the caret at `caret` in a line's runs: in the caret's own run, the one under it first. */
 export function caretRunValueIn(
   runs: readonly string[],
   { dates, caret }: { dates: DateReading | null; caret: number },
@@ -87,10 +79,6 @@ export function caretRunValueIn(
   return inRun.find((value) => value.start <= caret && caret <= value.end) ?? inRun[0];
 }
 
-/**
- * The value of `held`'s kind where it lies in `text`: none with none held, or once it's gone from the text. A date
- * still reading as it was written keeps the form held: "2 avril", read again, has lost the "1er" it was written for.
- */
 export function heldValueIn(
   text: string,
   { dates, held }: { dates: DateReading | null; held: HeldValue | null },

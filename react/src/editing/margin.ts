@@ -90,7 +90,6 @@ export function noteOf({ span, text, redacted }: SpanReading): NoteWords {
     return { label, struck: runs, inserted: null, was: runs, now: "Redacted", cut: UNCUT };
   }
   const original = span.text;
-  // A screen reader hears the whole line: the note's name is all it has to go on.
   const label = `Undo: “${text}” goes back to “${original}”`;
   const { was, now, cut } = excerptsOf(original, text);
   const struck = [changedWordsIn(original, text)];
@@ -115,7 +114,6 @@ export interface MarginNote {
   readonly undo: (editor: Editor) => void;
 }
 
-/** A line's one note, for whatever of it changed: what was redacted of its runs, else its words as one line. */
 function lineNoteOf(line: Line, changes: readonly SpanReading[]): NoteWords | null {
   const redacted = changes.filter((change) => change.redacted !== null).map((change) => noteOf(change));
   if (redacted.length > 0) {
@@ -123,7 +121,6 @@ function lineNoteOf(line: Line, changes: readonly SpanReading[]): NoteWords | nu
     const label = `Undo: “${joinedRuns(runs)}” is no longer redacted`;
     return { label, struck: runs, inserted: null, was: runs, now: "Redacted", cut: UNCUT };
   }
-  // Only runs left alone, which a line's edit reads too: nothing to say.
   if (!changes.some((change) => change.replaced)) return null;
   const readings = new Map(changes.map((change) => [change.span.id, change.text]));
   const original = line.spans.map((span) => span.text).join("");
@@ -134,7 +131,6 @@ function lineNoteOf(line: Line, changes: readonly SpanReading[]): NoteWords | nu
   return noteOf(whole);
 }
 
-/** Each change's note: one for a span, and one for a line however many of its spans changed. */
 function changeNotesOf(changes: readonly SpanReading[], lines: ReadonlyMap<string, Line>): MarginNote[] {
   const groups = new Map<string, SpanReading[]>();
   for (const change of changes) {
@@ -151,7 +147,6 @@ function changeNotesOf(changes: readonly SpanReading[], lines: ReadonlyMap<strin
   });
 }
 
-/** A page's margin notes: each change's, which a press puts back, then each piece of new text's, which it takes out. */
 export function marginNotesOf(
   changes: readonly SpanReading[],
   newTexts: readonly NewTextReading[],

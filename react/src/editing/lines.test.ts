@@ -3,7 +3,6 @@ import { aBoldSentence, aDoc, aSpan, RULES } from "../fixtures";
 import { deletedBy, lineDrawnAs, linesBySpan, runsEdited, runsRedrawn, runTypedInto, startsALine } from "./lines";
 import { fontsByObject } from "./spanFonts";
 
-// "Text is grouped into", "spans" in bold, "(one style)": one line, and a heading on a line of its own.
 const before = aSpan({ id: "before", text: "Text is grouped into ", bbox: { x0: 72, y0: 100, x1: 160, y1: 112 } });
 const bold = aSpan({ id: "bold", text: "spans", font: "Times-Bold", bbox: { x0: 160, y0: 99, x1: 186, y1: 112 } });
 const after = aSpan({ id: "after", text: " (one style)", bbox: { x0: 186, y0: 100, x1: 240, y1: 113 } });
@@ -22,7 +21,6 @@ test("each span of a line finds the one line, its spans left to right, the box t
     bbox: { x0: 72, y0: 99, x1: 240, y1: 113 },
     roomPt: 30,
   });
-  // One object, whichever span asks: a mark drawn from it is drawn again only when it changes.
   expect(lines.get("before")).toBe(line);
   expect(lines.get("after")).toBe(line);
 });
@@ -52,13 +50,11 @@ describe("typing into a line's runs", () => {
   });
 
   test("at the boundary between two runs, the one before takes them; at the line's start, the first", () => {
-    // After "into ", before "spans": the regular run before, not the bold one.
     expect(runsEdited(runs, { start: 21, end: 21, typed: "x" })).toEqual([
       "Text is grouped into x",
       "spans",
       " (one style)",
     ]);
-    // After "spans", before " (one": the bold one.
     expect(runsEdited(runs, { start: 26, end: 26, typed: "!" })).toEqual([
       "Text is grouped into ",
       "spans!",
@@ -111,7 +107,6 @@ test("a delete with only a caret takes the letter, the word or the line before o
   expect(deletedBy("deleteSoftLineBackward", text, [8, 8])).toEqual([0, 8]);
   expect(deletedBy("deleteHardLineForward", text, [8, 8])).toEqual([8, 26]);
   expect(deletedBy("deleteContentBackward", text, [5, 7])).toEqual([5, 7]);
-  // A letter outside the basic plane is two units: both go.
   expect(deletedBy("deleteContentBackward", "a 😀", [4, 4])).toEqual([2, 4]);
 });
 

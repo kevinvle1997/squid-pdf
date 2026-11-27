@@ -294,7 +294,6 @@ describe("redacting a line of several runs", () => {
 
   test("words selected across two runs are a redaction of each span they reach, all of one where they take all of it", () => {
     edit(editor, "before", null);
-    // "into spans", from the regular run's "into" to the whole bold run.
     redact(editor, null, { selected: [16, 26] });
     expect(editor.store.get().reading.edits).toEqual([aRedact("before", { range: [16, 20] }), aRedact("bold")]);
     expect(editor.store.get().focusTo).toEqual({ spanId: "before" });

@@ -82,7 +82,6 @@ export async function persistedDocument(): Promise<Persisted<unknown> | null> {
   return null;
 }
 
-// Nothing is stored past the server's hour, so this can go once the rename has been deployed that long.
 function renamed(doc: Document | (Omit<Document, "sentences"> & { copy: Document["sentences"] })): Document {
   if ("sentences" in doc) return doc;
   const { copy, ...rest } = doc;
@@ -165,7 +164,6 @@ export function lacksSentences({ sentences }: Pick<Document, "sentences">): bool
   return Object.keys(SENTENCES_READ).some((key) => !(key in sentences));
 }
 
-// Nothing is stored past the server's hour, so this can go once spans have said so that long.
 function withSpanFields(
   doc: Omit<Document, "spans"> & {
     spans: (Omit<SpanInfo, "in_file" | "turned"> & Partial<Pick<SpanInfo, "in_file" | "turned">>)[];
@@ -180,13 +178,10 @@ function withSpanFields(
   return { ...doc, spans };
 }
 
-/** A persisted reading of the document, listing its lines, though stored before documents did: then none, each span alone. */
-// Nothing is stored past the server's hour, so this can go once documents have listed lines that long.
 function withLines(doc: Omit<Document, "lines"> & Partial<Pick<Document, "lines">>): Document {
   return { ...doc, lines: doc.lines ?? [] };
 }
 
-/** Forget the document persisted here, file and all. */
 export async function forgetPersisted(): Promise<void> {
   await inStore("readwrite", (store) => store.clear());
 }

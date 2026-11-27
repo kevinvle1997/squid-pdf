@@ -1,8 +1,4 @@
-"""Where a split falls on the page: the part of a span either side, where its letters are.
-
-A split cuts a span at a code point of its text. Each part is a span of its own, from where the
-page draws its first letter to where its last ends, so a part no edit covers is redrawn there.
-"""
+"""Each part of a split span is a span of its own, so a part no edit covers stays put."""
 
 from __future__ import annotations
 

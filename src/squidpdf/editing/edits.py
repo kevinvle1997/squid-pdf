@@ -49,8 +49,7 @@ class Replace:
 class RunText:
     """One span of a line, or part of it, and the words it's to read, in the span's own style.
 
-    `start` and `end` are where in the span's text the edit begins and ends, in code points,
-    where a split cuts the span; `text` is the words of that part alone.
+    `start` and `end`, in code points, are where a split cuts the span.
     """
 
     span_id: str
@@ -73,8 +72,7 @@ class RunText:
 class ReplaceRuns:
     """Swap a line's words, run by run: each run's words drawn in its own span's style.
 
-    The runs are consecutive spans of one line (`Document.lines`), or a span on none. Those
-    after a change move along, unless a way out holds them; text past a split stays put.
+    Runs after a change move along, unless a way out holds them; text past a split stays put.
     """
 
     runs: tuple[RunText, ...]

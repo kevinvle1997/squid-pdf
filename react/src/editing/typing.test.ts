@@ -331,10 +331,8 @@ describe("a line of several runs", () => {
 
   test("too long against the whole line's room, not the run's: what follows the run moves along", () => {
     edit(editor, "before", null);
-    // Four letters, 20 pt, into the bold run: just the line's 20 pt of room, so not too long.
     const fits = troublesIn(editor.store.get(), ["Text is grouped into ", "spansxxxx", " (one style)"]);
     expect(fits.sentences).toEqual([]);
-    // Five, 25 pt: past it by 5 pt of the 25 pt changed, 20%.
     const past = troublesIn(editor.store.get(), ["Text is grouped into ", "spansxxxxx", " (one style)"]);
     expect(past.sentences).toEqual([fill(PSEUDO_SENTENCES.too_long, { percent: "20" })]);
   });
@@ -403,7 +401,6 @@ describe("a value in one of a line's runs", () => {
 
   test("Alt+Down takes the one in the caret's run, and what's chosen is written into that run alone", () => {
     const value = caretRunValueIn(words, { dates: null, caret: words[0]?.length ?? 0 });
-    // At the boundary typing goes to the run before, which holds no value: none there.
     expect(value).toBeUndefined();
     const last = caretRunValueIn(words, { dates: null, caret: 22 });
     expect(words.join("").slice(last?.start, last?.end)).toBe("$5.00");

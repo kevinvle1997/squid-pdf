@@ -598,9 +598,7 @@ def _line_step_for(cut: _CutLine, fits: EditFits) -> Step:
 class Ran:
     """What doing the steps came out with: what came out other than asked, and each draw.
 
-    `redrawn` is each replace by span id, and each part of a line drawn by its key; `placed`
-    each insert, by its place: the face we ship that drew it, None for its own font (new
-    text's face, where it draws). An edit the erase couldn't clear isn't drawn, so isn't there.
+    An edit the erase couldn't clear isn't drawn, so isn't in `redrawn` or `placed`.
     """
 
     notices: list[Notice]
@@ -785,8 +783,7 @@ def apply_edits(engine: Engine, resolved: Resolved, planned: Planned) -> Applied
 def _rewritten(resolved: Resolved) -> list[tuple[str, Span]]:
     """Each span, or part of one, whose last edit replaces its words with others, by its key.
 
-    One that types a span's own words back draws it as it was, or only moves it: no edit to
-    count.
+    One that types a span's own words back only moves it, or draws it as it was: no edit.
     """
     replaced = [
         (edited_span.span.id, edited_span.span)

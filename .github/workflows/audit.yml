@@ -2,7 +2,6 @@ name: Audit
 
 # Not a job of CI's: a new advisory would fail every PR, and hold the images main publishes.
 on:
-  # An advisory arrives on its own day, not with a change here.
   schedule:
     - cron: "17 9 * * *"
   pull_request:
@@ -26,7 +25,6 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
-      # Its sync checks for malware too, so the schedule re-checks what's locked.
       - name: Install
         uses: ./.github/actions/uv
 

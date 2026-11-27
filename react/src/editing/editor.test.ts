@@ -171,14 +171,12 @@ describe("a change to the history", () => {
   });
 
   test("a line's edit is one change, warned once, however many of its runs it draws again", async () => {
-    // The render fits each run drawn again, the two moved along as well as the one typed in.
     const similar = aFit({ fidelity: "substitute", substitute: "Liberation Serif Regular" });
     const fits = { before: similar, bold: similar, after: similar };
     vi.mocked(renderStrips).mockResolvedValue(aReply({ fits }));
     const sentence = aBoldSentence();
     const spans = sentence.spans.map((span) => ({ ...span, fidelity: "substitute" as const, in_file: false }));
     editor = createEditor(FILE, aDoc({ ...sentence, spans }), 2);
-    // The first run grows, so the two after it move and are drawn again too.
     edit(editor, "before", null);
     typeIntoRuns(editor, ["Text is now grouped into ", "spans", " (one style)"], { caret: null });
     finish(editor, true);

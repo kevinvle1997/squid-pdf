@@ -108,16 +108,12 @@ class KeptAnalysis:
 
 @dataclass(frozen=True, slots=True)
 class JudgedPages:
-    """Some of a document's pages judged: one worker's share of its analysis, not kept yet."""
-
-    spans: bytes = field(repr=False)  # list[SpanInfo] of the spans on its pages, as JSON
-    # Each font first met on its pages, by the first span in it there, in index order.
+    spans: bytes = field(repr=False)
     fonts: list[FontFacts] = field(repr=False)
-    lines: list[LineInfo] = field(repr=False)  # each of more than one span on its pages
-    # Its pages' rooms and lines, worked out here; None when the document's were kept already.
+    lines: list[LineInfo] = field(repr=False)
     free_space: FreeSpace | None = field(repr=False)
-    signed: bool  # whether the document holds a signature: every share says it alike
-    attached: str  # the set of the user's copies it was judged with (`AttachedFiles.key`)
+    signed: bool
+    attached: str
 
 
 class FitRules(TypedDict):

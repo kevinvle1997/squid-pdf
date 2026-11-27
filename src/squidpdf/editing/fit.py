@@ -127,8 +127,7 @@ def run_key(span_id: str, start: int | None) -> str:
 class RunFitted:
     """One run of a line's edit as it's drawn: its words, where it starts, in what plan.
 
-    `report` is the line's fit with this run's own letters and face. `x` is where it starts
-    once the runs before it are drawn. Cut by a split, `span` is only the part it covers.
+    `report` is the line's fit, but with this run's own letters and face.
     """
 
     key: str  # `run_key`: what the reply keeps its fit by
@@ -157,8 +156,7 @@ class LineFitted:
 class LineRedraw:
     """What one line's edits erase and draw back, whatever splits are among them.
 
-    `erased` are the line's spans with a part changed or moved, as the document has them;
-    `drawn` every part of them, edited or not; `put_back` plans each as it was, by id.
+    `drawn` holds every part of the erased spans, edited or not.
     """
 
     erased: list[Span]
@@ -248,9 +246,7 @@ def options_for(
 ) -> list[Option]:
     """The three ways out of an overflow, in the order worth trying.
 
-    Condensing is offered only while it stays invisible, and shrinking only down
-    to the floor. Past that it is not a solution, it is a different-looking page.
-    Each ends the line where the original did.
+    Past the condense and shrink floors it is no fix but a different-looking page.
     """
     # No width to compare against: the ratios below divide by it.
     past = runs_past(delta_pt, room_pt, tolerance_pt=tolerance_pt)
@@ -362,8 +358,7 @@ def line_fit(
 ) -> LineFitted:
     """What a line's runs come to typed as `texts`, fitted by the runs that change.
 
-    `room_pt` is the line's own (`Line`), unless the edit ends at a split before `next_x`.
-    As is, the runs after a change move along; a way out scales only the changed runs.
+    The room ends at a split before `next_x`; a way out scales only the changed runs.
     """
     own = [engine.fit.plan_for(span, span.text) for span in spans]
     plans = [

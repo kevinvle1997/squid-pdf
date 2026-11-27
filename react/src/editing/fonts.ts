@@ -53,7 +53,6 @@ export function drawnByOf({ attached, font }: FontCopies, sentences: Sentences):
 
 function copiesOf(layout: Layout, fontName: string): string[] {
   const shown = shownNameOf(layout, fontName);
-  // Two fonts can share a name, and a copy goes in by the name: once is for both.
   const copies = [...layout.fonts.values()].filter((font) => font.shown_name === shown).map((font) => font.name);
   return [...new Set(copies)];
 }
@@ -63,7 +62,6 @@ export async function attachFont(editor: Editor, fontName: string, file: Blob): 
   editor.store.set({ attaching: fontName });
   const { layout } = editor.store.get();
   const copies = copiesOf(layout, fontName);
-  // Read for the preview while the server checks it, so the preview draws in it as the server takes it.
   const preview = Promise.all(copies.map((name) => addOwnFace(name, file)));
   try {
     let doc = editor.store.get().doc;
@@ -102,7 +100,6 @@ export async function detachFont(editor: Editor, fontName: string): Promise<void
   const copies = copiesOf(layout, fontName).filter((name) => editor.attached.has(name));
   let doc = editor.store.get().doc;
   for (const name of copies) {
-    // Forgotten first, so a document opened again meanwhile doesn't get it back; refused, it's kept.
     const file = editor.attached.get(name);
     editor.attached.delete(name);
     try {
@@ -140,13 +137,8 @@ export function fontFocused(editor: Editor): void {
   editor.store.set({ focusFont: null });
 }
 
-/**
- * The font the field offers the user's copy of: one a letter typed in it is drawn by no copy of, in a line the first
- * such run's. None otherwise.
- */
 export function copyOfferedFor(state: EditorState): string | null {
   const typing = draftSpanOf(state);
-  // A form field draws it, not the page: no copy helps.
   if (typing === undefined || typing.span.form_field) return null;
   const { draft, span, font } = typing;
   const line = draft.runs === null ? undefined : state.layout.lines.get(draft.spanId);
@@ -155,7 +147,6 @@ export function copyOfferedFor(state: EditorState): string | null {
   ];
   const lacking = runs.find(({ run, text }) => {
     const runFont = run === span ? font : fontOf(state.layout.fonts, run);
-    // The user's copy is in already: another can't help.
     return runFont !== undefined && !runFont.attached && missingIn(text, runFont.glyphs).length > 0;
   });
   return lacking?.run.font ?? null;

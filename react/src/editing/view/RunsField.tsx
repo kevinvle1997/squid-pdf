@@ -45,11 +45,6 @@ const AS_SET = { size: 1, scaleX: 1 };
 // Plain text alone where the browser can hold an editable box to it; elsewhere a paste's markup is refused by hand.
 const EDITABLE = takesPlainTextOnly() ? "plaintext-only" : "true";
 
-/**
- * Typing in place into a line of several runs: each run in the face and size that will draw it, the words typed going
- * into the run they're typed in. The browser makes no change itself: each goes through the line's runs, and the
- * caret is put back after it. It stands where the line's mark stood, so Tab goes on to the next line unaided.
- */
 export function RunsField({ line, info }: { line: Line; info: PageInfo }) {
   const editor = useEditor();
   const runs = useEditorState((state) => spanDraftOf(state)?.runs ?? NO_RUNS);
@@ -69,14 +64,12 @@ export function RunsField({ line, info }: { line: Line; info: PageInfo }) {
     ...(fit === undefined ? AS_SET : setAs(way, fit)),
     offered: fit ? waysOffered(fit) : [],
   };
-  // Left long, a line past its room shows where the room ends: what to shorten it to.
   const pastRoom = fit !== undefined && way === "as-is" && runsPast(fit.deltaPt, fit.roomPt, rules);
   const faces = line.spans.map((span, index) => {
     const font = fontOf(fonts, span);
     return font === undefined ? DEFAULT_FACE : previewFaceOf(span, { font, text: runs[index] ?? "" });
   });
   const facesNeeded = faces.join("\n");
-  // A letter a look-alike lacks sends its run to the broadest face, put on the page only once one does.
   useEffect(() => addFaces(facesNeeded.split("\n")), [facesNeeded]);
   const { trouble, fidelity, why, substitute, sameWidths } = useEditorState((state) => {
     const { sentences, verdict } = troublesIn(state, spanDraftOf(state)?.runs ?? NO_RUNS);
@@ -94,32 +87,26 @@ export function RunsField({ line, info }: { line: Line; info: PageInfo }) {
     const { note, fonts: warnedFonts } = lineNoteOf(state, spanDraftOf(state)?.runs ?? NO_RUNS);
     return { sentence: note?.sentence ?? null, why: note?.why ?? null, fonts: warnedFonts.join("\n") };
   }, shallowEqual);
-  // A date or an amount in one of the runs: the one held, else under the press that opened the field, else the first.
   const press = useEditorState((state) => spanDraftOf(state)?.press ?? null);
   const dates = useEditorState((state) => state.dates);
   const held = useEditorState((state) => spanDraftOf(state)?.value ?? null);
-  // None with some of its words redacted: any change to its words asks first, which typing does.
   const redacted = useEditorState((state) =>
     line.spans.some(({ id }) => state.reading.spans.get(id)?.redacted != null),
   );
   const at = press === null ? undefined : selectionAcross(measuresOf(), press)[0];
   const value = redacted ? undefined : lineValueIn(runs, { dates, at, held });
-  // Sent back from the value's editor in the slip, the field takes focus again, its selection as it was.
   const refocus = useEditorState((state) => {
     const { focusTo } = state;
     return focusTo !== null && "spanId" in focusTo && focusTo.spanId === line.id ? focusTo : null;
   });
   const selected = useRef<readonly [number, number]>([0, 0]);
-  // What an input method's words go in over, for their undo to select again.
   const composedOver = useRef<readonly [number, number]>([0, 0]);
-  // Counts the times the field was drawn afresh, its runs' elements having been taken out from under it.
   const [drawing, setDrawing] = useState(0);
   const field = useRef<HTMLDivElement>(null);
   const chip = useRef<HTMLDivElement>(null);
   const placed = useRef(false);
   const slipLayer = useContext(SlipLayerContext);
   const [scale, setScale] = useState(1);
-  // The size the runs are set against: the line's first run's.
   const basePt = line.spans[0]?.size ?? 1;
   const leave = useLeaveTyping();
 
@@ -136,7 +123,6 @@ export function RunsField({ line, info }: { line: Line; info: PageInfo }) {
     [editor],
   );
 
-  // A font file dropped on a run is the user's copy of that run's font.
   const { dropProps } = useDrop({
     ref: field,
     onDrop: (event) => {
@@ -146,21 +132,16 @@ export function RunsField({ line, info }: { line: Line; info: PageInfo }) {
       if (font !== undefined) void attachDropped(editor, font, dropped);
     },
   });
-  // Text dragged here is the field's own to take, as typing is: useDrop would swallow it.
   const filesOnly = (handler?: DragEventHandler<HTMLDivElement>) => (event: DragEvent<HTMLDivElement>) => {
     if (carriesFiles(event.dataTransfer)) handler?.(event);
   };
 
-  // Each change the browser would make goes through the line's runs instead, and the caret goes where it ends.
   const beforeInput = useCallback(
     (event: InputEvent) => {
       const target = event.currentTarget;
-      // An input method's words go in as it composes them, read back once it ends.
       if (!(target instanceof HTMLElement) || event.inputType === "insertCompositionText") return;
       event.preventDefault();
-      // One line: a break is nothing here, and Enter keeps the edit (`fieldKeyDown`).
       if (event.inputType === "insertParagraph" || event.inputType === "insertLineBreak") return;
-      // Undo or redo from the browser's menu: the field's own, as its keys are (`typingStepOf`).
       if (event.inputType === "historyUndo" || event.inputType === "historyRedo") {
         stepField(target, event.inputType === "historyUndo" ? "undo" : "redo");
         return;
@@ -181,15 +162,12 @@ export function RunsField({ line, info }: { line: Line; info: PageInfo }) {
     [editor, stepField],
   );
 
-  // The field as it's drawn: it hears every change before the browser makes it, and takes focus at once.
   const watch = useCallback(
     (element: HTMLDivElement | null) => {
       field.current = element;
       if (element === null) return;
       element.addEventListener("beforeinput", beforeInput);
-      // Focus on its first drawing, and again when sent back from the slip, then with the selection it had.
       if (refocus === null && !placed.current) element.focus();
-      // Sent back while it has focus already, no focus event comes to take it, so it's taken here.
       if (refocus !== null && element === document.activeElement) focusMoved(editor);
       if (refocus !== null && element !== document.activeElement) {
         element.focus();
@@ -210,7 +188,6 @@ export function RunsField({ line, info }: { line: Line; info: PageInfo }) {
     [beforeInput, basePt, info.width, refocus, editor],
   );
 
-  // Once, as the field takes focus: what the press that opened it selects, or everything from the keyboard.
   function place(event: FocusEvent<HTMLDivElement>) {
     if (editor.store.get().focusTo !== null) focusMoved(editor);
     if (placed.current) return;
@@ -224,7 +201,6 @@ export function RunsField({ line, info }: { line: Line; info: PageInfo }) {
     fieldFocused(editor);
   }
 
-  // Each run where its span starts on the line, set as it reads as the field opens, for a press to find its caret in.
   function measuresOf() {
     const [first] = line.spans;
     return line.spans.flatMap((span) => {
@@ -235,7 +211,6 @@ export function RunsField({ line, info }: { line: Line; info: PageInfo }) {
     });
   }
 
-  // An input method's words, once it's done: read back from the runs it typed into.
   function composed(words: string) {
     const element = field.current;
     const before = spanDraftOf(editor.store.get())?.runs;
@@ -247,7 +222,6 @@ export function RunsField({ line, info }: { line: Line; info: PageInfo }) {
       if (caret !== null) selectIn(element, caret, caret);
       return;
     }
-    // Its runs gone, there's nothing to read back: the words go in as typed ones do, and the field is drawn afresh.
     const [start, end] = composedOver.current;
     const caret = start + words.length;
     flushSync(() => {
@@ -260,7 +234,6 @@ export function RunsField({ line, info }: { line: Line; info: PageInfo }) {
 
   const ring = value === undefined ? undefined : ringOf(value);
 
-  /** Where `value` sits on the page, in the run it lies in, as the field sets that run. */
   function ringOf(shown: EditableValue) {
     const index = runExtents(runs).findIndex(({ start, end }) => start <= shown.start && shown.end <= end);
     const drawnAs = lineDrawnAs(line, { texts: runs, fonts, asked, rules })?.[index];
@@ -293,14 +266,12 @@ export function RunsField({ line, info }: { line: Line; info: PageInfo }) {
         spellCheck={false}
         autoCorrect="off"
         autoCapitalize="off"
-        // A key pressed over words selected here may redact them (`selectedIn`).
         data-span-field=""
         className={trouble !== "" ? styles.troubleField : styles.field}
         onFocus={place}
         onKeyDown={(event) => {
           const step = typingStepOf(event);
           if (step === null) {
-            // Alt+Down opens the value in the run the caret is in.
             const caret = selectionIn(event.currentTarget)?.[0] ?? 0;
             const caretValue = event.altKey ? caretRunValueIn(runs, { dates, caret }) : value;
             fieldKeyDown(editor, event, { value: redacted ? undefined : caretValue });
@@ -313,14 +284,12 @@ export function RunsField({ line, info }: { line: Line; info: PageInfo }) {
           composedOver.current = selectionIn(event.currentTarget) ?? composedOver.current;
         }}
         onCompositionEnd={(event) => composed(event.data)}
-        // Only leaving the field ends the typing: the slip goes on with it.
         onBlur={(event) => {
           selected.current = selectionIn(event.currentTarget) ?? selected.current;
           const to = event.relatedTarget;
           if (to instanceof Node && chip.current?.contains(to)) return;
           leave(event);
         }}
-        // Its sizes by CSS variables, which a touch screen's stylesheet sets it from (RunsField.module.css).
         style={{
           left: box.left,
           top: box.top,
@@ -336,7 +305,6 @@ export function RunsField({ line, info }: { line: Line; info: PageInfo }) {
           const changed = text !== span.text;
           return (
             <span
-              // By its place in the line: a run's span never moves.
               key={span.id}
               data-run={index}
               style={runTextStyle(span, {
@@ -359,10 +327,7 @@ export function RunsField({ line, info }: { line: Line; info: PageInfo }) {
           style={boxOf({ ...line.bbox, x0: line.bbox.x1 + line.roomPt, x1: line.bbox.x1 + line.roomPt }, info)}
         />
       )}
-      {ring !== undefined && (
-        // The part the value's editor rewrites, ringed as Find rings the place it went to.
-        <span className={styles.valueRing} aria-hidden="true" style={boxOf(ring, info)} />
-      )}
+      {ring !== undefined && <span className={styles.valueRing} aria-hidden="true" style={boxOf(ring, info)} />}
       {slipLayer !== null &&
         line.spans[0] !== undefined &&
         createPortal(

@@ -38,7 +38,6 @@ export function wordsSelected(text: string, [start, end]: Selected): CodePoints 
   return wordsAround(text, [[...text.slice(0, start)].length, [...text.slice(0, end)].length]);
 }
 
-/** Whether `span`'s field, or its line's, reads as the page does, so a selection in it names the page's own words. */
 function fieldReadsAsPage(state: EditorState, span: SpanInfo): boolean {
   const draft = spanDraftOf(state);
   const spans = state.layout.lines.get(span.id)?.spans ?? [span];
@@ -46,7 +45,6 @@ function fieldReadsAsPage(state: EditorState, span: SpanInfo): boolean {
   return draft?.spanId === span.id && draft.text === wordsOf(spans) && asPage;
 }
 
-/** The words `spans` read on the page, as one. */
 function wordsOf(spans: readonly SpanInfo[]): string {
   return spans.map((span) => span.text).join("");
 }
@@ -58,10 +56,6 @@ export function takesSelection(state: EditorState, selected: Selected): boolean 
   return span !== undefined && fieldReadsAsPage(state, span) && wordsSelected(words, selected) !== null;
 }
 
-/**
- * A redaction of `words` of `line`, by code point of its words read as one: one per span they reach, its own words
- * there without the spaces at their ends, of all of a span where they take all of its words; of every span with none.
- */
 export function lineRedactsOf(line: Line, words: CodePoints | null): Redact[] {
   let spanStart = 0;
   return line.spans.flatMap((span): Redact[] => {
@@ -126,10 +120,6 @@ export function redact(
   );
 }
 
-/**
- * Redact `line`, typed in or not: the words `selected` in its field, widened to whole words, while it reads as the
- * page does, a redaction for each span they reach; else all of it. Words typed there go.
- */
 function redactLine(editor: Editor, line: Line, { selected }: { selected: Selected | null }): void {
   const state = editor.store.get();
   const { reading, doc } = state;
@@ -142,7 +132,6 @@ function redactLine(editor: Editor, line: Line, { selected }: { selected: Select
   change(
     editor,
     { kind: "add", edits },
-    // Typing into it ends unkept: redaction wins.
     {
       draft: null,
       announcement: announcing(fill(doc.sentences.redacted, { text: quoted.trim() })),
@@ -152,12 +141,11 @@ function redactLine(editor: Editor, line: Line, { selected }: { selected: Select
   );
 }
 
-/** Whether `range` lies inside one of `ranges`. */
 function within(range: RedactedRange, ranges: readonly RedactedRange[]): boolean {
   return ranges.some(({ start, end }) => start <= range.start && range.end <= end);
 }
 
-/** Until the reply has a range, by the letters' widths across a level line; all of a turned one: more covered, never less. */
+/** Until the reply has a range, by the letters' widths; all of a turned span: more covered, never less. */
 export function redactedBoxes(
   span: SpanInfo,
   {
@@ -197,7 +185,6 @@ export function editAnyway(editor: Editor): void {
   const span = unredacting === null ? undefined : layout.spans.get(unredacting.spanId);
   if (unredacting === null || span === undefined) return;
   readDocumentDates(editor);
-  // A line's redactions go with it, each of its spans'.
   const line = layout.lines.get(span.id);
   // A redaction is the span's, whichever part of it asked.
   const redacted = new Set((line?.spans ?? [span]).map(({ id }) => spanIdOf(id)));

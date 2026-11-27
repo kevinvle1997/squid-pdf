@@ -29,17 +29,15 @@ interface Props {
   span: SpanInfo;
   fieldEndPt: number;
   info: PageInfo;
-  trouble: string; // what won't come out as typed, a line each; empty when it fits
-  verdict: Verdict; // what an edit of what's typed comes to, and in what face
-  setting: Setting; // how the line is drawn, and the ways out to choose from
-  value: EditableValue | undefined; // a date or an amount in what's typed, which has an editor of its own
-  field: RefObject<HTMLElement | null>; // the field typed into, which the value's editor sends focus back to
-  chip: RefObject<HTMLDivElement | null>; // this slip, for the field to tell focus moving into it from leaving
-  // A line's: what its runs redrawn warn of, each font once, and those fonts by name, which muting mutes together.
+  trouble: string;
+  verdict: Verdict;
+  setting: Setting;
+  value: EditableValue | undefined;
+  field: RefObject<HTMLElement | null>;
+  chip: RefObject<HTMLDivElement | null>;
   lineNote?: { note: Note | null; fonts: readonly string[] };
 }
 
-/** The slip under the span typed into. */
 export function Chip({ span, fieldEndPt, info, trouble, verdict, setting, value, field, chip, lineNote }: Props) {
   const editor = useEditor();
   const font = useEditorState((state) => fontOf(state.layout.fonts, span));
@@ -116,7 +114,6 @@ export function Chip({ span, fieldEndPt, info, trouble, verdict, setting, value,
       )}
       <span className={styles.actions}>
         {offered !== null && (
-          // A pointer's shortcut to the Fonts list, the keyboard's way: focus stays in the field.
           <span className={styles.offer}>
             Have this font?
             <FileTrigger

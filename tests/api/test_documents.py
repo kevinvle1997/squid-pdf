@@ -59,32 +59,26 @@ def _stored_then_named() -> bytes:
 
 
 def _dense_contract(folder: Path) -> bytes:
-    """Three full pages of a contract: many spans a page, in fonts the file only names."""
     path = folder / "contract.pdf"
     write_dense(str(path), pages=3)
     return path.read_bytes()
 
 
 def _two_copies_of_one_font(_folder: Path) -> bytes:
-    """`_stored_then_named`: a font's own copy on its first page, only its name on the next."""
     return _stored_then_named()
 
 
 @dataclass(slots=True)
 class _CountingPool:
-    """The app's pool, counting the jobs it's sent."""
-
     pool: Workers
     sent: int = 0
 
     async def run[T](self, timeout: float, task: Callable[[], T]) -> T:
-        """`task` on the app's pool, counted."""
         self.sent += 1
         return await self.pool.run(timeout, task)
 
 
 def _as_any_upload_says(doc: dict) -> dict:
-    """An upload's reply less what names this upload: its id, and when it expires."""
     return {key: value for key, value in doc.items() if key not in ("id", "expires_at")}
 
 
@@ -94,10 +88,6 @@ def _as_any_upload_says(doc: dict) -> dict:
 def test_an_upload_judged_a_share_of_its_pages_a_worker_says_what_one_worker_would(
     app, mine, monkeypatch, tmp_path, pdf
 ):
-    """Its index built once, then its pages judged a share a worker, all at once.
-
-    Short, as these are, it's judged on the worker that indexed it: one job.
-    """
     body = pdf(tmp_path)
     counting = _CountingPool(app.state.pool)
     monkeypatch.setattr(app.state, "pool", counting)
@@ -146,7 +136,6 @@ def test_a_signed_upload_says_as_it_opens_that_a_change_breaks_its_signature(min
 
 
 def _no_field_signed(kept: dict[str, str]) -> bytes:
-    """DSS can outlive the signatures it checked, and Perms can name none."""
     doc = pymupdf.open(stream=with_hidden_copies([]))
     for key, value in kept.items():
         doc.xref_set_key(doc.pdf_catalog(), key, value)
@@ -210,7 +199,6 @@ def test_a_page_is_a_png_the_browser_keeps_for_an_hour(mine, doc):
     old = mine.get(f"/api/documents/{doc['id']}/pages/0", params=params)
     assert_equal(old.headers["cache-control"], "no-store", "caching under an old build")
 
-    # A page it doesn't have is its own problem: "not found" would make the browser re-upload.
     params = {"scale": 2, "build": doc["build"]}
     assert_problem(
         mine.get(f"/api/documents/{doc['id']}/pages/9", params=params), "no_such_page", 422
@@ -276,7 +264,6 @@ _PAGE = "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>"
 
 
 _HELVETICA = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"
-# A Type3 font with no /Name whose letters, H and i, are squares: nothing reads their shapes.
 _SQUARES = (
     "<< /Type /Font /Subtype /Type3 /FontBBox [0 0 500 700] /FontMatrix [0.001 0 0 0.001 0 0]"
     " /CharProcs << /H 5 0 R /i 5 0 R >> /Encoding << /Differences [72 /H 105 /i] >>"
@@ -286,7 +273,6 @@ _SQUARE = "500 0 0 0 400 600 d1 0 0 400 600 re f"
 
 
 def _in_place(fonts: dict[str, str], drawn: str) -> bytes:
-    """Object 5 is the square a Type3 font's letters draw, and 6 a Helvetica object."""
     named = " ".join(f"/{resource} {font}" for resource, font in fonts.items())
     page = (
         "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R"
@@ -313,7 +299,6 @@ def test_a_font_written_in_place_not_as_an_object_goes_by_its_name(mine):
 
 
 def _in_a_comment(font: str, drawn: str) -> bytes:
-    """Object 4 is the comment, 5 the square a Type3 font's letters draw, 6 its drawing."""
     page = "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Annots [4 0 R] >>"
     pages = "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"
     comment = "<< /Type /Annot /Subtype /Square /Rect [72 500 172 520] /AP << /N 6 0 R >> >>"
@@ -447,7 +432,6 @@ def test_an_upload_is_refused_while_the_disk_is_nearly_full(mine, pdf_bytes, mon
 
 
 async def _uploads_at_once(app: FastAPI, pdf_bytes: bytes, *, count: int) -> list[int]:
-    """On the server's own loop, since a TestClient sends each file whole before the next."""
     go_on = asyncio.Event()
 
     async def slow_file(asked_for_more: asyncio.Event) -> AsyncIterator[bytes]:
@@ -482,7 +466,6 @@ def test_uploads_under_way_count_against_the_free_disk_floor(
     app, server: TestClient, pdf_bytes, monkeypatch
 ):
     disk = shutil.disk_usage(store.root())
-    # Ten whole-disk files fit, not eleven; half a disk either way for other tests' writes.
     monkeypatch.setattr(constants, "MAX_FILE_BYTES", disk.total)
     monkeypatch.setattr(
         constants, "MIN_FREE_BYTES", disk.free - 10 * disk.total - disk.total // 2
@@ -606,7 +589,6 @@ def _touch_then_lose(folder: Path, *, deleted: str) -> float:
 def test_a_document_deleted_while_its_request_runs_is_not_found(
     app, mine, doc, monkeypatch, path, deleted
 ):
-    # A module function: the store crosses to the workers with the request's job.
     losing = StoreWith(touches=partial(_touch_then_lose, deleted=deleted))
     monkeypatch.setattr(app.state, "documents", losing)
     assert_problem(mine.get(f"/api/documents/{doc['id']}{path}"), "not_found", 404)
@@ -778,8 +760,6 @@ def test_a_deploy_that_retires_the_analysis_works_it_out_again_over_its_index(
 
 
 class _NoWorkerAsked:
-    """Fails the test if asked: a busy pool would answer too_slow instead."""
-
     async def run[T](self, _timeout: float, _task: Callable[[], T]) -> T:
         pytest.fail("a worker was asked about a document already gone")
 

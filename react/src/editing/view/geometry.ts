@@ -312,7 +312,6 @@ export function fieldScaleOf(
   sizePt: number,
   { pageWidthPt, shownPx, fontPx }: { pageWidthPt: number; shownPx: number; fontPx: number },
 ): number {
-  // Not laid out yet: a scale of nothing would hide the field.
   if (fontPx <= 0 || pageWidthPt <= 0 || shownPx <= 0) return 1;
   return ((sizePt / pageWidthPt) * shownPx) / fontPx;
 }
@@ -331,7 +330,6 @@ export function spanTextStyle(span: SpanInfo, page: PageInfo, face: string): CSS
     fontSize: points(span.size, page),
     fontFamily: familyOf(face),
     color: rgbOf(span.color),
-    // In ems of its size, so a way out that sets it smaller spaces it closer, as the server does.
     letterSpacing: span.letter_spacing_em === 0 ? undefined : `${span.letter_spacing_em}em`,
   };
 }
@@ -350,16 +348,10 @@ export function previewStyleOf(
     ...spanTextStyle(span, page, face),
     ...setAsStyle(span, page, scale),
     minWidth: boxOf(span.bbox, page).width,
-    // A length, not the box's share of the page: CSS reads a line height in percent against the font size.
     lineHeight: points(span.bbox.y1 - span.bbox.y0, page),
   };
 }
 
-/**
- * A run of a line set as its span is, inline after the run before, the page's own gap between them kept: in `face`,
- * and set at `scale` when the edit changed it, as the server scales only the runs changed. Every length is in ems of
- * the field's size, `basePt` as the page shows it, so the field can be set at 16 px and scaled as one.
- */
 export function runTextStyle(
   span: SpanInfo,
   { face, text, gapPt, scale, basePt }: { face: string; text: string; gapPt: number; scale: LineScale; basePt: number },
@@ -374,13 +366,11 @@ export function runTextStyle(
     marginInlineStart: inEms(gapPt),
   };
   if (scale.scaleX === 1) return set;
-  // Narrowed from its start, as the server narrows it, and the runs after it close up by what it gave.
   const widthPt = shownWidthPt(text, face, sizePt) + letterSpacingPt({ ...span, size: sizePt }, text);
   const narrowed = { display: "inline-block", transform: `scaleX(${scale.scaleX})`, transformOrigin: "0 0" };
   return { ...set, ...narrowed, marginInlineEnd: inEms(-widthPt * (1 - scale.scaleX)) };
 }
 
-// One canvas measures every field's text: it draws nothing, so it never joins the page.
 let ruler: CanvasRenderingContext2D | null | undefined;
 
 function shownWidthPt(text: string, face: string, sizePt: number): number {

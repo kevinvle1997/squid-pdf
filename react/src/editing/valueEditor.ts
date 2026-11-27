@@ -60,7 +60,6 @@ function writeValue(
   });
 }
 
-/** A line's draft reading `text`, `value` written over in the run it lies in, which keeps its style. */
 function writtenInRun(
   state: EditorState & { draft: SpanDraft },
   value: EditableValue,
@@ -72,19 +71,12 @@ function writtenInRun(
     return holds ? text.slice(start, end + longer) : (runs[index] ?? "");
   });
   const next = typedRunsState(state, written);
-  // Undone in the field as its typing is.
   const before = { runs, selected: [value.start, value.end] as const };
   const caretAfter = value.end + longer;
   const fieldHistory = recorded(state.draft.fieldHistory, { before, typed: "", caretAfter });
   return { ...next, draft: { ...next.draft, fieldHistory } };
 }
 
-/**
- * The days of `month` whose date, written into `text` in place of `value`, would trouble the line, each with
- * what choosing it adds in the server's words (`troublesAddedOf`): the same check typing makes, its letters set
- * against the line without the date and its length against the line as it stands, so trouble elsewhere in it, a
- * letter typed, an email broken or words that run it past its room, marks no day, least of all the one chosen.
- */
 export function markedDays(
   state: EditorState,
   { value, text, year, month }: { value: DateValue; text: string; year: number; month: number },
@@ -144,10 +136,6 @@ function dateCheckOf(
   };
 }
 
-/**
- * How the draft fits reading a variation of `text` that differs only at `value`: a span's by its own fit, a line's
- * with the run `value` lies in reading what changed there, by the line's; and that run's span and font.
- */
 function valueFitsOf(
   state: EditorState,
   { typing, value, text }: { typing: NonNullable<ReturnType<typeof draftSpanOf>>; value: DateValue; text: string },
@@ -175,7 +163,6 @@ function valueFitsOf(
   return { fitReading, span: run, font: runFont };
 }
 
-/** The marked day whose reason shows, once `day`'s is shown or hidden: one at a time. */
 export function shownDayAfter(was: number | null, { day, isShown }: { day: number; isShown: boolean }): number | null {
   if (isShown) return day;
   return was === day ? null : was;

@@ -303,10 +303,6 @@ export function halfWideGlyphs(letters: string): Record<string, number> {
   return Object.fromEntries([...letters].map((letter) => [letter, 500]));
 }
 
-/**
- * A sentence in three runs, the middle one bold, one line (`Document.lines`), every letter half the size wide: at
- * 10 pt, "Text is grouped into " is 105 pt from 72, "spans" 25 pt, " (one style)" 60 pt, and the line has 20 pt more.
- */
 export function aBoldSentence(): Pick<Document, "spans" | "lines" | "fonts"> {
   const glyphs = halfWideGlyphs("abcdefghijklmnopqrstuvwxyzT() ");
   const run = (id: string, { text, font, x0 }: { text: string; font: string; x0: number }) =>
@@ -321,7 +317,6 @@ export function aBoldSentence(): Pick<Document, "spans" | "lines" | "fonts"> {
   return { spans, lines, fonts: [aFont("Times-Roman", { glyphs }), bold] };
 }
 
-/** An edit that replaces a span's words. */
 export function aReplace(spanId: string, text = "now", fields: Partial<Replace> = {}): Replace {
   return { kind: "replace", span_id: spanId, text, ...fields };
 }

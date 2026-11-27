@@ -1,5 +1,3 @@
-// Find and replace, all in the browser: the spans that read the words, how many a change won't keep
-// looking like the text around them (Rule 1), and Change all, one step in the history.
 import type { FitInfo, FitRules, Replace, ReplaceRuns, Sentences, SpanInfo, Strategy } from "../api/types";
 import { FIND_DELAY_MS } from "./constants";
 import {
@@ -83,13 +81,11 @@ function foundIn(
   return found;
 }
 
-/** The words an edit being typed gives `spanId`, one of its spans. */
 function typedTextOf(typed: Replace | ReplaceRuns, spanId: string): string | undefined {
   if (typed.kind === "replace") return typed.text;
   return typed.runs.find((run) => partKey(run.span_id, run.start ?? 0) === spanId)?.text;
 }
 
-/** The places found as Change all would change them: in the words being typed on the page, as typing keeps them. */
 function foundNow(state: EditorState): Found[] {
   return foundIn(state.layout.ordered, { reading: state.reading, find: state.find, typed: keptEditOf(state) });
 }
@@ -147,7 +143,6 @@ export function matchesAcross(
   }: { text: string; matches: readonly Match[]; glyphs: Record<string, number> | undefined; widePt: number },
 ): { x0: number; x1: number }[] {
   const whole = glyphs === undefined ? 0 : lineWidthPt(span, text, glyphs);
-  // Measured where the font has widths; else by letter count, the best guess without them.
   const share = (index: number) =>
     glyphs !== undefined && whole > 0
       ? lineWidthPt(span, text.slice(0, index), glyphs) / whole
@@ -161,7 +156,6 @@ export function tintsOn(
   matches: ReadonlyMap<string, readonly Match[]>,
 ): { span: SpanInfo; x0: number; x1: number }[] {
   const readings = new Map(page.edits?.spans.map((reading) => [reading.span.id, reading]));
-  // Drawn by the browser until the server's render has these words: its fit is for words it drew before.
   const previewed = new Set(differing(page.edits, page.drawnFrom).map(({ span }) => span.id));
   return page.spans.flatMap((span) => {
     const inSpan = matches.get(span.id);
@@ -179,7 +173,6 @@ export function tintsOn(
   });
 }
 
-/** Where a line's edit draws `span`, one of its runs: none for a span no line edit reads. */
 function runDrawnAt(
   page: Pick<PageState, "fonts" | "rules" | "layout">,
   { span, readings }: { span: SpanInfo; readings: ReadonlyMap<string, SpanReading> },
@@ -380,10 +373,6 @@ function searched(state: EditorState, asked: Partial<FindOptions> = {}): Counted
   return { find: { ...find, announcedCount: heard }, heard };
 }
 
-/**
- * Change all's edits, giving each span in `replaced` its words: one replace a span, but a line already edited as one
- * is edited as one again, since a replace of one of its spans would put the rest of its edit back.
- */
 function changeAllEditsOf(
   layout: Pick<Layout, "lines">,
   { reading, replaced }: { reading: Reading; replaced: ReadonlyMap<string, string> },
@@ -394,7 +383,6 @@ function changeAllEditsOf(
     if (line === undefined || reading.spans.get(spanId)?.lineEdit === undefined) {
       return [{ kind: "replace", span_id: spanId, text }];
     }
-    // Its first span changed has made the whole line's edit.
     if (done.has(line.id)) return [];
     done.add(line.id);
     const runs = line.spans.map((span) => ({
@@ -405,7 +393,6 @@ function changeAllEditsOf(
   });
 }
 
-/** Change every place found, as one step in the history. Words being typed on the page are kept first, as their own. */
 export function changeAll(editor: Editor): void {
   const state = editor.store.get();
   const { typed, ended } = typingEnd(state, true);
@@ -424,8 +411,6 @@ export function changeAll(editor: Editor): void {
   const replaced = new Map(
     changing.map(({ span, text, matches }) => [span.id, replacedIn(text, matches, find.replacement)]),
   );
-  // What changed is heard last, not a count: the next count is heard, whatever it says. The typed words are kept
-  // first, so a line edit among them is the one Change all's own words go into.
   const after = historyReducer(state.history, typed);
   const kept = readingOf(state.doc, { base: unsplitOf(state.layout), entries: entriesOf(after) }, state);
   const edits = changeAllEditsOf(kept.layout, { reading: kept.reading, replaced }).map((each) =>

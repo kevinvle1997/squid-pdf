@@ -1,4 +1,4 @@
-// Mirrors editing/fit.py; where the two can't agree (a missing letter switches the font), the server's fit lands with the render and wins.
+// Mirrors editing/fit.py; where they can't agree (a missing letter switches the font), the server's fit wins.
 import type { FitRules, FontInfo, Sentences, SpanInfo, Strategy } from "../api/types";
 import { MISSING_SPACE_EM } from "./constants";
 import type { Drawing } from "./substitutes";
@@ -99,14 +99,12 @@ export function fitOf(span: SpanInfo, { font, text, rules }: { font: FontInfo; t
   };
 }
 
-/** A run of a line as typed: its span, the font that sets it, and the words it reads. */
 export interface TypedRun {
   readonly span: SpanInfo;
   readonly font: FontInfo;
   readonly text: string;
 }
 
-/** One run of a line, measured: where the page starts it, its own words' width, and the typed words'. */
 export interface RunWidths {
   readonly x: number;
   readonly originalPt: number;
@@ -114,22 +112,13 @@ export interface RunWidths {
   readonly changed: boolean;
 }
 
-/**
- * A line's runs fitted by those that change: the line's fit, the way out drawn, how wide the changed runs are drawn
- * as a share of their typed width, and where each run starts.
- */
 export interface RunsLaidOut {
-  readonly fit: Fit; // the line's, no one run's letters
+  readonly fit: Fit;
   readonly way: Strategy;
   readonly scale: number;
   readonly starts: readonly number[];
 }
 
-/**
- * A line's runs as typed, fitted in its room by those that change, and set along it: `runs_laid_out` in
- * editing/fit.py, held to `line_cases` in tests/editing/fit_cases.json. A way out scales only the changed runs, to
- * where they ended, so nothing after them moves; as typed, the runs after a change move with it.
- */
 export function runsLaidOut(
   runs: readonly RunWidths[],
   { roomPt, asked, rules }: { roomPt: number; asked: Strategy | undefined; rules: FitRules },
@@ -139,13 +128,11 @@ export function runsLaidOut(
   const deltaPt = sumOf(changed.map((run) => run.typedPt)) - originalPt;
   const options = optionsFor(deltaPt, { originalPt, roomPt, rules });
   const way = wayDrawn(asked, { options });
-  // A way out is offered only past the room, so the changed runs have some width then.
   const scale = way === "as-is" ? 1 : originalPt / (originalPt + deltaPt);
   const fit = { originalPt, deltaPt: Math.round(deltaPt * 100) / 100, roomPt, missing: [], options };
   return { fit, way, scale, starts: runStartsOf(runs, scale) };
 }
 
-/** Where each run starts once those before it are drawn, changed ones `scale` wide, each gap the page left kept. */
 function runStartsOf(runs: readonly RunWidths[], scale: number): number[] {
   const starts: number[] = [];
   let nextPt = runs[0]?.x ?? 0;
@@ -158,14 +145,12 @@ function runStartsOf(runs: readonly RunWidths[], scale: number): number[] {
   return starts;
 }
 
-/** A run of a line as typed: its span, the font that sets it, and the words it reads. */
 export interface TypedRun {
   readonly span: SpanInfo;
   readonly font: FontInfo;
   readonly text: string;
 }
 
-/** `runs` of a line measured, each from where the page starts it. */
 export function runWidthsOf(runs: readonly TypedRun[]): RunWidths[] {
   return runs.map(({ span, font, text }) => {
     const originalPt = lineWidthPt(span, span.text, font.glyphs);
@@ -175,10 +160,6 @@ export function runWidthsOf(runs: readonly TypedRun[]): RunWidths[] {
   });
 }
 
-/**
- * What would happen if a line's runs read `runs`' words: the runs changed, set against the line's room, as one, and
- * every letter a changed run's font lacks.
- */
 export function lineFitOf(runs: readonly TypedRun[], { roomPt, rules }: { roomPt: number; rules: FitRules }): Fit {
   const { fit } = runsLaidOut(runWidthsOf(runs), { roomPt, asked: undefined, rules });
   const changed = runs.filter(({ span, text }) => text !== span.text);
@@ -186,12 +167,10 @@ export function lineFitOf(runs: readonly TypedRun[], { roomPt, rules }: { roomPt
   return { ...fit, missing: [...missing] };
 }
 
-/** The sum of `widths`. */
 function sumOf(widths: readonly number[]): number {
   return widths.reduce((total, width) => total + width, 0);
 }
 
-/** The way out drawn: the one asked for if it's offered, else as typed. `_strategy_drawn` in editing/fit.py. */
 export function wayDrawn(asked: Strategy | undefined, { options }: Pick<Fit, "options">): Strategy {
   return asked !== undefined && options.includes(asked) ? asked : "as-is";
 }
@@ -236,7 +215,6 @@ export function percentPastRoom({
   deltaPt,
   roomPt,
 }: Pick<Fit, "originalPt" | "deltaPt" | "roomPt">): number {
-  // Rounded first, so a share that's whole in decimal isn't pushed up by binary.
   const share = Math.round(((deltaPt - roomPt) / Math.max(originalPt, SOME_WIDTH_PT)) * 100 * 1e6) / 1e6;
   return Math.max(1, Math.ceil(share));
 }
@@ -281,7 +259,7 @@ export function troublesAddedOf(
   const added = fit.missing.filter((letter) => !rest.missing.includes(letter));
   const named = added.map((letter) => shownAs(letter, sentences.characters));
   if (added.length > 0) troubles.push(fill(sentences.not_in_font, { chars: named }));
-  // Not against the rest: words typed elsewhere can run the line past its room where the rest alone fits, and every day would say it.
+  // Not against the rest: words typed elsewhere can run the line past its room, and every day would say it.
   const tooLong = (line: Fit) => runsPast(line.deltaPt, line.roomPt, rules) && wayDrawn(asked, line) === "as-is";
   if (tooLong(fit) && !tooLong(now)) {
     troubles.push(fill(sentences.too_long, { percent: String(percentPastRoom(fit)) }));

@@ -40,7 +40,6 @@ describe("the caret a press puts down", () => {
 });
 
 describe("the caret a press puts down in a line of runs", () => {
-  // "was " at the line's start, "bold" in another font from 20 pt on, " here" a 5 pt gap after it, at 45 pt.
   const runs = [
     { startPt: 0, text: "was ", glyphs, span: TEN_PT },
     { startPt: 20, text: "bold", glyphs, span: TEN_PT },
@@ -49,9 +48,7 @@ describe("the caret a press puts down in a line of runs", () => {
 
   test("a click's caret goes in the gap nearest it in the run it pressed, counted across the line", () => {
     expect(selectionAcross(runs, { atPt: 3, selects: "caret" })).toEqual([1, 1]);
-    // Two letters into the bold run: after "was bo".
     expect(selectionAcross(runs, { atPt: 31, selects: "caret" })).toEqual([6, 6]);
-    // In the gap before " here": the end of the bold run, where it was pressed past.
     expect(selectionAcross(runs, { atPt: 42, selects: "caret" })).toEqual([8, 8]);
     expect(selectionAcross(runs, { atPt: 400, selects: "caret" })).toEqual([13, 13]);
   });

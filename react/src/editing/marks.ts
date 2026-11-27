@@ -32,7 +32,6 @@ interface MarkedSpan {
 export function lookOf({ span, font, reading, fit, redaction, sentences }: MarkedSpan): Look {
   const redacted = reading?.redacted ?? null;
   const changed = reading?.replaced ?? false;
-  // A fit counts only while the span is changed: put back, it may linger until its page is drawn again.
   const trouble = changed ? fit?.message : null;
   const looks = {
     formField: span.form_field,
@@ -79,26 +78,20 @@ function fidelityNote(
   if (verdict.why !== null) return { warn: true, sentence: approximateSentence(verdict.why, sentences), why: null };
   if (verdict.substitute === null) return null;
   const substituteSentence = verdict.same_widths ? sentences.substitute_same_widths : sentences.substitute;
-  // The font's reason is its first span's: it holds here only if a similar face draws that one too.
   const why = font?.substitute == null ? null : font.why;
   // Warned whatever the widths: the file's own font doesn't draw it.
   return { warn: true, sentence: fill(substituteSentence, { font: verdict.substitute }), why };
 }
 
-/** A line to mark: its spans, and what each reads now, the server's verdicts on them, and the fonts they're in. */
 interface MarkedLine {
   readonly spans: readonly SpanInfo[];
   readonly fonts: FontsByObject;
-  readonly readings: ReadonlyMap<string, SpanReading>; // only the spans an edit changed
-  readonly fits: Readonly<Record<string, FitInfo>>; // by span: the server's verdict on its run of the line's edit
-  readonly redactions: Readonly<Record<string, RedactionInfo>>; // by span: the server's verdict on its redaction
+  readonly readings: ReadonlyMap<string, SpanReading>;
+  readonly fits: Readonly<Record<string, FitInfo>>;
+  readonly redactions: Readonly<Record<string, RedactionInfo>>;
   readonly sentences: Sentences;
 }
 
-/**
- * What a line's one mark shows: each line its spans' marks would draw, and the first note among them, in the line's
- * order. Redacted whole only when every span is; some words redacted when some are.
- */
 export function lineLookOf({ spans, fonts, readings, fits, redactions, sentences }: MarkedLine): Look {
   const looks = spans.map((span) =>
     lookOf({

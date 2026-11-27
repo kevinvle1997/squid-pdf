@@ -12,20 +12,15 @@ import styles from "./Margin.module.css";
 
 interface Props {
   info: PageInfo;
-  changes: readonly SpanReading[]; // the spans replaced or redacted on this page
-  newTexts: readonly NewTextReading[]; // the new text on it
-  lines: Layout["lines"]; // the page's lines, each noted once however many of its spans changed
-  noteHeightPt: number; // a note's height in page points, to keep notes a hit area apart
+  changes: readonly SpanReading[];
+  newTexts: readonly NewTextReading[];
+  lines: Layout["lines"];
+  noteHeightPt: number;
   pageNumber: number;
 }
 
-/**
- * The user's own changes beside the page, each a button that puts the original back, or takes new text out,
- * level with its line. On a narrow screen CSS shows the list under the page instead (`ChangeList`).
- */
 export function Margin({ info, changes, newTexts, lines, noteHeightPt, pageNumber }: Props) {
   const newText = useEditorState((state) => sentenceOrNothing(state.doc.sentences.new_text));
-  // Its grid cell stays, so a page with no changes keeps its column.
   if (changes.length === 0 && newTexts.length === 0) return <div className={styles.margin} />;
   const notes = marginNotesOf(changes, newTexts, lines);
   const places = notePlaces(
@@ -64,7 +59,6 @@ function Struck({ runs, cut = UNCUT }: { runs: readonly string[]; cut?: Cut }) {
     <span className={styles.old}>
       {cut.before && <span className={styles.between}>… </span>}
       {runs.map((run, index) => (
-        // By its place in the line: two runs may read the same.
         <Fragment key={index}>
           {index > 0 && <span className={styles.between}> … </span>}
           <span className={styles.run}>{run}</span>
