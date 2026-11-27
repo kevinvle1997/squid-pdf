@@ -2053,6 +2053,95 @@ describe("a line of several runs", () => {
     expect(first && parseFloat(getComputedStyle(first).fontSize) * scale).toBeCloseTo(shownPx(10), 1);
   });
 
+  /** The caret `steps` letters into the line's words, from their start. */
+  async function caretAt(steps: number) {
+    await userEvent.keyboard(`{ArrowLeft}${"{ArrowRight}".repeat(steps)}`);
+  }
+
+  test("Shift+Enter ends the field at the caret, typing goes in there, and what's kept leaves a mark each side", async () => {
+    const screen = await draw();
+    const field = await editLine(screen);
+    await caretAt("Text is ".length);
+    await userEvent.keyboard("{Shift>}{Enter}{/Shift}");
+    const split = screen.getByRole("textbox", { name: "Change “Text is ”" });
+    await expect.element(split).toHaveFocus();
+    expect(runsOf(split.element())).toEqual(["Text is "]);
+    // The caret still at the split, at the field's end.
+    await userEvent.keyboard("a ");
+    expect(runsOf(split.element())).toEqual(["Text is a "]);
+    await userEvent.keyboard("{Enter}");
+    await expect.element(screen.getByRole("button", { name: /^grouped into spans/ })).toBeInTheDocument();
+    await expect.element(screen.getByRole("button", { name: /^Text is a/ })).toHaveFocus();
+    expect(field.query()).toBeNull();
+  });
+
+  test("Shift+Enter again at the split joins the two, in the one field, its caret where it was", async () => {
+    const screen = await draw();
+    const field = await editLine(screen);
+    await caretAt("Text is ".length);
+    await userEvent.keyboard("{Shift>}{Enter}{/Shift}{Shift>}{Enter}{/Shift}");
+    await expect.element(field).toHaveFocus();
+    await userEvent.keyboard("all ");
+    expect(runsOf(field.element())).toEqual(["Text is all grouped into ", "spans", " (one style)"]);
+  });
+
+  test("with words changed after the caret, the field goes on over them, past the split", async () => {
+    const screen = await draw();
+    await editLine(screen);
+    await userEvent.keyboard("{ArrowRight}!");
+    // Back from the line's end, where the caret is: Home doesn't move one on a Mac.
+    await userEvent.keyboard("{ArrowLeft}".repeat(`${SENTENCE}!`.length - "Text is ".length));
+    await userEvent.keyboard("{Shift>}{Enter}{/Shift}");
+    const after = screen.getByRole("textbox", { name: "Change “grouped into spans (one style)”" });
+    await expect.element(after).toHaveFocus();
+    expect(runsOf(after.element())).toEqual(["grouped into ", "spans", " (one style)!"]);
+  });
+
+  test("a span on its own splits too, its field giving way to one over the side", async () => {
+    const glyphs = halfWideGlyphs("Pay by Friday!");
+    const span = aSpan({ id: "lone", text: "Pay by Friday", font: "Kept" });
+    openDocument(aDoc({ spans: [span], fonts: [aFont("Kept", { glyphs })] }));
+    const screen = await draw();
+    const mark = screen.getByRole("button", { name: "Pay by Friday" });
+    await expect.element(mark).toBeInTheDocument();
+    mark.element().focus();
+    await userEvent.keyboard("{Enter}");
+    await expect.element(screen.getByRole("textbox", { name: "Change “Pay by Friday”" })).toHaveFocus();
+    await caretAt("Pay ".length);
+    await userEvent.keyboard("{Shift>}{Enter}{/Shift}");
+    const before = screen.getByRole("textbox", { name: "Change “Pay ”" });
+    await expect.element(before).toHaveFocus();
+    await userEvent.keyboard("!");
+    expect(runsOf(before.element())).toEqual(["Pay !"]);
+  });
+
+  test("pressing the text past the split opens its own field, though nothing's been typed against it yet", async () => {
+    const screen = await draw();
+    await editLine(screen);
+    await caretAt("Text is ".length);
+    await userEvent.keyboard("{Shift>}{Enter}{/Shift}");
+    await screen.getByRole("button", { name: /^grouped into spans/ }).click();
+    const after = screen.getByRole("textbox", { name: "Change “grouped into spans (one style)”" });
+    await expect.element(after).toHaveFocus();
+    await expect.element(screen.getByRole("button", { name: "Text is", exact: false })).toBeInTheDocument();
+  });
+
+  test("the slip's Split splits at the caret, focus staying in the field", async () => {
+    const screen = await draw();
+    await editLine(screen);
+    await caretAt("Text is ".length);
+    await screen.getByRole("button", { name: "Split" }).click();
+    await expect.element(screen.getByRole("textbox", { name: "Change “Text is ”" })).toHaveFocus();
+  });
+
+  test("where the line can't be split, the slip says why", async () => {
+    const screen = await draw();
+    const field = await editLine(screen);
+    await userEvent.keyboard("{ArrowRight}{Shift>}{Enter}{/Shift}");
+    await expect.element(screen.getByText(SENTENCES.split_cant_here).first()).toBeVisible();
+    await expect.element(field).toHaveFocus();
+  });
+
   test("Alt+Down opens the editor of the amount in the caret's run, and Escape puts focus back in the field", async () => {
     const amounts = aBoldSentence();
     const [first, bold, after] = amounts.spans;

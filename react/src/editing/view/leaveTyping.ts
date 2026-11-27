@@ -1,9 +1,10 @@
 // The one handler for focus leaving what's typed in, from its field or from its slip.
 import type { FocusEvent } from "react";
 import { useFocusVisible } from "react-aria";
+import { openAcross } from "../splitting";
 import { finish } from "../typing";
 import { useEditor } from "./context";
-import { fellToNothing } from "./keys";
+import { fellToNothing, spanOn } from "./keys";
 
 /**
  * A handler for focus leaving the typing: it ends, kept. Fallen to nothing, focus goes back to its mark, as Enter sends
@@ -15,6 +16,8 @@ export function useLeaveTyping(): (event: FocusEvent) => void {
   return (event) => {
     // A file picker takes the window's focus, not the field's: the typing goes on with it.
     if (!document.hasFocus()) return;
+    const to = spanOn(event.relatedTarget);
+    if (to !== null && openAcross(editor, to)) return;
     finish(editor, true, { returnFocus: fellToNothing(event), inPlace: !isFocusVisible });
   };
 }

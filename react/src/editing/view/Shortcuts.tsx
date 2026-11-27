@@ -17,6 +17,7 @@ const KEYS: readonly { what: string; keys: readonly string[] }[] = [
   { what: "The next place found, or the one before", keys: [`${COMMAND}G`, `${COMMAND}Shift G`] },
   { what: "Go to the next line, or the one before", keys: ["Tab", "Shift Tab"] },
   { what: "Edit the line, then keep what's typed", keys: ["Enter"] },
+  { what: "Split the line at the caret, or join it again", keys: ["Shift Enter"] },
   { what: "Stop editing, and keep the line as it was", keys: ["Esc"] },
   { what: "Choose how a long line fits", keys: ["↑", "↓"] },
   { what: "Open Date or Amount, for a date or an amount in the line", keys: [`${ALT}↓`] },

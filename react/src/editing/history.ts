@@ -1,6 +1,7 @@
 // The edit history, held in the browser: the steps done, each undone whole, and those undone for redo.
 // Each edit has an id of its own, so it can be taken out wherever it stands, as putting a span back does.
 import type { Edit, Insert } from "../api/types";
+import { partKey } from "./splits";
 
 export interface Entry {
   readonly id: number;
@@ -71,9 +72,9 @@ export function entriesOf(history: History): Entry[] {
   return history.done.flat();
 }
 
-/** The spans an edit is to: one, a line's every one, or none. */
+/** The spans an edit is to: one, a line's every one, each by its part's id where a split cuts it, or none. */
 export function spansOf(edit: Edit): readonly string[] {
-  if (edit.kind === "replace_runs") return edit.runs.map((run) => run.span_id);
+  if (edit.kind === "replace_runs") return edit.runs.map((run) => partKey(run.span_id, run.start ?? 0));
   return "span_id" in edit ? [edit.span_id] : [];
 }
 

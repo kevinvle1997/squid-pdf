@@ -9,12 +9,12 @@ import {
   persistFile,
   persistState,
 } from "../documents/localPersistence";
-import { announcing, type Editor, layoutOf } from "./editor";
+import { announcing, type Editor, layoutOf, relaid, unsplitOf } from "./editor";
 import { unexported } from "./export";
 import { addOwnFace } from "./faces";
-import { entriesOf, type History } from "./history";
+import type { History } from "./history";
 import { newlyHeard, noticeLines, openingNoticesOf, warn } from "./notices";
-import { project, UNEDITED } from "./project";
+import { UNEDITED } from "./project";
 
 /** A font copy as it's stored: its bytes, and their type, which goes with them to the server. */
 interface PersistedFont {
@@ -115,10 +115,10 @@ export function wouldLoseWork(editor: Editor): boolean {
 
 /** A new editor restores work persisted here before, before it's drawn: persisted already, file and all. */
 export function restorePersisted(editor: Editor, { work, until }: PersistedWork<Work>): void {
-  const { doc } = editor.store.get();
+  const { doc, layout } = editor.store.get();
   editor.store.set({
     history: work.history,
-    reading: project(doc, entriesOf(work.history), UNEDITED),
+    ...relaid({ history: work.history, reading: UNEDITED }, doc, { base: unsplitOf(layout) }),
     mutedFonts: new Set(work.quietFonts),
   });
   for (const [fontName, { bytes, type }] of work.fonts) editor.attached.set(fontName, new Blob([bytes], { type }));
@@ -155,7 +155,10 @@ async function readAgain(editor: Editor): Promise<void> {
     const reopen = before.reopen?.tone === "warn" ? null : before.reopen;
     const notices = { ...before, document: openingNoticesOf(doc), reopen };
     const heard = newlyHeard(noticeLines(before, drawn, reading), noticeLines(notices, drawn, reading));
-    store.set({ doc, layout: layoutOf(doc), notices, ...(heard !== "" && { announcement: announcing(heard) }) });
+    const { draft } = store.get();
+    const taken = draft?.kind === "span" ? (draft.split ?? null) : null;
+    const laid = relaid(store.get(), doc, { base: layoutOf(doc), taken });
+    store.set({ doc, ...laid, notices, ...(heard !== "" && { announcement: announcing(heard) }) });
   } catch (error) {
     const said = sentenceOf(error);
     store.set({ notices: { ...store.get().notices, reopen: warn(said) }, announcement: announcing(said) });

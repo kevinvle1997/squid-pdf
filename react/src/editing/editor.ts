@@ -41,6 +41,7 @@ import { project, type Reading, type Redacted, redactedBetween, type SpanReading
 import { type Drawn, landedFitOf, landedNewTextFitOf, NOTHING_DRAWN, RenderQueue } from "./render";
 import { NO_SHIPPED_FACES, type ShippedFaces } from "./shippedFaces";
 import { type FontsByObject, fontOf, fontsByObject, shownNameIn } from "./spanFonts";
+import { cutsOf, liveEntries, type Part, type Region, spanIdOf, splitSpans, wireEdit } from "./splits";
 import { createStore, type Store } from "./store";
 import type { Draft } from "./typing";
 import { fill, fillCounted } from "./words";
@@ -143,7 +144,11 @@ export function scrollingTo(spanId: string, block: ScrollLogicalPosition = "near
 
 /** What's worked out once from the document: its spans and fonts, looked up by what the page needs. */
 export interface Layout {
-  readonly spans: ReadonlyMap<string, SpanInfo>;
+  readonly spans: ReadonlyMap<string, SpanInfo>; // by id: where a split cuts a span, its parts, each by its own
+  readonly ordered: readonly SpanInfo[]; // them all, in the document's order
+  readonly parts: ReadonlyMap<string, Part>; // each part a split cuts short of its span, by its id
+  readonly unsplit?: Layout; // the document's own, where a split makes this one another
+  readonly splitKey?: string; // where it's split: the same while the splits are
   readonly pages: ReadonlyMap<number, readonly SpanInfo[]>;
   readonly fonts: FontsByObject;
   readonly lines: ReadonlyMap<string, Line>; // each line of more than one span, by each of its spans
@@ -197,23 +202,60 @@ export interface Editor {
 }
 
 export function layoutOf(doc: Document): Layout {
-  const pages = new Map<number, SpanInfo[]>();
-  for (const span of doc.spans) {
-    const onPage = pages.get(span.page);
-    if (onPage === undefined) pages.set(span.page, [span]);
-    else onPage.push(span);
-  }
+  const pages = spansByPage(doc.spans);
   const fonts = fontsByObject(doc.fonts);
   const atRest = { changed: false, reading: undefined, fit: undefined, font: undefined };
   const mismatches = doc.spans.flatMap((span) => placeOf(span, atRest) ?? []);
   return {
     spans: new Map(doc.spans.map((span) => [span.id, span])),
+    ordered: doc.spans,
+    parts: new Map(),
     pages,
     lines: linesBySpan(doc),
     fonts,
     warnedFonts: new Set(mismatches.map(({ span }) => shownNameIn(fonts, span))),
     mismatchesAtRest: mismatchesOf(mismatches, { fonts, sentences: doc.sentences }),
   };
+}
+
+/**
+ * What `entries` read as on `doc`, and the layout their splits make of its own, `base`'s: the open field's split
+ * `taken` too. While the splits are the same, the layout is `previous`'s, so nothing that reads it draws again.
+ */
+export function readingOf(
+  doc: Document,
+  { base, entries, taken = null }: { base: Layout; entries: readonly Entry[]; taken?: Region | null },
+  previous: { layout?: Layout; reading: Reading } = { reading: UNEDITED },
+): { layout: Layout; reading: Reading } {
+  const live = liveEntries(base, entries, taken);
+  const layout = splitLayout(base, cutsOf(base, live, taken), previous.layout);
+  const reading = project({ spans: [...layout.ordered], pages: doc.pages }, live, previous.reading);
+  return { layout, reading };
+}
+
+/** The document's own layout, however it's split now. */
+export function unsplitOf(layout: Layout): Layout {
+  return layout.unsplit ?? layout;
+}
+
+/** `base` split at `cuts`: itself with none, and `previous` while it's split there already. */
+function splitLayout(base: Layout, cuts: ReadonlyMap<string, readonly number[]>, previous?: Layout): Layout {
+  if (cuts.size === 0) return base;
+  const splitKey = JSON.stringify([...cuts]);
+  if (previous?.unsplit === base && previous.splitKey === splitKey) return previous;
+  const split = splitSpans(base, cuts);
+  return { ...base, ...split, pages: spansByPage(split.ordered), unsplit: base, splitKey };
+}
+
+/** Each page's spans, in order. */
+function spansByPage(spans: readonly SpanInfo[]): Map<number, SpanInfo[]> {
+  const pages = new Map<number, SpanInfo[]>();
+  for (const span of spans) {
+    const onPage = pages.get(span.page);
+    if (onPage === undefined) pages.set(span.page, [span]);
+    else onPage.push(span);
+  }
+  return pages;
 }
 
 export function createEditor(file: File, opened: Document, scale: number): Editor {
@@ -280,7 +322,10 @@ async function reopened(editor: Editor, doc: Document): Promise<Document> {
   const reopen = plain(doc.sentences.reopened);
   const notices = { ...store.get().notices, reopen, ...(refusal !== null && { font: refusal }) };
   const heard = refusal === null ? reopen.text : `${reopen.text} ${refusal.text}`;
-  store.set({ doc: judged, layout: layoutOf(judged), notices, announcement: announcing(heard) });
+  const { draft } = store.get();
+  const taken = draft?.kind === "span" ? (draft.split ?? null) : null;
+  const laid = relaid(store.get(), judged, { base: layoutOf(judged), taken });
+  store.set({ doc: judged, ...laid, notices, announcement: announcing(heard) });
   // Pages drawn with a copy now refused no longer show what export would give.
   if (refusal !== null) queue.redraw(store.get().reading);
   return judged;
@@ -311,13 +356,15 @@ export type Also = Partial<EditorState> | ((next: EditorState) => Partial<Editor
 export function changed(state: EditorState, actions: readonly HistoryAction[]): EditorState {
   const history = actions.reduce(historyReducer, state.history);
   if (history === state.history) return state;
-  const reading = project(state.doc, entriesOf(history), state.reading);
+  const base = unsplitOf(state.layout);
+  const { layout, reading } = readingOf(state.doc, { base, entries: entriesOf(history) }, state);
   return {
     ...state,
     history,
+    layout,
     reading,
     notices: noticesAfterChange(state.notices, { stale: lacksSentences(state.doc) }),
-    find: findAfterChange(state, reading),
+    find: findAfterChange({ ...state, layout }, reading),
   };
 }
 
@@ -330,14 +377,40 @@ export function change(editor: Editor, action: HistoryAction | readonly HistoryA
   const state = store.get();
   const next = changed(state, [action].flat());
   const rest = typeof also === "function" ? also(next) : also;
+  // A split the field held goes as it closes, with nothing typed against it to keep it.
+  const dropsSplit = state.draft?.kind === "span" && state.draft.split !== undefined && rest.draft === null;
   if (next === state) {
-    if (Object.keys(rest).length > 0) store.set(rest);
+    const unsplit: Partial<EditorState> = dropsSplit ? relaid(state, state.doc, { base: unsplitOf(state.layout) }) : {};
+    if (Object.keys(rest).length > 0) store.set({ ...unsplit, ...rest, ...focusedOn(unsplit.layout, rest) });
     return;
   }
-  const { history, reading, notices, find } = next;
-  store.set({ history, reading, notices, find, ...rest });
+  const { history, layout, reading, notices, find } = next;
+  store.set({ history, layout, reading, notices, find, ...rest, ...focusedOn(layout, rest) });
   queue.draw(reading);
   void persistWork(editor);
+}
+
+/** `edit`, made of the page as `layout` splits it, as the history keeps it: a part's, as one of its span's. */
+export function asWired<E extends Edit>(layout: Layout, edit: E): Edit {
+  return layout.parts.size === 0 ? edit : wireEdit(unsplitOf(layout), layout.parts, edit);
+}
+
+/** Focus sent to a span a split no longer shows as it was: its line's mark, or the span's. */
+function focusedOn(layout: Layout | undefined, rest: Partial<EditorState>): Partial<EditorState> {
+  const target = rest.focusTo;
+  if (layout === undefined || target === null || target === undefined || !("spanId" in target)) return {};
+  const id = layout.spans.has(target.spanId) ? target.spanId : spanIdOf(target.spanId);
+  const mark = layout.lines.get(id)?.id ?? id;
+  return mark === target.spanId ? {} : { focusTo: { ...target, spanId: mark } };
+}
+
+/** `doc`'s layout from `base`, split as the history and the open field have it, and what it reads as. */
+export function relaid(
+  state: Pick<EditorState, "history" | "reading">,
+  doc: Document,
+  { base, taken = null }: { base: Layout; taken?: Region | null },
+): { layout: Layout; reading: Reading } {
+  return readingOf(doc, { base, entries: entriesOf(state.history), taken }, { reading: state.reading });
 }
 
 /** Put a span back as the document had it, with the rest of its line, from its margin note; focus goes to its mark. */

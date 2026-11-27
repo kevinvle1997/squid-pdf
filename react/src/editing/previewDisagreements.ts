@@ -1,9 +1,11 @@
 // In the settle, the spans whose render disagrees with their preview pulse (decisions/frontend.md, Motion).
 // Verdicts are compared, not pixels: the preview draws in a face we ship.
+
 import type { FitInfo, FitRules, FontInfo, Strategy } from "../api/types";
 import type { Layout } from "./editor";
 import { type Fit, fitOf, lineFitOf, missingIn, runsPast } from "./fit";
 import { spansOf } from "./history";
+import { rulesFor } from "./lines";
 import { newTextDrawingOf, newTextVerdictOf } from "./newText";
 import { type Differing, differing, type NewTextReading, type Reading } from "./project";
 import type { Drawn } from "./render";
@@ -81,7 +83,7 @@ function disagrees(each: Differing, landed: PageLanded): boolean {
     live: liveFitOf(each, { ...landed, font }),
     liveVerdict: liveVerdictOf(span, { font, text }),
     asked: reading.spans.get(span.id)?.strategy,
-    rules,
+    rules: rulesFor(landed.lines.get(span.id), rules),
   });
 }
 
@@ -96,7 +98,7 @@ function liveFitOf(
     const runFont = fontOf(fonts, each);
     return runFont === undefined ? [] : [{ span: each, font: runFont, text: lineEdit.runs[index]?.text ?? each.text }];
   });
-  const fit = lineFitOf(runs, { roomPt: line.roomPt, rules });
+  const fit = lineFitOf(runs, { roomPt: line.roomPt, rules: rulesFor(line, rules) });
   return { ...fit, missing: text === span.text ? [] : missingIn(text, font.glyphs) };
 }
 

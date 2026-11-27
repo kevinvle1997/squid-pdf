@@ -2,15 +2,26 @@
 // looking like the text around them (Rule 1), and Change all, one step in the history.
 import type { FitInfo, FitRules, Replace, ReplaceRuns, Sentences, SpanInfo, Strategy } from "../api/types";
 import { FIND_DELAY_MS } from "./constants";
-import { announcing, change, type Editor, type EditorState, type Layout, scrollingTo } from "./editor";
+import {
+  announcing,
+  asWired,
+  change,
+  type Editor,
+  type EditorState,
+  type Layout,
+  readingOf,
+  scrollingTo,
+  unsplitOf,
+} from "./editor";
 import { fitOf, type LineScale, lineWidthPt, runsPast, settingOf, wayDrawn } from "./fit";
 import { entriesOf, historyReducer, spansOf } from "./history";
 import { type DrawnRun, lineDrawnAs } from "./lines";
 import { type FindOptions, type Match, matchesIn, replacedIn } from "./matching";
 import type { PageState } from "./page";
-import { differing, project, type Reading, type SpanReading, textIn } from "./project";
+import { differing, type Reading, type SpanReading, textIn } from "./project";
 import type { Drawn } from "./render";
 import { type FontsByObject, fontOf } from "./spanFonts";
+import { partKey } from "./splits";
 import { finish, isEmpty, keptEditOf, typingEnd } from "./typing";
 import { editVerdictOf } from "./verdicts";
 import { fillCounted, sentenceOrNothing } from "./words";
@@ -81,12 +92,13 @@ function foundIn(
 
 /** The words an edit being typed gives `spanId`, one of its spans. */
 function typedTextOf(typed: Replace | ReplaceRuns, spanId: string): string | undefined {
-  return typed.kind === "replace" ? typed.text : typed.runs.find((run) => run.span_id === spanId)?.text;
+  if (typed.kind === "replace") return typed.text;
+  return typed.runs.find((run) => partKey(run.span_id, run.start ?? 0) === spanId)?.text;
 }
 
 /** The places found as Change all would change them: in the words being typed on the page, as typing keeps them. */
 function foundNow(state: EditorState): Found[] {
-  return foundIn(state.doc.spans, { reading: state.reading, find: state.find, typed: keptEditOf(state) });
+  return foundIn(state.layout.ordered, { reading: state.reading, find: state.find, typed: keptEditOf(state) });
 }
 
 /** Whether a span's matches are the same as before. */
@@ -202,10 +214,10 @@ function runDrawnAt(
 }
 
 /** The find bar's marks found again in `reading`; the place gone to stays while it's still found. */
-function refound(state: Pick<EditorState, "find" | "doc">, reading: Reading): FindState {
-  const { find, doc } = state;
+function refound(state: Pick<EditorState, "find" | "layout">, reading: Reading): FindState {
+  const { find, layout } = state;
   // The span typed in shows no marks (`tintsOn`), so its saved words do here.
-  const found = foundIn(doc.spans, { reading, find, typed: null });
+  const found = foundIn(layout.ordered, { reading, find, typed: null });
   const current = found.some(({ span }) => span.id === find.current) ? find.current : null;
   return { ...find, matches: matchesOf(found, find.matches), current };
 }
@@ -255,7 +267,7 @@ function caughtUp(find: FindState): FindState {
 }
 
 /** The find bar once the history changes: found again while it's open, and what Change all did no longer shown. */
-export function findAfterChange(state: Pick<EditorState, "find" | "doc">, reading: Reading): FindState {
+export function findAfterChange(state: Pick<EditorState, "find" | "layout">, reading: Reading): FindState {
   const found = state.find.open ? refound(state, reading) : state.find;
   // What Change all did shows until anything else changes the history: undo would take that instead.
   return found.changed === null ? found : { ...found, changed: null };
@@ -474,7 +486,10 @@ export function changeAll(editor: Editor): void {
   // What changed is heard last, not a count: the next count is heard, whatever it says. The typed words are kept
   // first, so a line edit among them is the one Change all's own words go into.
   const after = historyReducer(state.history, typed);
-  const edits = changeAllEditsOf(state.layout, { reading: project(state.doc, entriesOf(after)), replaced });
+  const kept = readingOf(state.doc, { base: unsplitOf(state.layout), entries: entriesOf(after) }, state);
+  const edits = changeAllEditsOf(kept.layout, { reading: kept.reading, replaced }).map((each) =>
+    asWired(kept.layout, each),
+  );
   change(editor, [typed, { kind: "add", edits }], (next) => ({
     ...ended,
     announcement: announcing(changedSentence(changing.length, state.doc.sentences)),

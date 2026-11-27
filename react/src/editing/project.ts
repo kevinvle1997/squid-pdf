@@ -2,6 +2,7 @@
 // changed stays the same object from one reading to the next, so whatever draws it can skip it.
 import type { Document, Edit, Insert, PageInfo, Redact, Replace, ReplaceRuns, SpanInfo, Strategy } from "../api/types";
 import { type Entry, newTextIdsOf, spansOf } from "./history";
+import { partKey } from "./splits";
 
 /** A range of a span's text by code point, as the server counts it: what a redaction names. */
 export type CodePoints = NonNullable<Redact["range"]>;
@@ -96,7 +97,9 @@ export function textIn(reading: Reading, span: SpanInfo): string {
 export function sameSpan(a: SpanReading | undefined, b: SpanReading | undefined): boolean {
   if (a === b) return true;
   if (a === undefined || b === undefined) return false;
-  const same = a.text === b.text && sameRedacted(a.redacted, b.redacted) && a.strategy === b.strategy;
+  // A part a split moved is another object, drawn elsewhere.
+  const same =
+    a.span === b.span && a.text === b.text && sameRedacted(a.redacted, b.redacted) && a.strategy === b.strategy;
   // A line's run moves as the others are typed, so it draws the same only while every run of its line does.
   return same && sameRuns(a.lineEdit, b.lineEdit);
 }
@@ -328,7 +331,7 @@ function forget(replaces: Map<string, Replace | ReplaceRuns>, spanId: string): v
 function textOf(replace: Replace | ReplaceRuns | undefined, span: SpanInfo): string {
   if (replace === undefined) return span.text;
   if (replace.kind === "replace") return replace.text;
-  return replace.runs.find((run) => run.span_id === span.id)?.text ?? span.text;
+  return replace.runs.find((run) => partKey(run.span_id, run.start ?? 0) === span.id)?.text ?? span.text;
 }
 
 /** The line edits kept that change a run's words: one that reads as the page does is no edit. */
