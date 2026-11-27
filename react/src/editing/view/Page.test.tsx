@@ -2008,6 +2008,21 @@ describe("a line of several runs", () => {
     expect(editor.store.get().draft).toMatchObject({ runs });
   });
 
+  test("an input method typing over every word, as the field opens from the keyboard, replaces them", async () => {
+    const screen = await draw();
+    await editLine(screen);
+    await compose("runs");
+    // Chromium took the runs' elements out: the field is drawn afresh, the caret after the words.
+    const field = screen.getByRole("textbox", { name: `Change “${SENTENCE}”` });
+    await expect.element(field).toHaveFocus();
+    await userEvent.keyboard("!");
+    await expect.poll(() => runsOf(field.element())).toEqual(["runs!", "", ""]);
+    expect(field.element().textContent).toBe("runs!");
+    expect(editor.store.get().draft).toMatchObject({ runs: ["runs!", "", ""] });
+    await userEvent.keyboard("{Control>}z{/Control}{Control>}z{/Control}");
+    await expect.poll(() => field.element().textContent).toBe(SENTENCE);
+  });
+
   test("an input method typing over a whole run stays in it, and Cmd+Z selects what it replaced", async () => {
     const screen = await draw();
     const field = await editLine(screen);
