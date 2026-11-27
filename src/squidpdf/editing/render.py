@@ -141,9 +141,9 @@ def _draw_regions(
     `strips` are the rows the regions ask for, and `drawn_pages` their pages, by number.
     """
     index = store.require_index(folder)
-    rooms = kept_free_space(documents, folder, index).rooms
+    free_space = kept_free_space(documents, folder, index)
     with documents.open_original(folder) as engine:
-        resolved = resolve(engine, index, rooms=rooms, edits=edits)
+        resolved = resolve(engine, index, free_space=free_space, edits=edits)
         fits = fits_of(engine, resolved)  # before run: erasing can drop the fonts it measures
         steps = plan(engine, resolved, fits, strips=strips)
         # Before run too: erasing can drop the fonts new text is measured with.
@@ -157,7 +157,8 @@ def _draw_regions(
 
     return Rendered(
         images,
-        fits={span_id: fitted.report for span_id, fitted in fits.replaces.items()},
+        fits={span_id: fitted.report for span_id, fitted in fits.replaces.items()}
+        | {run.span.id: run.report for fitted in fits.lines.values() for run in fitted.redrawn},
         insert_fits={position: fitted.report for position, fitted in fits.inserts.items()},
         verdicts=verdicts.replaces,
         insert_verdicts=verdicts.inserts,

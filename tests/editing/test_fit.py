@@ -19,9 +19,16 @@ from squidpdf.core import (
 )
 from squidpdf.documents.replies import document_json
 from squidpdf.documents.types import AnalysisFacts, KeptAnalysis
-from squidpdf.editing import FitReport, Strategy, options_for, replace_fit
+from squidpdf.editing import (
+    FitReport,
+    RunWidths,
+    Strategy,
+    options_for,
+    replace_fit,
+    runs_laid_out,
+)
 from tests.conftest import EMBEDDED_PAGE, REFERENCED_PAGE, in_a_copy_lacking
-from tests.helpers import assert_equal, assert_false, assert_in, assert_true
+from tests.helpers import assert_close, assert_equal, assert_false, assert_in, assert_true
 
 
 def test_check_reports_overflow_with_options(engine):
@@ -114,6 +121,31 @@ def test_a_line_is_too_long_only_past_its_room_as_the_browser_says(case):
     assert_equal(report.describe(), said, "what's said of the length")
     assert_equal(report.ok, percent is None, "whether it fits")
     assert_equal([option.name for option in options], case["options"], "the ways out")
+
+
+@pytest.mark.parametrize("case", _SHARED["line_cases"], ids=lambda case: case["what"])
+def test_a_line_edited_as_one_is_fitted_by_the_runs_it_changes_as_the_browser_says(case):
+    """The runs after a change move along with it, unless a way out keeps it to its width."""
+    runs = [
+        RunWidths(
+            run["x"],
+            original_pt=run["original_pt"],
+            typed_pt=run["typed_pt"],
+            changed=run["changed"],
+        )
+        for run in case["runs"]
+    ]
+
+    laid_out = runs_laid_out(runs, room_pt=case["room_pt"], strategy=case["strategy"])
+
+    report = laid_out.report
+    past = report.percent_past_room if report.too_long else None
+    assert_equal(report.original_pt, case["original_pt"], "the changed runs' width")
+    assert_equal(report.delta_pt, case["delta_pt"], "how much wider they're typed")
+    assert_equal(past, case["too_long_percent"], "how far past its room, if it is")
+    assert_equal([option.name for option in report.options], case["options"], "the ways out")
+    for start, expected in zip(laid_out.starts, case["starts"], strict=True):
+        assert_close(start, expected, 0.0001, "where a run starts")
 
 
 _TURNED: QuarterTurn = 90  # a `turned` case's line, turned counterclockwise: up the page

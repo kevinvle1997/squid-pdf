@@ -15,7 +15,9 @@ from squidpdf.editing.edits import (
     Insert as Insert,
     Redact as Redact,
     Replace as Replace,
+    ReplaceRuns as ReplaceRuns,
     RotatePage as RotatePage,
+    RunText as RunText,
     Strategy as Strategy,
     check_text as check_text,
 )
@@ -32,9 +34,11 @@ from squidpdf.editing.export import (
 )
 from squidpdf.editing.fit import (
     FitReport as FitReport,
+    RunWidths as RunWidths,
     insert_fit as insert_fit,
     options_for as options_for,
     replace_fit as replace_fit,
+    runs_laid_out as runs_laid_out,
 )
 from squidpdf.editing.redaction import redactions_of as redactions_of
 from squidpdf.editing.types import (

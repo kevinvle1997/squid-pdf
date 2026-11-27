@@ -9,7 +9,6 @@ import asyncio
 import json
 import shutil
 import tempfile
-from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from functools import partial
@@ -20,6 +19,7 @@ from squidpdf.core import (
     DriverFactory,
     Engine,
     Fidelity,
+    FreeSpace,
     InvalidRequest,
     LogController,
     LogEvent,
@@ -138,7 +138,7 @@ def _make_pdf(
     The server makes `scratch`, reads the file from it, and removes it. Runs in a worker.
     """
     index = store.require_index(folder)
-    rooms = kept_free_space(documents, folder, index).rooms
+    free_space = kept_free_space(documents, folder, index)
 
     with documents.open_original(folder) as engine:
         # Outside the document's folder: deleting it while the file is open can't take the save.
@@ -146,7 +146,7 @@ def _make_pdf(
         saved = save_edited(
             engine,
             index,
-            rooms=rooms,
+            free_space=free_space,
             edits=edits,
             pages=pages,
             to=str(out),
@@ -193,7 +193,7 @@ def save_edited(
     engine: Engine,
     index: SpanIndex,
     *,
-    rooms: Mapping[str, float],
+    free_space: FreeSpace,
     edits: list[Edit],
     pages: list[int] | None = None,
     to: str,
@@ -203,9 +203,9 @@ def save_edited(
 
     Raises, deleting the file, RedactionFailed or RedactionCovered if a redacted span's words
     are left, RedactionMoved if the erase moved other text, or RedactionUnchecked if where it
-    set a rest can't be read. The CLI saves this way too. `rooms`: from `Engine.rooms`.
+    set a rest can't be read. The CLI saves this way too. `free_space`: `Engine.free_space`.
     """
-    resolved = resolve(engine, index, rooms=rooms, edits=edits)
+    resolved = resolve(engine, index, free_space=free_space, edits=edits)
     order = page_order(resolved, pages)
     # Before the edits: erasing can drop the fonts new text is measured with.
     planned = planned_of(engine, resolved)

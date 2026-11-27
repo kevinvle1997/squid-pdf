@@ -25,6 +25,7 @@ drawn_in_own_copy = "Edits here use the file's own copy of this font."
 
 # Why an edit was left out.
 no_span = "This edit points at text that isn't in this document."
+not_one_line = "This edit names text that isn't one line of this document, so it's left out."
 no_page = "This edit points at a page that isn't in this document."
 last_page = "A file needs at least one page, so its last page stays in."
 
@@ -61,6 +62,7 @@ font_not_added = "The file's own font couldn't be used for this edit, so a simil
 left_out = "Left out {letters}, which no font we have can draw."
 # Text a form field shows is drawn by the field, not the page, so it can't be changed yet.
 form_field_not_edited = "This text is a form field, which can't be edited yet, so an edit here is left out."
+line_not_edited = "Part of this line couldn't be taken off the page, so the whole line is left as it was."
 # Said by the browser as an email address in a span is typed so it no longer reads as one: the
 # file draws whatever is typed, so it's a warning, not a refusal.
 email_broken = "the email address here no longer reads as one"

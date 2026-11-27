@@ -62,6 +62,36 @@ class Replace:
 
 
 @dataclass(frozen=True, slots=True)
+class RunText:
+    """One span of a line, and the words it's to read, drawn in the span's own style."""
+
+    span_id: str
+    text: str
+
+    def __post_init__(self) -> None:
+        """Refuse text that isn't one line of letters."""
+        check_text(self.text)
+
+
+@dataclass(frozen=True, slots=True)
+class ReplaceRuns:
+    """Swap a line's words, run by run: each run's words drawn in its own span's style.
+
+    The runs are one line's spans, every one, left to right (`Document.lines`). Those after
+    a change move along with it, unless a way out keeps the changed runs to their width.
+    """
+
+    runs: tuple[RunText, ...]
+    strategy: Strategy = "as-is"
+    kind: Literal["replace_runs"] = "replace_runs"
+
+    def __post_init__(self) -> None:
+        """Refuse a line emptied whole: taking text out is a redaction's job."""
+        if not any(run.text for run in self.runs):
+            raise ValueError("runs: every one is empty; taking text out is a redaction's job")
+
+
+@dataclass(frozen=True, slots=True)
 class Redact:
     """Remove a span's text, or the words `range` names, and draw nothing in their place.
 
@@ -136,13 +166,15 @@ class MovePage:
 # Plain aliases, not `type` statements: pydantic gives those a schema, changing the wire's.
 # An edit to text the document has, named by its span.
 SpanEdit = Replace | Redact
+# An edit to a line the document has, named by its spans.
+LineEdit = ReplaceRuns
 # An edit to a page's place, turn or presence in the file, named by its original number.
 PageOp = RotatePage | DeletePage | MovePage
 # An edit to a page as a whole, named by its page.
 PageEdit = Insert | PageOp
 # Every edit the browser can send. Each place that treats kinds differently ends in
 # `assert_never`, so a new kind is a type error until every one handles it.
-Edit = SpanEdit | PageEdit
+Edit = SpanEdit | LineEdit | PageEdit
 
 
 def check_edits(edits: list[Edit]) -> None:
@@ -157,9 +189,11 @@ def check_edits(edits: list[Edit]) -> None:
 
 
 def _typed_in(edit: Edit) -> str:
-    """The new text an edit carries: empty for a redaction or a page op, which draw none."""
+    """The new text an edit carries, a line's runs together; empty for one that draws none."""
     if isinstance(edit, Replace | Insert):
         return edit.text
+    if isinstance(edit, ReplaceRuns):
+        return "".join(run.text for run in edit.runs)
     if isinstance(edit, Redact | PageOp):
         return ""
     assert_never(edit)

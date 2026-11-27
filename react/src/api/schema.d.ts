@@ -488,7 +488,7 @@ export interface components {
          */
         ExportBody: {
             /** Edits */
-            edits: (components["schemas"]["Replace"] | components["schemas"]["Redact"] | components["schemas"]["Insert"] | components["schemas"]["RotatePage"] | components["schemas"]["DeletePage"] | components["schemas"]["MovePage"])[];
+            edits: (components["schemas"]["Replace"] | components["schemas"]["Redact"] | components["schemas"]["ReplaceRuns"] | components["schemas"]["Insert"] | components["schemas"]["RotatePage"] | components["schemas"]["DeletePage"] | components["schemas"]["MovePage"])[];
             /** Pages */
             pages?: number[] | null;
         };
@@ -956,7 +956,7 @@ export interface components {
          */
         RenderBody: {
             /** Edits */
-            edits: (components["schemas"]["Replace"] | components["schemas"]["Redact"] | components["schemas"]["Insert"] | components["schemas"]["RotatePage"] | components["schemas"]["DeletePage"] | components["schemas"]["MovePage"])[];
+            edits: (components["schemas"]["Replace"] | components["schemas"]["Redact"] | components["schemas"]["ReplaceRuns"] | components["schemas"]["Insert"] | components["schemas"]["RotatePage"] | components["schemas"]["DeletePage"] | components["schemas"]["MovePage"])[];
             /** Scale */
             scale: number;
             /** Regions */
@@ -980,6 +980,24 @@ export interface components {
             kind: "replace";
         };
         /**
+         * ReplaceRuns
+         * @description Swap a line's words, run by run: each run's words drawn in its own span's style.
+         *
+         *     The runs are one line's spans, every one, left to right (`Document.lines`). Those after
+         *     a change move along with it, unless a way out keeps the changed runs to their width.
+         */
+        ReplaceRuns: {
+            /** Runs */
+            runs: components["schemas"]["RunText"][];
+            /** @default as-is */
+            strategy?: components["schemas"]["Strategy"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "replace_runs";
+        };
+        /**
          * RotatePage
          * @description Turn a page clockwise by `degrees`, on top of the turn the file gives it.
          */
@@ -996,6 +1014,16 @@ export interface components {
              * @enum {string}
              */
             kind: "rotate_page";
+        };
+        /**
+         * RunText
+         * @description One span of a line, and the words it's to read, drawn in the span's own style.
+         */
+        RunText: {
+            /** Span Id */
+            span_id: string;
+            /** Text */
+            text: string;
         };
         /**
          * Sentences

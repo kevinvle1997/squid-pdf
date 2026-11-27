@@ -6,6 +6,7 @@ import io
 import json
 from collections.abc import Sequence
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import Any, Literal, assert_never, cast
 
@@ -17,6 +18,7 @@ from fontTools.ttLib import TTFont
 from squidpdf.core import (
     DEFAULT_DRIVER_FACTORY,
     FACES,
+    Message,
     QuarterTurn,
     Rect,
     Span,
@@ -39,7 +41,9 @@ from squidpdf.editing import (
     Redact,
     RedactionFailed,
     Replace,
+    ReplaceRuns,
     RotatePage,
+    RunText,
     apply_edits,
     insert_fit,
     redactions_of,
@@ -58,10 +62,12 @@ from squidpdf.editing.types import FileNotice, InsertNotice, SpanNotice
 from tests.conftest import (
     EMBEDDED_PAGE,
     REFERENCED_PAGE,
+    SENTENCE,
     cannot_cut,
     each_span,
     named_only,
     saved_as,
+    write_runs,
 )
 from tests.helpers import (
     assert_at_least,
@@ -86,7 +92,7 @@ _HINTING = ("fpgm", "prep", "cvt ")
 
 def _resolved(engine, index: SpanIndex, edits: Sequence[Edit]) -> Resolved:
     """`edits` checked against the document, with every span's room read from its page."""
-    return resolve(engine, index, rooms=engine.rooms(index, index), edits=edits)
+    return resolve(engine, index, free_space=engine.free_space(index), edits=edits)
 
 
 def _apply(engine, edits: Sequence[Edit], index: SpanIndex) -> Applied:
@@ -783,11 +789,10 @@ def test_new_text_reads_upright_on_a_page_the_viewer_turns(tmp_path, file_turn, 
         signed = Insert(0, (200, 400), "Signed", size=12, font="Liberation Sans Regular")
         turns = [] if edit_turn is None else [RotatePage(0, edit_turn)]
         index = engine.index()
-        rooms = engine.rooms(index, index)
         save_edited(
             engine,
             index,
-            rooms=rooms,
+            free_space=engine.free_space(index),
             edits=[signed, *turns],
             to=out,
             driver_factory=DEFAULT_DRIVER_FACTORY,
@@ -876,6 +881,67 @@ def test_the_redaction_check_reads_each_span_where_the_page_order_put_it(tmp_pat
         redactions.check_saved(out, pages=order, driver_factory=DEFAULT_DRIVER_FACTORY)
     said = words.sentence("redaction_failed").format(text=secret.text, page=2)
     assert_equal(failed.value.detail, said, "what the user reads, naming its original page")
+
+
+@dataclass(frozen=True, slots=True)
+class _KeepingDriver:
+    """MuPDF's driver, whose erase leaves the letters of a box holding `at`, and says so."""
+
+    driver: PdfDriver
+    at: tuple[float, float]
+
+    def erase_text(self, page: int, boxes: list[Rect]) -> list[str]:
+        """A box holding `at` left as it is, still reading its letters; the others erased."""
+        kept = [box for box in boxes if self._holds(box)]
+        still = iter(self.driver.text_in(page, kept))
+        left = iter(
+            self.driver.erase_text(page, [box for box in boxes if not self._holds(box)])
+        )
+        return [next(still) if self._holds(box) else next(left) for box in boxes]
+
+    def _holds(self, box: Rect) -> bool:
+        """Whether `box` holds the point whose letters are kept."""
+        x, y = self.at
+        return box.x0 <= x <= box.x1 and box.y0 <= y <= box.y1
+
+    def __getattr__(self, name: str) -> Any:
+        """Every other call, as the real driver answers it."""
+        return getattr(self.driver, name)
+
+
+def test_a_line_one_of_whose_runs_the_erase_cannot_clear_is_put_back_as_it_was(tmp_path):
+    """Drawn moved, its runs would sit apart from the one left: the line goes back whole."""
+    path, out = str(tmp_path / "line.pdf"), str(tmp_path / "out.pdf")
+    doc = pymupdf.open()
+    places = write_runs(doc.new_page(), SENTENCE, origin=(72, 100), size=10)
+    doc.save(path)
+    in_the_bold_word = ((places[1] + places[2]) / 2, 96)
+    keeping = partial(_keeping, at=in_the_bold_word)
+
+    with open_pdf(path, driver_factory=keeping) as engine:
+        index = engine.index()
+        spans = sorted(index, key=lambda span: span.bbox.x0)
+        typed = ["Text is now grouped into ", "spans", spans[2].text]
+        runs = tuple(RunText(span.id, text) for span, text in zip(spans, typed, strict=True))
+        applied = _apply(engine, [ReplaceRuns(runs)], index)
+        engine.save(out)
+
+    stuck = [SpanNotice(spans[1].id, Message("line_not_edited"))]
+    assert_equal(applied.notices, stuck, "what's said of the line")
+    assert_equal(applied.replaced, [], "an edit counted as drawn")
+    blocks = pymupdf.open(out)[0].get_text("dict")["blocks"]
+    drawn = sorted(each_span(blocks), key=lambda span: span["origin"][0])
+    starts = [(span["text"], round(span["origin"][0], 1)) for span in drawn]
+    as_it_was = [
+        (text, round(x, 1)) for (text, _font), x in zip(SENTENCE, places[:-1], strict=True)
+    ]
+    assert_equal(starts, as_it_was, "each run's words, where the page drew them")
+
+
+def _keeping(path: str, *, at: tuple[float, float]) -> PdfDriver:
+    """A driver factory for `open_pdf`: MuPDF's, whose erase leaves the letters at `at`."""
+    # A PdfDriver through __getattr__, which mypy reads and ty doesn't yet.
+    return cast(PdfDriver, _KeepingDriver(open_driver(path), at))
 
 
 # The cases the browser reads its pages shown from too (react/src/editing/project.test.ts).
