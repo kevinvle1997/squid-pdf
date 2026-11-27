@@ -15,8 +15,10 @@ RUN apt-get update \
 
 # Installed as root, so the user that reads uploads can't change its own interpreter.
 ENV UV_PYTHON_INSTALL_DIR=/opt/python
+# Its standard library compiled too: uv leaves it without bytecode, and on compose's read-only
+# root every process would compile what it imports, at every start.
 RUN --mount=type=bind,source=.python-version,target=/tmp/.python-version \
-    uv python install --no-bin "$(cat /tmp/.python-version)"
+    uv python install --no-bin --compile-bytecode "$(cat /tmp/.python-version)"
 # A sync that wants another Python fails, rather than fetching one as the app's user.
 ENV UV_PYTHON_DOWNLOADS=never
 
