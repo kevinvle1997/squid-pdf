@@ -217,6 +217,8 @@ def open_driver(path: str) -> PdfDriver:
     file = pdf_file(doc)
     # Before anything is added: an entry naming no object would take the first one added.
     file.protection.write_entries_in_place()
+    # Before any page loads: kept in its page's list, an annotation's made-up drawing can go in.
+    file.annotations.each_its_own_object()
     return _MuPDFDriver(doc, file)
 
 

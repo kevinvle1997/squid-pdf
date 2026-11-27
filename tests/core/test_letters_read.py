@@ -301,6 +301,10 @@ _PART_WRITES = {
         lambda file: file.protection.write_entries_in_place(),
         None,
     ),
+    ("annotations", "each_its_own_object"): _PartWrite(
+        lambda file: file.annotations.each_its_own_object(),
+        None,
+    ),
 }
 
 

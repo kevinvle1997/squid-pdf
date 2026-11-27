@@ -8,6 +8,7 @@ import pymupdf
 
 from squidpdf.core.pdf.lowlevel.active_content import ActiveContent
 from squidpdf.core.pdf.lowlevel.additions import PageAdditions
+from squidpdf.core.pdf.lowlevel.annotations import Annotations
 from squidpdf.core.pdf.lowlevel.document_hidden_copies import DocumentHiddenCopies
 from squidpdf.core.pdf.lowlevel.fonts import FontRecords
 from squidpdf.core.pdf.lowlevel.letters_read import LettersRead
@@ -33,6 +34,7 @@ class PdfFile:
     active_content: ActiveContent
     metadata: Metadata
     protection: Protection
+    annotations: Annotations
     # Each page's letters as last read, shared: every part that writes forgets what it changes.
     letters_read: LettersRead
 
@@ -51,5 +53,6 @@ def pdf_file(doc: pymupdf.Document) -> PdfFile:
         active_content=ActiveContent(doc, letters_read),
         metadata=Metadata(doc, letters_read),
         protection=Protection(doc, letters_read),
+        annotations=Annotations(doc, letters_read),
         letters_read=letters_read,
     )

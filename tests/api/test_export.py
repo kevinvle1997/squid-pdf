@@ -137,6 +137,10 @@ _HIDDEN_COPY = re.compile(r"/(ActualText|Alt|E)\s*\(([^)]*)\)")
 
 _STALL_S = 60  # far past any export timeout here
 _STALLED_TIMEOUT_S = 3  # long enough to start the export, short enough to wait for
+# A square comment with no drawing of its own (no AP), and PyMuPDF's number for its kind.
+_SQUARE_COMMENT = "<</Type/Annot/Subtype/Square/Rect[400 400 420 420]>>"
+_SQUARE_KIND = 4  # PDF_ANNOT_SQUARE, set at import where type checkers can't see it
+_NEW_TEXT = {"kind": "insert", "page": 0, "origin": [72, 700], "size": 12}  # low on the page
 
 
 def _stalling_driver(path: str) -> PdfDriver:
@@ -1000,10 +1004,23 @@ def _page_xmp_of(pdf: pymupdf.Document, page: pymupdf.Page) -> str:
     return pdf.xref_stream(int(stream.split()[0])).decode()
 
 
-def _annotation_xmp_of(pdf: pymupdf.Document, page: pymupdf.Page) -> str:
-    """The metadata (XMP) of the comment written in the page's list itself, as text."""
-    _value_type, comments = pdf.xref_get_key(page.xref, "Annots")
-    [stream] = re.findall(r"/Metadata (\d+) 0 R", comments)
+def _square_as_written(pdf: pymupdf.Document) -> str:
+    """The first page's square comment as the file writes it: apart, or in the page's list.
+
+    In the list, it's the last entry, where `_undrawn_comment` and `with_hidden_copies` put it.
+    """
+    page = pdf[0]
+    [square] = [xref for xref, kind, _id in page.annot_xrefs() if kind == _SQUARE_KIND]
+    # Apart: an object of its own. In the list, it has no number (0).
+    if square:
+        return pdf.xref_object(square, compressed=True)
+    _value_type, listed = pdf.xref_get_key(page.xref, "Annots")
+    return listed[listed.rindex("<</Type/Annot/Subtype/Square") : -1]
+
+
+def _annotation_xmp_of(pdf: pymupdf.Document) -> str:
+    """The metadata (XMP) of the square comment written in the page's list, as text."""
+    [stream] = re.findall(r"/Metadata (\d+) 0 R", _square_as_written(pdf))
     return pdf.xref_stream(int(stream)).decode()
 
 
@@ -1014,7 +1031,7 @@ def _kept_in(pdf: pymupdf.Document) -> dict[str, object]:
     """
     page = pdf[0]
     catalog = pdf.pdf_catalog()
-    note, free_text, stale_free_text, stamp = page.annots()
+    note, free_text, stale_free_text, stamp, _square = page.annots()
     fields = {field.field_name: field for field in page.widgets()}
     field, choice = fields["who"], fields["pick"]
     undrawable, listed = fields["sealed"].xref, fields["team"].xref
@@ -1023,7 +1040,7 @@ def _kept_in(pdf: pymupdf.Document) -> dict[str, object]:
         "author": pdf.xref_get_key(_TRAILER, "Info/Author"),
         "xmp": re.findall(r">([^<>]+)<", pdf.get_xml_metadata()),
         "page_xmp": re.findall(r">([^<>]+)<", _page_xmp_of(pdf, page)),
-        "annotation_xmp": re.findall(r">([^<>]+)<", _annotation_xmp_of(pdf, page)),
+        "annotation_xmp": re.findall(r">([^<>]+)<", _annotation_xmp_of(pdf)),
         "bookmark": tuple(
             pdf.xref_get_key(catalog, f"Outlines/{end}/Title") for end in ("First", "Last")
         ),
@@ -1232,6 +1249,39 @@ def test_an_answer_filled_in_with_a_comment_edits_like_the_page_text(
     response = _export(mine, doc, [{**edit, "span_id": answer["id"]}])
 
     assert_equal(_lines(_opened(response)), [lines], "the page's lines")
+
+
+def _undrawn_comment() -> bytes:
+    """A line, and a square comment with no drawing of its own, as some tools write one.
+
+    Written inside the page's list of comments itself, not as an object of its own.
+    """
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_text((72, 100), OTHER_LINE, fontname="helv", fontsize=12)
+    doc.xref_set_key(page.xref, "Annots", f"[{_SQUARE_COMMENT}]")
+    return doc.tobytes()
+
+
+@pytest.mark.parametrize(
+    "made",
+    [_undrawn_comment, partial(with_hidden_copies, NAME_COPIES)],
+    ids=["alone", "among other comments"],
+)
+def test_a_comment_with_no_drawing_of_its_own_comes_out_with_none(mine, made):
+    """MuPDF makes one up to show it, which stays out of the file, whatever the edit adds.
+
+    Here new text in two faces we ship, each adding objects to the file after the page loads.
+    """
+    doc = upload(mine, made()).json()
+    edits = [
+        {**_NEW_TEXT, "text": "Signed Jane Doe", "font": "Caveat Bold"},
+        {**_NEW_TEXT, "origin": [72, 730], "text": "Paid", "font": "Carlito Regular"},
+    ]
+
+    response = _export(mine, doc, edits)
+
+    assert_not_in("/AP", _square_as_written(_opened(response)), "the square comment")
 
 
 def test_a_split_of_a_tagged_file_says_the_tags_went_with_the_pages_left_out(mine, tagged):
