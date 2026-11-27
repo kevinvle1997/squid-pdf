@@ -3,7 +3,7 @@
 import type { FitInfo, FitRules, Strategy } from "../api/types";
 import type { Layout } from "./editor";
 import { type Fit, fitOf, runsPast } from "./fit";
-import { spanOf } from "./history";
+import { spansOf } from "./history";
 import { newTextDrawingOf, newTextVerdictOf } from "./newText";
 import { type Differing, differing, type NewTextReading, type Reading } from "./project";
 import type { Drawn } from "./render";
@@ -67,7 +67,7 @@ function disagrees({ span, text, redacted }: Differing, { reading, page, after, 
   const noticed = after.notices.get(page)?.some((notice) => notice.kind === "span" && notice.span_id === span.id);
   const skipped = after.skipped.some(({ edit }) => {
     const sent = reading.edits[edit];
-    return sent !== undefined && spanOf(sent) === span.id;
+    return sent !== undefined && spansOf(sent).includes(span.id);
   });
   if (noticed || skipped) return true;
   const fit = after.fits.get(page)?.[span.id];

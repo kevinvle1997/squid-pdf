@@ -1,6 +1,6 @@
 // Typing in place: a draft, held apart from the history until it ends. It ends once, however
 // it ends: Enter, Escape, leaving the field, or an export taking it along.
-import type { FitRules, FontInfo, Insert, Replace, SpanInfo, Strategy } from "../api/types";
+import type { FitRules, FontInfo, Insert, Replace, ReplaceRuns, SpanInfo, Strategy } from "../api/types";
 import { type Press, selectionAt } from "./caret";
 import { readDocumentDates } from "./documentDates";
 import { type Also, announce, announcing, change, type Editor, type EditorState, type FocusTo } from "./editor";
@@ -540,17 +540,33 @@ export function enter(editor: Editor): void {
   finish(editor, true, { returnFocus: true });
 }
 
+/** The edit a line's typing, its runs `typed`, is kept as: every run's words, since the server fits the line as one. */
+function keptLineEditOf(state: EditorState, typed: readonly string[]): ReplaceRuns | null {
+  const draft = spanDraftOf(state);
+  const line = draft === null ? undefined : state.layout.lines.get(draft.spanId);
+  if (draft === null || line === undefined) return null;
+  const way = wayIn(state);
+  const strategy = way === "as-is" ? undefined : way;
+  const before = line.spans.map((span) => state.reading.spans.get(span.id));
+  const sameWords = line.spans.every((span, index) => typed[index] === textIn(state.reading, span));
+  const sameWay = strategy === before.find((reading) => reading?.lineEdit !== undefined)?.strategy;
+  // Emptying a line isn't a replacement: taking text out is redaction's job.
+  if ((sameWords && sameWay) || isEmpty(typed.join(""))) return null;
+  const runs = line.spans.map((span, index) => ({ span_id: span.id, text: typed[index] ?? "" }));
+  return { kind: "replace_runs", runs, ...(strategy && { strategy }) };
+}
+
 /** Whether typed text says nothing: no change, since taking text out is redaction's job. */
 export function isEmpty(text: string): boolean {
   return text.trim() === "";
 }
 
-/** The edit a span's typing is kept as once it ends: none while no span is typed in, or nothing would change. */
-export function keptEditOf(state: EditorState): Replace | null {
+/** The edit a span's or a line's typing is kept as once it ends: none while neither is typed in, or nothing would change. */
+export function keptEditOf(state: EditorState): Replace | ReplaceRuns | null {
   const { layout, reading } = state;
   const draft = spanDraftOf(state);
-  // A line's edit names every run: the server takes it as one (`replace_runs`).
-  if (draft === null || draft.runs !== null) return null;
+  if (draft === null) return null;
+  if (draft.runs !== null) return keptLineEditOf(state, draft.runs);
   const now = reading.spans.get(draft.spanId);
   const was = now?.text ?? layout.spans.get(draft.spanId)?.text;
   // Only a way out on offer goes with the edit: the server draws any other as typed, and says so.

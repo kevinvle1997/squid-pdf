@@ -13,6 +13,7 @@ import {
   SENTENCES,
 } from "../fixtures";
 import { change, createEditor, type Editor, undo } from "./editor";
+import { changeAll, openFind, typeQuery, typeReplacement } from "./find";
 import { setWarningMuted } from "./mutedWarnings";
 import { openNewTextAt } from "./newText";
 import { deletePage } from "./pageDeletion";
@@ -363,5 +364,38 @@ describe("a line of several runs", () => {
     edit(editor, "after", null);
     expect(editor.store.get().draft).toBeNull();
     expect(editor.store.get().unredacting).toMatchObject({ spanId: "before" });
+  });
+});
+
+describe("a line's typing, kept", () => {
+  const line = aBoldSentence();
+  const typedLine = ["Text is grouped into ", "SPANS", " (one style)"];
+
+  beforeEach(() => {
+    editor = createEditor(FILE, aDoc({ ...line, sentences: PSEUDO_SENTENCES }), 2);
+  });
+
+  test("is one replace_runs naming every run, and typed back as it was, nothing", () => {
+    edit(editor, "bold", null);
+    typeIntoRuns(editor, typedLine);
+    finish(editor, true);
+    const runs = ["before", "bold", "after"].map((span_id, index) => ({ span_id, text: typedLine[index] }));
+    expect(editor.store.get().reading.edits).toEqual([{ kind: "replace_runs", runs }]);
+    edit(editor, "bold", null);
+    finish(editor, true);
+    expect(editor.store.get().reading.edits).toHaveLength(1);
+    expect(editor.store.get().history.done).toHaveLength(1);
+  });
+
+  test("Change all over a line already edited keeps the rest of its edit", () => {
+    edit(editor, "bold", null);
+    typeIntoRuns(editor, typedLine);
+    finish(editor, true);
+    openFind(editor);
+    typeQuery(editor, "style");
+    typeReplacement(editor, "face");
+    changeAll(editor);
+    const texts = [...editor.store.get().reading.spans.values()].map(({ text }) => text);
+    expect(texts).toEqual(["Text is grouped into ", "SPANS", " (one face)"]);
   });
 });

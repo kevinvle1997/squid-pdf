@@ -1,12 +1,13 @@
 // Find and replace, all in the browser: the spans that read the words, how many a change won't keep
 // looking like the text around them (Rule 1), and Change all, one step in the history.
-import type { FitInfo, FitRules, Replace, Sentences, SpanInfo, Strategy } from "../api/types";
+import type { FitInfo, FitRules, Replace, ReplaceRuns, Sentences, SpanInfo, Strategy } from "../api/types";
 import { FIND_DELAY_MS } from "./constants";
-import { announcing, change, type Editor, type EditorState, scrollingTo } from "./editor";
+import { announcing, change, type Editor, type EditorState, type Layout, scrollingTo } from "./editor";
 import { fitOf, type LineScale, lineWidthPt, runsPast, settingOf, wayDrawn } from "./fit";
+import { entriesOf, historyReducer, spansOf } from "./history";
 import { type FindOptions, type Match, matchesIn, replacedIn } from "./matching";
 import type { PageState } from "./page";
-import { differing, type Reading, textIn } from "./project";
+import { differing, project, type Reading, textIn } from "./project";
 import type { Drawn } from "./render";
 import { type FontsByObject, fontOf } from "./spanFonts";
 import { finish, isEmpty, keptEditOf, typingEnd } from "./typing";
@@ -61,20 +62,25 @@ interface Found {
  */
 function foundIn(
   spans: readonly SpanInfo[],
-  { reading, find, typed }: { reading: Reading; find: FindState; typed: Replace | null },
+  { reading, find, typed }: { reading: Reading; find: FindState; typed: Replace | ReplaceRuns | null },
 ): Found[] {
   if (find.searched === "") return [];
   const found: Found[] = [];
   for (const span of spans) {
     const now = reading.spans.get(span.id);
     if (reading.deleted.has(span.page) || span.form_field || now?.redacted) continue;
-    const kept = typed?.span_id === span.id ? typed : undefined;
-    const text = kept?.text ?? textIn(reading, span);
+    const kept = typed !== null && spansOf(typed).includes(span.id) ? typed : undefined;
+    const text = (kept === undefined ? undefined : typedTextOf(kept, span.id)) ?? textIn(reading, span);
     const strategy = kept === undefined ? now?.strategy : kept.strategy;
     const matches = matchesIn(text, find.searched, find);
     if (matches.length > 0) found.push({ span, text, strategy, matches });
   }
   return found;
+}
+
+/** The words an edit being typed gives `spanId`, one of its spans. */
+function typedTextOf(typed: Replace | ReplaceRuns, spanId: string): string | undefined {
+  return typed.kind === "replace" ? typed.text : typed.runs.find((run) => run.span_id === spanId)?.text;
 }
 
 /** The places found as Change all would change them: in the words being typed on the page, as typing keeps them. */
@@ -402,6 +408,31 @@ function searched(state: EditorState, asked: Partial<FindOptions> = {}): Counted
   return { find: { ...find, announcedCount: heard }, heard };
 }
 
+/**
+ * Change all's edits, giving each span in `replaced` its words: one replace a span, but a line already edited as one
+ * is edited as one again, since a replace of one of its spans would put the rest of its edit back.
+ */
+function changeAllEditsOf(
+  layout: Pick<Layout, "lines">,
+  { reading, replaced }: { reading: Reading; replaced: ReadonlyMap<string, string> },
+): (Replace | ReplaceRuns)[] {
+  const done = new Set<string>();
+  return [...replaced].flatMap(([spanId, text]): (Replace | ReplaceRuns)[] => {
+    const line = layout.lines.get(spanId);
+    if (line === undefined || reading.spans.get(spanId)?.lineEdit === undefined) {
+      return [{ kind: "replace", span_id: spanId, text }];
+    }
+    // Its first span changed has made the whole line's edit.
+    if (done.has(line.id)) return [];
+    done.add(line.id);
+    const runs = line.spans.map((span) => ({
+      span_id: span.id,
+      text: replaced.get(span.id) ?? textIn(reading, span),
+    }));
+    return [{ kind: "replace_runs", runs }];
+  });
+}
+
 /** Change every place found, as one step in the history. Words being typed on the page are kept first, as their own. */
 export function changeAll(editor: Editor): void {
   const state = editor.store.get();
@@ -421,12 +452,13 @@ export function changeAll(editor: Editor): void {
     }));
     return;
   }
-  const edits = changing.map(({ span, text, matches }) => ({
-    kind: "replace" as const,
-    span_id: span.id,
-    text: replacedIn(text, matches, find.replacement),
-  }));
-  // What changed is heard last, not a count: the next count is heard, whatever it says.
+  const replaced = new Map(
+    changing.map(({ span, text, matches }) => [span.id, replacedIn(text, matches, find.replacement)]),
+  );
+  // What changed is heard last, not a count: the next count is heard, whatever it says. The typed words are kept
+  // first, so a line edit among them is the one Change all's own words go into.
+  const after = historyReducer(state.history, typed);
+  const edits = changeAllEditsOf(state.layout, { reading: project(state.doc, entriesOf(after)), replaced });
   change(editor, [typed, { kind: "add", edits }], (next) => ({
     ...ended,
     announcement: announcing(changedSentence(changing.length, state.doc.sentences)),
