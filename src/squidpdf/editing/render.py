@@ -158,7 +158,7 @@ def _draw_regions(
     return Rendered(
         images,
         fits={span_id: fitted.report for span_id, fitted in fits.replaces.items()}
-        | {run.span.id: run.report for fitted in fits.lines.values() for run in fitted.redrawn},
+        | {run.key: run.report for fitted in fits.lines.values() for run in fitted.redrawn},
         insert_fits={position: fitted.report for position, fitted in fits.inserts.items()},
         verdicts=verdicts.replaces,
         insert_verdicts=verdicts.inserts,

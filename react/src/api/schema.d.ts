@@ -983,8 +983,8 @@ export interface components {
          * ReplaceRuns
          * @description Swap a line's words, run by run: each run's words drawn in its own span's style.
          *
-         *     The runs are one line's spans, every one, left to right (`Document.lines`). Those after
-         *     a change move along with it, unless a way out keeps the changed runs to their width.
+         *     The runs are consecutive spans of one line (`Document.lines`), or a span on none. Those
+         *     after a change move along, unless a way out holds them; text past a split stays put.
          */
         ReplaceRuns: {
             /** Runs */
@@ -1017,13 +1017,20 @@ export interface components {
         };
         /**
          * RunText
-         * @description One span of a line, and the words it's to read, drawn in the span's own style.
+         * @description One span of a line, or part of it, and the words it's to read, in the span's own style.
+         *
+         *     `start` and `end` are where in the span's text the edit begins and ends, in code points,
+         *     where a split cuts the span; `text` is the words of that part alone.
          */
         RunText: {
             /** Span Id */
             span_id: string;
             /** Text */
             text: string;
+            /** Start */
+            start?: number | null;
+            /** End */
+            end?: number | null;
         };
         /**
          * Sentences

@@ -81,6 +81,7 @@ class FitReport:
     substitute: str = ""  # the face that draws the line when its own font can't
     asked: Strategy = "as-is"  # the way out the user chose, offered or not
     unavailable: str = ""  # new text's chosen font, when it can't be used here at all
+    at_split: bool = False  # it ends at a split, so the text right after it stays put
 
     @property
     def ok(self) -> bool:
@@ -90,7 +91,7 @@ class FitReport:
     @property
     def too_long(self) -> bool:
         """Whether the line runs past its room by more than the tolerance would allow."""
-        return runs_past(self.delta_pt, self.room_pt)
+        return runs_past(self.delta_pt, self.room_pt, tolerance_pt=_tolerance(self.at_split))
 
     @property
     def percent_past_room(self) -> int:
@@ -143,22 +144,32 @@ class Fitted:
     scale_x: float = 1.0
 
 
+def _tolerance(at_split: bool) -> float:
+    """How far past its room a line may run unwarned: not at all before the text at a split."""
+    return 0.0 if at_split else TOLERANCE_PT
+
+
+def run_key(span_id: str, start: int | None) -> str:
+    """What a run's fit is kept by: its span's id, and where in it it starts after a split."""
+    return f"{span_id}@{start}" if start else span_id
+
+
 @dataclass(frozen=True, slots=True, eq=False)
 class RunFitted:
     """One run of a line's edit as it's drawn: its words, where it starts, in what plan.
 
     `report` is the line's fit with this run's own letters and face. `x` is where it starts
-    once the runs before it are drawn; `put_back` plans its own words, to draw it as it was.
+    once the runs before it are drawn. Cut by a split, `span` is only the part it covers.
     """
 
-    span: Span  # as the document has it
+    key: str  # `run_key`: what the reply keeps its fit by
+    span: Span
     text: str
     x: float
     changed: bool  # its words are new
     moved: bool  # it starts elsewhere than it did
     report: FitReport
     plan: DrawPlan = field(repr=False)
-    put_back: DrawPlan = field(repr=False)
     verdict: Verdict
     size: float | None = None
     scale_x: float = 1.0
@@ -177,11 +188,25 @@ class LineFitted:
 
 
 @dataclass(frozen=True, slots=True, eq=False)
+class LineRedraw:
+    """What one line's edits erase and draw back, whatever splits are among them.
+
+    `erased` are the line's spans with a part changed or moved, as the document has them;
+    `drawn` every part of them, edited or not; `put_back` plans each as it was, by id.
+    """
+
+    erased: list[Span]
+    drawn: list[RunFitted]
+    put_back: dict[str, DrawPlan] = field(repr=False)
+
+
+@dataclass(frozen=True, slots=True, eq=False)
 class EditFits:
     """A fit for every replace, line edit and insert an edit list leaves, drawn or not."""
 
     replaces: dict[str, Fitted]  # by the replaced span's id
-    lines: dict[str, LineFitted]  # by the id of the line's first span
+    lines: dict[str, LineFitted]  # by the `run_key` of the edit's first run
+    redraws: dict[tuple[str, ...], LineRedraw]  # by the line's span ids
     inserts: dict[int, Fitted]  # by the insert's place in the edit list
 
 
@@ -209,11 +234,16 @@ class RunsLaidOut:
 
 
 def runs_laid_out(
-    runs: Sequence[RunWidths], *, room_pt: float, strategy: Strategy
+    runs: Sequence[RunWidths], *, room_pt: float, strategy: Strategy, at_split: bool = False
 ) -> RunsLaidOut:
-    """A line's runs as typed, fitted in its room by those that change, and set along it."""
+    """A line's runs as typed, fitted in its room by those that change, and set along it.
+
+    `at_split` ends them at a split: `room_pt` is the gap to the text there, with no tolerance.
+    """
     original_width, delta_pt = _changed_widths(runs)
-    options = options_for(delta_pt, original_width, room_pt=room_pt)
+    options = options_for(
+        delta_pt, original_width, room_pt=room_pt, tolerance_pt=_tolerance(at_split)
+    )
     drawn_strategy = _strategy_drawn(strategy, options)
     report = FitReport(
         delta_pt=round(delta_pt, 2),
@@ -222,6 +252,7 @@ def runs_laid_out(
         options=options,
         strategy=drawn_strategy,
         asked=strategy,
+        at_split=at_split,
     )
     # A way out is offered only past the room, so the changed runs have some width then.
     scale = 1.0 if drawn_strategy == "as-is" else original_width / (original_width + delta_pt)
@@ -249,12 +280,18 @@ def _run_starts(runs: Sequence[RunWidths], *, scale: float) -> list[float]:
     return starts
 
 
-def runs_past(delta_pt: float, room_pt: float) -> bool:
+def runs_past(delta_pt: float, room_pt: float, *, tolerance_pt: float = TOLERANCE_PT) -> bool:
     """Whether a line `delta_pt` longer runs past its room, or the tolerance if wider."""
-    return delta_pt > max(TOLERANCE_PT, room_pt + ROOM_SLACK_PT)
+    return delta_pt > max(tolerance_pt, room_pt + ROOM_SLACK_PT)
 
 
-def options_for(delta_pt: float, original_width: float, *, room_pt: float) -> list[Option]:
+def options_for(
+    delta_pt: float,
+    original_width: float,
+    *,
+    room_pt: float,
+    tolerance_pt: float = TOLERANCE_PT,
+) -> list[Option]:
     """The three ways out of an overflow, in the order worth trying.
 
     Condensing is offered only while it stays invisible, and shrinking only down
@@ -262,7 +299,8 @@ def options_for(delta_pt: float, original_width: float, *, room_pt: float) -> li
     Each ends the line where the original did.
     """
     # No width to compare against: the ratios below divide by it.
-    if not runs_past(delta_pt, room_pt) or original_width <= 0:
+    past = runs_past(delta_pt, room_pt, tolerance_pt=tolerance_pt)
+    if not past or original_width <= 0:
         return []
 
     # What shrinking to fit would scale the size to, and how much condensing squeezes.
@@ -378,13 +416,15 @@ def line_fit(
     spans: Sequence[Span],
     texts: Sequence[str],
     *,
+    keys: Sequence[str],
     room_pt: float,
+    next_x: float | None = None,
     strategy: Strategy = "as-is",
 ) -> LineFitted:
     """What a line's runs come to typed as `texts`, fitted by the runs that change.
 
-    `room_pt` is the line's own (`Line`). As is, the runs after a change move along with it;
-    a way out scales only the changed runs, to their width, so nothing after them moves.
+    `room_pt` is the line's own (`Line`), unless the edit ends at a split before `next_x`.
+    As is, the runs after a change move along; a way out scales only the changed runs.
     """
     own = [engine.fit.plan_for(span, span.text) for span in spans]
     plans = [
@@ -400,22 +440,44 @@ def line_fit(
         )
         for span, text, plan, own_plan in zip(spans, texts, plans, own, strict=True)
     ]
-    laid_out = runs_laid_out(widths, room_pt=room_pt, strategy=strategy)
+    at_split = next_x is not None
+    # At a split, only up to the text after it.
+    if next_x is not None:
+        room_pt = max(next_x - (widths[-1].x + widths[-1].original_pt), 0.0)
+    laid_out = runs_laid_out(widths, room_pt=room_pt, strategy=strategy, at_split=at_split)
     return LineFitted(
         [
             _run_fitted(
                 engine,
                 span,
                 text,
+                key=key,
                 x=x,
                 changed=run.changed,
-                plans=(plan, own_plan),
+                plan=plan,
                 laid_out=laid_out,
             )
-            for span, text, x, run, plan, own_plan in zip(
-                spans, texts, laid_out.starts, widths, plans, own, strict=True
+            for span, text, key, x, run, plan in zip(
+                spans, texts, keys, laid_out.starts, widths, plans, strict=True
             )
         ]
+    )
+
+
+def kept_run(engine: Engine, span: Span, *, key: str) -> RunFitted:
+    """A part of a cut span no edit takes, drawn again where it is, as it was."""
+    plan = engine.fit.plan_for(span, span.text)
+    x, _baseline = span.origin
+    return RunFitted(
+        key,
+        span,
+        span.text,
+        x=x,
+        changed=False,
+        moved=False,
+        report=FitReport(delta_pt=0.0),
+        plan=plan,
+        verdict=_verdict_of(engine, span, span.text, plan=plan),
     )
 
 
@@ -424,13 +486,13 @@ def _run_fitted(
     span: Span,
     text: str,
     *,
+    key: str,
     x: float,
     changed: bool,
-    plans: tuple[DrawPlan, DrawPlan],
+    plan: DrawPlan,
     laid_out: RunsLaidOut,
 ) -> RunFitted:
-    """One run of a line's edit, as `laid_out` sets it: `plans` are its typed and own words'."""
-    plan, own_plan = plans
+    """One run of a line's edit, as `laid_out` sets it, drawn as `plan` plans it."""
     report = replace(
         laid_out.report,
         missing=plan.missing,
@@ -438,6 +500,7 @@ def _run_fitted(
         substitute=engine.fit.substitute(span, text, plan=plan),
     )
     fitted = RunFitted(
+        key,
         span,
         text,
         x=x,
@@ -445,7 +508,6 @@ def _run_fitted(
         moved=abs(x - span.origin[0]) > MOVED_PT,
         report=report,
         plan=plan,
-        put_back=own_plan,
         verdict=_verdict_of(engine, span, text, plan=plan),
     )
     strategy = laid_out.report.strategy

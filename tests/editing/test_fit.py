@@ -136,7 +136,13 @@ def test_a_line_edited_as_one_is_fitted_by_the_runs_it_changes_as_the_browser_sa
         for run in case["runs"]
     ]
 
-    laid_out = runs_laid_out(runs, room_pt=case["room_pt"], strategy=case["strategy"])
+    laid_out = runs_laid_out(
+        runs,
+        room_pt=case["room_pt"],
+        strategy=case["strategy"],
+        # .get: only a case of an edit ending at a split says so.
+        at_split=case.get("at_split", False),
+    )
 
     report = laid_out.report
     past = report.percent_past_room if report.too_long else None

@@ -346,6 +346,8 @@
         72,
         172
       ]
-    }
+    },
+    {"what": "an edit ending at a split grows into the gap before the text after it", "runs": [{"x": 72, "original_pt": 40, "typed_pt": 44, "changed": true}], "room_pt": 5, "at_split": true, "strategy": "as-is", "original_pt": 40, "delta_pt": 4, "too_long_percent": null, "options": [], "starts": [72]},
+    {"what": "ending at a split, running past the gap is too long, even within the tolerance a line's end is allowed", "runs": [{"x": 72, "original_pt": 100, "typed_pt": 103, "changed": true}], "room_pt": 0, "at_split": true, "strategy": "as-is", "original_pt": 100, "delta_pt": 3, "too_long_percent": 3, "options": ["shrink", "condense", "as-is"], "starts": [72]}
   ]
 }
