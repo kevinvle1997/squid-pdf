@@ -9,6 +9,7 @@ import math
 import os
 import shutil
 from collections.abc import AsyncIterator, Callable
+from dataclasses import dataclass
 from datetime import datetime
 from functools import partial
 from pathlib import Path
@@ -21,7 +22,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from squidpdf.api import constants as limits
-from squidpdf.core import BUILD, words
+from squidpdf.core import BUILD, Workers, words, write_dense
 from squidpdf.core.fonts.catalog import FACES, face_bytes
 from squidpdf.documents import analyse, constants, read, replies, store
 from squidpdf.documents.constants import MAX_IMAGE_PIXELS
@@ -63,6 +64,61 @@ def _stored_then_named() -> bytes:
     [(named_xref, *_rest)] = named.get_fonts()
     doc.xref_set_key(named_xref, "BaseFont", "/LiberationSerif")
     return doc.tobytes()
+
+
+def _dense_contract(folder: Path) -> bytes:
+    """Three full pages of a contract: many spans a page, in fonts the file only names."""
+    path = folder / "contract.pdf"
+    write_dense(str(path), pages=3)
+    return path.read_bytes()
+
+
+def _two_copies_of_one_font(_folder: Path) -> bytes:
+    """`_stored_then_named`: a font's own copy on its first page, only its name on the next."""
+    return _stored_then_named()
+
+
+@dataclass(slots=True)
+class _CountingPool:
+    """The app's pool, counting the jobs it's sent."""
+
+    pool: Workers
+    sent: int = 0
+
+    async def run[T](self, timeout: float, task: Callable[[], T]) -> T:
+        """`task` on the app's pool, counted."""
+        self.sent += 1
+        return await self.pool.run(timeout, task)
+
+
+def _as_any_upload_says(doc: dict) -> dict:
+    """An upload's reply less what names this upload: its id, and when it expires."""
+    return {key: value for key, value in doc.items() if key not in ("id", "expires_at")}
+
+
+@pytest.mark.parametrize(
+    "pdf", [_dense_contract, _two_copies_of_one_font], ids=["a contract", "a font's copies"]
+)
+def test_an_upload_judged_a_share_of_its_pages_a_worker_says_what_one_worker_would(
+    app, mine, monkeypatch, tmp_path, pdf
+):
+    """Its index built once, then its pages judged a share a worker, all at once.
+
+    Short, as these are, it's judged on the worker that indexed it: one job.
+    """
+    body = pdf(tmp_path)
+    counting = _CountingPool(app.state.pool)
+    monkeypatch.setattr(app.state, "pool", counting)
+    on_one_worker = upload(mine, body).json()
+    short = counting.sent
+    monkeypatch.setattr(constants, "SPANS_PER_SHARE", 1)
+
+    shared = upload(mine, body).json()
+
+    assert_equal(short, 1, "jobs sent for a short document")
+    assert_at_least(counting.sent - short, 3, "jobs sent shared out: the index, two shares")
+    said = _as_any_upload_says(shared)
+    assert_equal(said, _as_any_upload_says(on_one_worker), "the document, a share a worker")
 
 
 def test_each_span_says_the_face_that_draws_an_edit_to_it_not_its_fonts_first(mine):

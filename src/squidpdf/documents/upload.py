@@ -12,12 +12,12 @@ from pathlib import Path
 
 from squidpdf.core import Reply, Workers, words
 from squidpdf.documents import constants, disk, store
-from squidpdf.documents.analyse import analyse_upload
+from squidpdf.documents.analyse import analyse_upload, judge_pages, keep_judged
 from squidpdf.documents.errors import NotAPdf, TooLarge
 from squidpdf.documents.meters import Meter
 from squidpdf.documents.replies import document_json
 from squidpdf.documents.store import DocumentStore
-from squidpdf.documents.types import KeptAnalysis
+from squidpdf.documents.types import JudgedPages, KeptAnalysis
 
 _PDF_HEADER = b"%PDF-"
 _HEADER_WINDOW = 1024  # readers accept the header anywhere in the first KB
@@ -68,7 +68,7 @@ class UploadController:
         digest = await asyncio.to_thread(_digest_of, folder / store.ORIGINAL)
         # Refused before its analysis; the count refuses again, should another take the last.
         await asyncio.to_thread(meter.check, digest)
-        kept = await self._enqueue_analyse(folder)
+        kept = await self._analysed(folder)
         expires_at = await asyncio.to_thread(self.documents.touch, folder)
         # Off the server's thread: it reads every font's letters and writes them out again.
         body = await asyncio.to_thread(
@@ -86,9 +86,46 @@ class UploadController:
             await asyncio.to_thread(self.documents.delete, folder)
             raise
 
-    async def _enqueue_analyse(self, folder: Path) -> KeptAnalysis:
-        """Analyse the document on a worker."""
-        task = partial(analyse_upload, self.documents, folder, constants.MAX_PAGES)
+    async def _analysed(self, folder: Path) -> KeptAnalysis:
+        """The upload analysed on a worker, or, when it's long, its pages a share a worker."""
+        analysed = await self._enqueue_analyse_upload(folder)
+        # Too short to share out: judged where it was indexed, on one worker.
+        if isinstance(analysed, KeptAnalysis):
+            return analysed
+        judged = await self._each_judged(folder, analysed)
+        # Off the server's thread: it joins every span and writes them out.
+        return await asyncio.to_thread(keep_judged, folder, judged)
+
+    async def _each_judged(self, folder: Path, shares: list[range]) -> list[JudgedPages]:
+        """Each share of the pages judged on a worker of its own, all at once, in order."""
+        judging = [
+            asyncio.ensure_future(self._enqueue_judge_pages(folder, pages=share))
+            for share in shares
+        ]
+        try:
+            return await asyncio.gather(*judging)
+        except BaseException:  # a share failed, or the browser left: the rest stop too
+            for share in judging:
+                share.cancel()
+            await asyncio.gather(*judging, return_exceptions=True)
+            raise
+
+    async def _enqueue_analyse_upload(self, folder: Path) -> KeptAnalysis | list[range]:
+        """Index the upload on a worker, and judge it there unless it's long."""
+        # Read as module attributes, so a test can share out a short document.
+        task = partial(
+            analyse_upload,
+            self.documents,
+            folder,
+            constants.MAX_PAGES,
+            most_shares=constants.ANALYSE_WORKERS,
+            spans_per_share=constants.SPANS_PER_SHARE,
+        )
+        return await self.workers.run(constants.ANALYSE_TIMEOUT_S, task)
+
+    async def _enqueue_judge_pages(self, folder: Path, *, pages: range) -> JudgedPages:
+        """Judge one share of the pages on a worker."""
+        task = partial(judge_pages, self.documents, folder, pages)
         return await self.workers.run(constants.ANALYSE_TIMEOUT_S, task)
 
 

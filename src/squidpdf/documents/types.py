@@ -11,7 +11,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TypedDict
 
-from squidpdf.core import ApproximateReason, Fidelity, MessageInfo, Param, QuarterTurn
+from squidpdf.core import (
+    ApproximateReason,
+    Fidelity,
+    FreeSpace,
+    MessageInfo,
+    Param,
+    QuarterTurn,
+)
 
 
 class Box(TypedDict):
@@ -148,6 +155,20 @@ class KeptAnalysis:
     facts: bytes = field(repr=False)  # AnalysisFacts, as JSON
     spans: bytes = field(repr=False)  # list[SpanInfo], as JSON
     digest: str  # of the facts and the spans
+
+
+@dataclass(frozen=True, slots=True)
+class JudgedPages:
+    """Some of a document's pages judged: one worker's share of its analysis, not kept yet."""
+
+    spans: bytes = field(repr=False)  # list[SpanInfo] of the spans on its pages, as JSON
+    # Each font first met on its pages, by the first span in it there, in index order.
+    fonts: list[FontFacts] = field(repr=False)
+    lines: list[LineInfo] = field(repr=False)  # each of more than one span on its pages
+    # Its pages' rooms and lines, worked out here; None when the document's were kept already.
+    free_space: FreeSpace | None = field(repr=False)
+    signed: bool  # whether the document holds a signature: every share says it alike
+    attached: str  # the set of the user's copies it was judged with (`AttachedFiles.key`)
 
 
 class FitRules(TypedDict):
