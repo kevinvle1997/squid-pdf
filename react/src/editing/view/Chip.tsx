@@ -6,6 +6,7 @@ import type { PageInfo, SpanInfo } from "../../api/types";
 import { Button } from "../../ui/Button";
 import { Choices } from "../../ui/Choices";
 import { Num } from "../../ui/Num";
+import { Shortcut } from "../../ui/Tooltip";
 import { Warn } from "../../ui/Warn";
 import type { Setting } from "../fit";
 import { attachFont, copyOfferedFor, FONT_FILES, readableName } from "../fonts";
@@ -14,10 +15,12 @@ import { editNote, type Note } from "../marks";
 import { setWarningMuted } from "../mutedWarnings";
 import { redact } from "../redaction";
 import { fontOf, shownNameIn } from "../spanFonts";
+import { splitRefusalOf } from "../splitting";
 import { chooseWayOut, signatureWarningOf } from "../typing";
 import { LOOKS_IDENTICAL, shortWarningOf, type Verdict } from "../verdicts";
 import styles from "./Chip.module.css";
 import { useEditor, useEditorState } from "./context";
+import { splitAtCaret } from "./fieldKeys";
 import { keepFocusOnPress, selectedIn } from "./keys";
 import { useSlipPlace } from "./slipPlace";
 import { ValueEditor } from "./ValueEditor";
@@ -51,6 +54,7 @@ export function Chip({ span, fieldEndPt, info, trouble, verdict, setting, value,
   const attaching = useEditorState((state) => state.attaching !== null);
   // A signed document's, until its first edit: no mute, since that edit ends it.
   const signature = useEditorState(signatureWarningOf);
+  const splitRefusal = useEditorState(splitRefusalOf);
   const note = lineNote === undefined ? editNote(span, { verdict, font, sentences, muted }) : lineNote.note;
   const mutes = lineNote === undefined ? [shown] : lineNote.fonts;
   const ways = setting.offered.map((id) => ({ id, label: sentences.options[id]?.label ?? id }));
@@ -120,6 +124,12 @@ export function Chip({ span, fieldEndPt, info, trouble, verdict, setting, value,
         </span>
       )}
       {value !== undefined && <ValueEditor value={value} field={field} />}
+      {splitRefusal !== null && (
+        // Announced as it's refused.
+        <span className={styles.refusal} aria-hidden="true">
+          {splitRefusal}
+        </span>
+      )}
       <span className={styles.actions}>
         {offered !== null && (
           // A pointer's shortcut to the Fonts list, the keyboard's way: focus stays in the field.
@@ -142,6 +152,12 @@ export function Chip({ span, fieldEndPt, info, trouble, verdict, setting, value,
         <Button keepFocus onPress={() => redact(editor, span.id, { selected: selectedIn(field.current) })}>
           Redact
         </Button>
+        {/* Shift+Enter, where a pointer or a finger can reach it. */}
+        <Shortcut keys="Shift Enter">
+          <Button variant="quiet" keepFocus onPress={() => splitAtCaret(editor, field.current)}>
+            Split
+          </Button>
+        </Shortcut>
       </span>
     </div>
   );

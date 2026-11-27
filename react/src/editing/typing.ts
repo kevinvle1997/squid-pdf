@@ -3,7 +3,16 @@
 import type { FitRules, FontInfo, Insert, Replace, ReplaceRuns, SpanInfo, Strategy } from "../api/types";
 import { type Press, selectionAt } from "./caret";
 import { readDocumentDates } from "./documentDates";
-import { type Also, announce, announcing, change, type Editor, type EditorState, type FocusTo } from "./editor";
+import {
+  type Also,
+  announce,
+  announcing,
+  asWired,
+  change,
+  type Editor,
+  type EditorState,
+  type FocusTo,
+} from "./editor";
 import { type FieldHistory, NO_TYPING, recorded, redone, undone } from "./fieldHistory";
 import {
   type Fit,
@@ -27,7 +36,7 @@ import {
   lineValueIn,
 } from "./formattedValues";
 import type { HistoryAction } from "./history";
-import { type Line, runsRedrawn } from "./lines";
+import { type Line, rulesFor, runsRedrawn } from "./lines";
 import { editNote, type Note } from "./marks";
 import {
   fontOfNewText,
@@ -43,6 +52,8 @@ import {
 import { type Reading, textIn } from "./project";
 import { landedNewTextFitOf } from "./render";
 import { fontOf, shownNameIn } from "./spanFonts";
+import type { Region } from "./splits";
+import type { SplitRefusal } from "./splitting";
 import { drawingOf } from "./substitutes";
 import { editVerdictOf, shortWarningOf, type Verdict, worstOf } from "./verdicts";
 import { fill, sentenceOrNothing } from "./words";
@@ -59,6 +70,9 @@ export interface SpanDraft {
   readonly fieldHistory: FieldHistory; // a line field's own undo of its typing; an input keeps its own
   readonly strategy: Strategy | undefined; // the way out of a long line chosen, kept while it's offered
   readonly valueEditorOpen: boolean; // a date's or an amount's editor open in the slip (valueEditor.ts)
+  readonly split?: Region; // what the field covers once it's split or joined here: gone as it closes (splitting.ts)
+  readonly asSplit?: readonly string[] | undefined; // the runs a split left it, nothing new typed: no change to keep
+  readonly splitRefused?: SplitRefusal | undefined; // why a split couldn't be made where the caret was
   readonly value: HeldValue | null; // the date or amount its editor is offered for, held once it's opened or typed in
 }
 
@@ -196,8 +210,9 @@ function draftFitOf(state: EditorState): Fit | undefined {
   if (typing === undefined) return undefined;
   const { draft, span, font } = typing;
   const typedLine = draft.runs === null ? null : draftLineOf(state, draft.runs);
-  if (typedLine !== null) return lineFitOf(typedLine.runs, { roomPt: typedLine.line.roomPt, rules: state.doc.fit });
-  return fitOf(span, { font, text: draft.text, rules: state.doc.fit });
+  if (typedLine === null) return fitOf(span, { font, text: draft.text, rules: state.doc.fit });
+  const { line, runs } = typedLine;
+  return lineFitOf(runs, { roomPt: line.roomPt, rules: rulesFor(line, state.doc.fit) });
 }
 
 /** The way out the draft's line is drawn with: the one chosen while it's offered, else as typed. */
@@ -280,7 +295,8 @@ function lineTroublesIn(state: EditorState, typed: readonly string[]): Troubles 
   const typedLine = draftLineOf(state, typed);
   if (draft === null || typedLine === null) return { sentences: [], kind: "", offers: false, verdict: null };
   const { line, runs } = typedLine;
-  const { fit: rules, sentences } = state.doc;
+  const { sentences } = state.doc;
+  const rules = rulesFor(line, state.doc.fit);
   // Before a change, any run may be redrawn: each says so as the field opens.
   const unedited = { offers: false, verdict: worstOf(line.spans) };
   if (isEmpty(typed.join(""))) return { sentences: [sentences.empty], kind: "empty", ...unedited };
@@ -442,7 +458,7 @@ function withValueHeld(
   const closing = state.draft.valueEditorOpen && lost;
   const valueEditorOpen = state.draft.valueEditorOpen && !lost;
   return {
-    draft: { ...state.draft, text, runs, value, valueEditorOpen },
+    draft: { ...state.draft, text, runs, value, valueEditorOpen, splitRefused: undefined },
     ...(closing && { focusTo: { spanId: state.draft.spanId } }),
   };
 }
@@ -529,7 +545,7 @@ export function lineNoteOf(state: EditorState, typed: readonly string[]): { note
   if (draft === null || typedLine === null) return { note: null, fonts: [] };
   const { line, runs } = typedLine;
   const { layout, doc, mutedFonts } = state;
-  const fit = lineFitOf(runs, { roomPt: line.roomPt, rules: doc.fit });
+  const fit = lineFitOf(runs, { roomPt: line.roomPt, rules: rulesFor(line, doc.fit) });
   const notes = new Map<string, Note>();
   for (const { run, verdict } of redrawnVerdictsOf(state, { runs, fit, asked: draft.strategy })) {
     const shown = shownNameIn(layout.fonts, run.span);
@@ -652,12 +668,19 @@ export function typingEnd(
   if (draft === null) return { typed: nothing, ended: {} };
   if (draft.kind === "newText") return newTextTypingEnd(state, draft, { keep, returnFocus, inPlace });
   const ended = { draft: null, ...(returnFocus && { focusTo: sentBack({ spanId: draft.spanId }, inPlace) }) };
-  const replace = keptEditOf(state);
+  const replace = onlySplit(draft) ? null : keptEditOf(state);
   if (!keep || replace === null) return { typed: nothing, ended };
   return {
-    typed: { kind: "add", edits: [replace] },
+    typed: { kind: "add", edits: [asWired(state.layout, replace)] },
     ended: { ...ended, announcement: announcing(fill(doc.sentences.changed_to, { text: draft.text })) },
   };
+}
+
+/** Whether the field's words are as a split left them, with nothing typed or chosen to keep. */
+export function onlySplit({ asSplit, runs, text, strategy }: SpanDraft): boolean {
+  const words = runs ?? [text];
+  const untouched = asSplit?.length === words.length && asSplit.every((run, index) => run === words[index]);
+  return untouched && strategy === undefined;
 }
 
 /** Focus sent back to `target` as the typing ends: a mark, or a page's control, takes it where the view is, `inPlace`. */

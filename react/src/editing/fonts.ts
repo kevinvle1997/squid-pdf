@@ -3,7 +3,7 @@
 import { deleteFont, isGone, putFont } from "../api/client";
 import type { Document, FontInfo, Sentences } from "../api/types";
 import { sentenceOf } from "../bugs";
-import { announcing, type Editor, type EditorState, type Layout, layoutOf } from "./editor";
+import { announcing, type Editor, type EditorState, type Layout, layoutOf, relaid } from "./editor";
 import { addOwnFace, removeOwnFace } from "./faces";
 import { missingIn } from "./fit";
 import type { FontNotice } from "./notices";
@@ -187,7 +187,10 @@ export function copyOfferedFor(state: EditorState): string | null {
 /** The server judged every span again: its marks and fits take over, and every edited page is drawn again. */
 function judgedAgain(editor: Editor, doc: Document, also: Partial<EditorState>): void {
   const { store, queue } = editor;
-  store.set({ doc, layout: layoutOf(doc), notices: { ...store.get().notices, font: null }, attaching: null, ...also });
+  const { draft } = store.get();
+  const taken = draft?.kind === "span" ? (draft.split ?? null) : null;
+  const laid = relaid(store.get(), doc, { base: layoutOf(doc), taken });
+  store.set({ doc, ...laid, notices: { ...store.get().notices, font: null }, attaching: null, ...also });
   queue.redraw(store.get().reading);
 }
 

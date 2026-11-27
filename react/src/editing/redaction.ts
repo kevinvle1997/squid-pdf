@@ -2,11 +2,12 @@
 // keyboard command, not a tool (Rule 5). Words selected in a span's field take only those words, whole.
 import type { Box, Edit, Redact, RedactionInfo, Sentences, SpanInfo } from "../api/types";
 import { readDocumentDates } from "./documentDates";
-import { announcing, change, type Editor, type EditorState } from "./editor";
+import { announcing, asWired, change, type Editor, type EditorState } from "./editor";
 import { matchesAcross } from "./find";
 import { entriesOf } from "./history";
 import type { Line } from "./lines";
 import { type CodePoints, type Redacted, type RedactedRange, sameRange, textIn, unitsOf, wordsAt } from "./project";
+import { spanIdOf } from "./splits";
 import { draftOf, lineDraftOf, spanDraftOf, typedRunsState, typedState } from "./typing";
 import { fill } from "./words";
 
@@ -132,7 +133,7 @@ export function redact(
   const quoted = taken === null ? textIn(reading, span) : wordsAt(span.text, taken);
   change(
     editor,
-    { kind: "add", edits: [edit] },
+    { kind: "add", edits: [asWired(layout, edit)] },
     // Typing into it ends unkept: redaction wins.
     {
       draft: null,
@@ -154,7 +155,7 @@ function redactLine(editor: Editor, line: Line, { selected }: { selected: Select
   const words = wordsOf(line.spans);
   const reads = first !== undefined && fieldReadsAsPage(state, first);
   const taken = selected === null || !reads ? null : wordsSelected(words, selected);
-  const edits = lineRedactsOf(line, taken);
+  const edits = lineRedactsOf(line, taken).map((each) => asWired(state.layout, each));
   const quoted = taken === null ? line.spans.map((span) => textIn(reading, span)).join("") : wordsAt(words, taken);
   change(
     editor,
@@ -228,7 +229,8 @@ export function editAnyway(editor: Editor): void {
   readDocumentDates(editor);
   // A line's redactions go with it, each of its spans'.
   const line = layout.lines.get(span.id);
-  const redacted = new Set((line?.spans ?? [span]).map(({ id }) => id));
+  // A redaction is the span's, whichever part of it asked.
+  const redacted = new Set((line?.spans ?? [span]).map(({ id }) => spanIdOf(id)));
   const isRedaction = (edit: Edit) => edit.kind === "redact" && redacted.has(edit.span_id);
   const redactions = new Set(entriesOf(history).flatMap((entry) => (isRedaction(entry.edit) ? [entry.id] : [])));
   change(editor, { kind: "remove", ids: redactions }, (next) => {

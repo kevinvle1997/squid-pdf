@@ -18,7 +18,7 @@ import { addFaces, DEFAULT_FACE, previewFaceOf } from "../faces";
 import { lineFitOf, runsPast, type Setting, setAs, wayDrawn, waysOffered } from "../fit";
 import { attachDropped } from "../fonts";
 import { caretRunValueIn, type EditableValue, lineValueIn, runExtents } from "../formattedValues";
-import { deletedBy, type Line, lineDrawnAs, runsEdited } from "../lines";
+import { deletedBy, type Line, lineDrawnAs, rulesFor, runsEdited } from "../lines";
 import { textIn } from "../project";
 import { fontOf } from "../spanFonts";
 import { shallowEqual } from "../store";
@@ -55,7 +55,8 @@ export function RunsField({ line, info }: { line: Line; info: PageInfo }) {
   const runs = useEditorState((state) => spanDraftOf(state)?.runs ?? NO_RUNS);
   const fonts = useEditorState((state) => state.layout.fonts);
   const start = useEditorState((state) => line.spans.map((span) => textIn(state.reading, span)).join(""));
-  const rules = useEditorState((state) => state.doc.fit);
+  const documentRules = useEditorState((state) => state.doc.fit);
+  const rules = rulesFor(line, documentRules);
   const asked = useEditorState((state) => spanDraftOf(state)?.strategy);
   const typed = line.spans.flatMap((span, index) => {
     const font = fontOf(fonts, span);

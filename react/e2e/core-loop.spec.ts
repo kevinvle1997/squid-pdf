@@ -494,3 +494,31 @@ test("a line with a bold word is edited in one field, each run in its own face, 
     expect(fontsOf(regular)).toEqual([expect.not.stringMatching(/Bold/)]);
   }
 });
+
+test("a line split before a word exports with that word, and all after it, where it was", async ({ page }) => {
+  await open(page, boldSentence());
+  const sentence = "Text is grouped into spans (one style).";
+  await page.getByRole("button", { name: sentence }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("textbox", { name: `Change “${sentence}”` })).toBeFocused();
+  // Every word selected: Left goes to the line's start, and Right from there to the one split before.
+  await page.keyboard.press("ArrowLeft");
+  for (const _letter of "Text is ") await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("Shift+Enter");
+  const field = page.getByRole("textbox", { name: "Change “Text is ”" });
+  await expect(field).toBeFocused();
+  // Far shorter than what was there, so the file's reading has the words after the split as a span of their own.
+  for (const _letter of "ext is ") await page.keyboard.press("Backspace");
+  await page.keyboard.type(" ");
+  expect(await seriousProblems(page)).toEqual([]);
+
+  await field.press("Enter");
+  await expect(page.locator("img[data-strip]")).toHaveCount(1);
+  const downloading = page.waitForEvent("download");
+  await page.keyboard.press("ControlOrMeta+s");
+  const { spans } = await reread(page, await bytesOf(await downloading));
+  const startOf = (words: string) => spans.find((span) => span.text.startsWith(words))?.origin[0];
+  // Where "grouped" starts: past "Text is " from the line's start at 72, by Helvetica's widths at 12 pt.
+  expect(startOf("grouped")).toBeCloseTo(110.68, 1);
+  expect(startOf("T ")).toBe(72);
+});

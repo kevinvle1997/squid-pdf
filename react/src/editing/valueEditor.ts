@@ -1,5 +1,6 @@
 // A date's or an amount's editor in the slip, beside the field: it opens on the value being typed in,
 // and what's chosen there is written into the field's text, as typing it would be.
+
 import type { FontInfo, SpanInfo } from "../api/types";
 import { type AmountValue, withAmount } from "./amounts";
 import { type CalendarDay, type DateValue, daysIn, withDate } from "./dates";
@@ -7,6 +8,7 @@ import type { Editor, EditorState } from "./editor";
 import { recorded } from "./fieldHistory";
 import { type Fit, fitOf, lineFitOf, troublesAddedOf } from "./fit";
 import { type EditableValue, heldOf, heldWritten, runExtents } from "./formattedValues";
+import { rulesFor } from "./lines";
 import { fontOf } from "./spanFonts";
 import { draftSpanOf, type SpanDraft, spanDraftOf, typedRunsState, typedState } from "./typing";
 
@@ -147,7 +149,8 @@ function dateCheckOf(
   const typing = draftSpanOf(state);
   if (typing === undefined) return undefined;
   const { draft } = typing;
-  const { fit: rules, sentences } = state.doc;
+  const { sentences } = state.doc;
+  const rules = rulesFor(state.layout.lines.get(typing.span.id), state.doc.fit);
   const { fitReading, span, font } = valueFitsOf(state, { typing, value, text });
   const rest = fitReading(text.slice(0, value.start) + text.slice(value.end));
   const now = fitReading(text);
@@ -188,7 +191,7 @@ function valueFitsOf(
       const here = index === at ? words.slice(start, end + words.length - text.length) : (runs[index] ?? "");
       return eachFont === undefined ? [] : [{ span: each, font: eachFont, text: here }];
     });
-    return lineFitOf(typed, { roomPt: line.roomPt, rules });
+    return lineFitOf(typed, { roomPt: line.roomPt, rules: rulesFor(line, rules) });
   };
   return { fitReading, span: run, font: runFont };
 }

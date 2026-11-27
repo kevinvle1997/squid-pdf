@@ -32,6 +32,8 @@
 .facts { display: flex; align-items: baseline; gap: var(--s3); }
 /* It will match: said in ink, as plainly as a warning is said in red. */
 .identical { color: var(--ink); }
+/* Why a split couldn't be made, above what can be pressed. */
+.refusal { white-space: normal; line-height: 1.4; }
 /* The ways out of a long line take a row of their own, under what's wrong. */
 .ways { display: flex; align-items: center; gap: var(--s2); }
 /* What a pointer can press, always last and in one row on the chip's one left edge: the user's own copy
