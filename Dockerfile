@@ -2,10 +2,23 @@
 # needs, nothing else. `--target test` reproduces the CI environment, dev tools
 # and tests/ too, so `squidpdf` and its tests run the same way on any machine:
 #   docker build --target test -t squidpdf-test . && docker run --rm squidpdf-test
-FROM python:3.14-slim-bookworm AS base
-# Pinned so "the same environment as CI" doesn't drift between builds. CI reads its uv
-# from this line (.github/actions/uv).
+# No Python image: the Python is uv's, the build CI and a laptop run (pyproject.toml).
+FROM debian:bookworm-slim AS base
+# Pinned so "the same environment as CI" doesn't drift between builds; it picks the Python
+# too. CI reads its uv from this line (.github/actions/uv).
 COPY --from=ghcr.io/astral-sh/uv:0.13.10 /uv /uvx /bin/
+
+# The mail's STARTTLS checks its server by the system's certificates.
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Installed as root, so the user that reads uploads can't change its own interpreter.
+ENV UV_PYTHON_INSTALL_DIR=/opt/python
+RUN --mount=type=bind,source=.python-version,target=/tmp/.python-version \
+    uv python install --no-bin "$(cat /tmp/.python-version)"
+# A sync that wants another Python fails, rather than fetching one as the app's user.
+ENV UV_PYTHON_DOWNLOADS=never
 
 # Uploaded PDFs are hostile input, so nothing here runs as root. /data holds the
 # documents for their hour, /accounts the accounts; a volume mounted on either takes its
