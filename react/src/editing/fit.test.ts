@@ -15,6 +15,7 @@ import {
   waysOffered,
   widthPt,
 } from "./fit";
+import { rulesFor } from "./lines";
 import { fill } from "./words";
 
 // Every letter half the size wide, so a width is easy to work out: 10 letters at 10 pt is 50 pt.
@@ -179,7 +180,9 @@ describe("a line edited as one, on the server's own cases", () => {
       typedPt: run.typed_pt,
       changed: run.changed,
     }));
-    const laidOut = runsLaidOut(runs, { roomPt: line.room_pt, asked: line.strategy as Strategy, rules: shared.rules });
+    // A line ending at a split goes by no tolerance, as `rulesFor` gives it.
+    const rules = rulesFor({ atSplit: "at_split" in line && line.at_split === true }, shared.rules);
+    const laidOut = runsLaidOut(runs, { roomPt: line.room_pt, asked: line.strategy as Strategy, rules });
     expect([laidOut.fit.originalPt, laidOut.fit.deltaPt, laidOut.fit.options]).toEqual([
       line.original_pt,
       line.delta_pt,
@@ -187,7 +190,7 @@ describe("a line edited as one, on the server's own cases", () => {
     ]);
     const percent = line.too_long_percent;
     const expected = percent === null ? [] : [fill(sentences.too_long, { percent: String(percent) })];
-    expect(troublesOf(laidOut.fit, { ...TROUBLE_WORDING, rules: shared.rules })).toEqual(expected);
+    expect(troublesOf(laidOut.fit, { ...TROUBLE_WORDING, rules })).toEqual(expected);
     expect(laidOut.starts.map((start) => start.toFixed(4))).toEqual(line.starts.map((start) => start.toFixed(4)));
   });
 });

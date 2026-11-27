@@ -26,6 +26,7 @@ drawn_in_own_copy = "Edits here use the file's own copy of this font."
 # Why an edit was left out.
 no_span = "This edit points at text that isn't in this document."
 not_one_line = "This edit names text that isn't one line of this document, so it's left out."
+split_unreadable = "This line can't be split here, so the edit is left out."
 no_page = "This edit points at a page that isn't in this document."
 last_page = "A file needs at least one page, so its last page stays in."
 

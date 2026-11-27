@@ -10,6 +10,12 @@ export interface Line {
   readonly spans: readonly SpanInfo[];
   readonly bbox: Box;
   readonly roomPt: number; // the least room any of its spans has, the line moving as one
+  readonly atSplit?: boolean; // it ends at a split, so its room is the gap to the text there, with no tolerance
+}
+
+/** The fit rules `line` goes by: before the text at a split, with no tolerance, as `runs_past` in editing/fit.py. */
+export function rulesFor(line: Pick<Line, "atSplit"> | undefined, rules: FitRules): FitRules {
+  return line?.atSplit === true ? { ...rules, tolerance_pt: 0 } : rules;
 }
 
 /** Each line of more than one span the document lists, by each of its spans' ids: one object per line. */
@@ -31,7 +37,7 @@ export function linesBySpan(doc: Pick<Document, "spans" | "lines">): ReadonlyMap
 const MOVED_PT = 0.05;
 
 /** The box `spans` cover together. */
-function unionOf(spans: readonly SpanInfo[]): Box {
+export function unionOf(spans: readonly SpanInfo[]): Box {
   return {
     x0: Math.min(...spans.map(({ bbox }) => bbox.x0)),
     y0: Math.min(...spans.map(({ bbox }) => bbox.y0)),
@@ -134,7 +140,7 @@ export interface DrawnRun {
  * which the server redraws. None while one's font is unknown, which only the render can place.
  */
 export function lineDrawnAs(
-  line: Pick<Line, "spans" | "roomPt">,
+  line: Pick<Line, "spans" | "roomPt" | "atSplit">,
   {
     texts,
     fonts,
@@ -148,7 +154,7 @@ export function lineDrawnAs(
   });
   if (typed.length !== line.spans.length) return null;
   const widths = runWidthsOf(typed);
-  const { way, fit, starts } = runsLaidOut(widths, { roomPt: line.roomPt, asked, rules });
+  const { way, fit, starts } = runsLaidOut(widths, { roomPt: line.roomPt, asked, rules: rulesFor(line, rules) });
   const set = setAs(way, fit);
   return typed.map(({ span, text }, index) => {
     const run = widths[index];

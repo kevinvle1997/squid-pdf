@@ -6,8 +6,15 @@ import pymupdf
 import pytest
 
 from tests.api.conftest import around, render, span_starting, upload
-from tests.conftest import SENTENCE, each_span, write_runs
-from tests.helpers import assert_close, assert_equal, assert_in, assert_problem, assert_true
+from tests.conftest import SENTENCE, each_letter, each_span, write_runs
+from tests.helpers import (
+    assert_at_most,
+    assert_close,
+    assert_equal,
+    assert_in,
+    assert_problem,
+    assert_true,
+)
 
 _SIZE = 10
 _LEFT = 72
@@ -185,5 +192,152 @@ def test_a_line_emptied_whole_is_a_bad_request(mine, lines_doc):
     spans = _line_of(lines_doc, "Text")
 
     response = render(mine, lines_doc, [_typed(spans, ["", "", ""])], [around(spans[0])])
+
+    assert_problem(response, "invalid_request", 400)
+
+
+def _saved_letters(client, doc: dict, edits: list[dict]) -> list[dict]:
+    """Each letter the saved file draws on its page, with where, in reading order."""
+    response = client.post(f"/api/documents/{doc['id']}/export", json={"edits": edits})
+    assert_equal(response.status_code, 200, "exported")
+    page = pymupdf.open(stream=response.content, filetype="pdf")[0]
+    return list(each_letter(page.get_text("rawdict")["blocks"]))
+
+
+def _letter_x(letters: list[dict], words: str, *, baseline: float) -> float:
+    """Where `words` starts on the line at `baseline`, as the saved file draws it."""
+    line = sorted(
+        (letter for letter in letters if abs(letter["origin"][1] - baseline) < 1),
+        key=lambda letter: letter["origin"][0],
+    )
+    at = "".join(letter["c"] for letter in line).index(words)
+    return line[at]["origin"][0]
+
+
+def _page_x(span: dict, before: str) -> float:
+    """Where the page draws what follows `before` in `span`, set in plain Helvetica."""
+    return span["origin"][0] + pymupdf.get_text_length(before, "helv", _SIZE)
+
+
+def _part(span: dict, text: str, **cut: int) -> dict:
+    """An edit of part of one span, from `start` to `end`, typed as `text`."""
+    return {"kind": "replace_runs", "runs": [{"span_id": span["id"], "text": text, **cut}]}
+
+
+def test_text_after_a_split_inside_a_span_stays_where_the_page_drew_it(mine, lines_doc):
+    first = _line_of(lines_doc, "Text")[0]
+    edit = _part(first, "Text a ", end=len("Text is "))
+
+    letters = _saved_letters(mine, lines_doc, [edit])
+
+    baseline = first["origin"][1]
+    after = _letter_x(letters, "grouped", baseline=baseline)
+    assert_close(after, _page_x(first, "Text is "), _MOVED, "the words past the split")
+
+
+def test_a_split_lets_an_edit_grow_only_into_the_gap_before_what_follows(mine, lines_doc):
+    """A line's end may run a little past its room; text right after a split may not."""
+    first = _line_of(lines_doc, "Text")[0]
+    edit = _part(first, "Text is i ", end=len("Text is "))
+
+    fits = render(mine, lines_doc, [edit], [around(first)]).json()["fits"]
+
+    fit = fits[first["id"]]
+    assert_at_most(fit["delta_pt"], 5, "within the tolerance a line's end has")
+    assert_in("too long", fit["message"], "but past the gap, so said")
+
+
+def test_an_edit_after_a_split_is_set_from_where_the_page_drew_it(mine, lines_doc):
+    spans = _line_of(lines_doc, "Text")
+    start = len("Text is ")
+    runs = [
+        {"span_id": spans[0]["id"], "text": "gathered into ", "start": start},
+        {"span_id": spans[1]["id"], "text": "spans"},
+        {"span_id": spans[2]["id"], "text": spans[2]["text"]},
+    ]
+    edit = {"kind": "replace_runs", "runs": runs}
+
+    rendered = render(mine, lines_doc, [edit], [around(spans[0])]).json()
+    letters = _saved_letters(mine, lines_doc, [edit])
+
+    baseline = spans[0]["origin"][1]
+    assert_close(
+        _letter_x(letters, "gathered", baseline=baseline),
+        _page_x(spans[0], "Text is "),
+        _MOVED,
+        "the edit starts at the split",
+    )
+    assert_close(
+        _letter_x(letters, "Text", baseline=baseline),
+        spans[0]["origin"][0],
+        _MOVED,
+        "before",
+    )
+    assert_in(f"{spans[0]['id']}@{start}", rendered["fits"], "its fit, kept by where it starts")
+
+
+def test_edits_on_both_sides_of_a_split_both_stand(mine, lines_doc):
+    first = _line_of(lines_doc, "Text")[0]
+    split = len("Text is ")
+    before = _part(first, "Test is ", end=split)
+    after = {**_part(first, "gathered into ", start=split)}
+
+    letters = _saved_letters(mine, lines_doc, [before, after])
+
+    baseline = first["origin"][1]
+    assert_close(_letter_x(letters, "Test", baseline=baseline), first["origin"][0], 0.05, "one")
+    assert_close(
+        _letter_x(letters, "gathered", baseline=baseline),
+        _page_x(first, "Text is "),
+        _MOVED,
+        "the other, from the split",
+    )
+
+
+def test_a_shrunk_edit_before_a_split_between_runs_leaves_the_next_where_it_was(
+    mine, lines_doc
+):
+    spans = _line_of(lines_doc, "Text")
+    edit = {**_part(spans[0], "Text is grouped intoo "), "strategy": "shrink"}
+
+    saved = _exported(mine, lines_doc, [edit])
+
+    changed = _drawn(saved, "Text is grouped intoo")
+    assert_true(changed["size"] < _SIZE, f"drawn smaller: {changed['size']}")
+    bold = _drawn(saved, "spans")
+    assert_close(bold["origin"][0], spans[1]["origin"][0], 0.01, "the bold word stays")
+
+
+def test_a_span_on_no_line_is_split_in_its_own_room(mine, lines_doc):
+    far = span_starting(lines_doc, 0, "far")
+    edit = _part(far, "f", end=1)
+
+    letters = _saved_letters(mine, lines_doc, [edit])
+
+    baseline = far["origin"][1]
+    assert_close(
+        _letter_x(letters, "ar", baseline=baseline), _page_x(far, "f"), _MOVED, "the rest"
+    )
+
+
+@pytest.mark.parametrize(
+    "cut",
+    [{"end": 500}, {"start": 30}, {"start": 4, "end": 4}, {"start": -1}],
+    ids=["past the text", "starting past it", "nothing", "before it"],
+)
+def test_a_split_where_a_span_has_no_text_is_a_bad_request(mine, lines_doc, cut):
+    first = _line_of(lines_doc, "Text")[0]
+
+    response = render(mine, lines_doc, [_part(first, "x", **cut)], [around(first)])
+
+    assert_problem(response, "invalid_request", 400)
+
+
+def test_a_split_anywhere_but_an_edits_two_ends_is_a_bad_request(mine, lines_doc):
+    spans = _line_of(lines_doc, "Text")
+    edit = _typed(spans, ["Text is grouped into ", "span", " (one style)."])
+    edit["runs"][1]["start"] = 1
+
+    response = render(mine, lines_doc, [edit], [around(spans[0])])
 
     assert_problem(response, "invalid_request", 400)

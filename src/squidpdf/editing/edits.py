@@ -63,22 +63,34 @@ class Replace:
 
 @dataclass(frozen=True, slots=True)
 class RunText:
-    """One span of a line, and the words it's to read, drawn in the span's own style."""
+    """One span of a line, or part of it, and the words it's to read, in the span's own style.
+
+    `start` and `end` are where in the span's text the edit begins and ends, in code points,
+    where a split cuts the span; `text` is the words of that part alone.
+    """
 
     span_id: str
     text: str
+    start: int | None = None
+    end: int | None = None
 
     def __post_init__(self) -> None:
-        """Refuse text that isn't one line of letters."""
+        """Refuse text that isn't one line of letters, or a part no text could have."""
         check_text(self.text)
+        before_the_text = self.start is not None and self.start < 0
+        if before_the_text:
+            raise ValueError(f"start: {self.start} is before the span's text")
+        start = self.start or 0
+        if self.end is not None and self.end <= start:
+            raise ValueError(f"end: {self.end} is not after start {start}")
 
 
 @dataclass(frozen=True, slots=True)
 class ReplaceRuns:
     """Swap a line's words, run by run: each run's words drawn in its own span's style.
 
-    The runs are one line's spans, every one, left to right (`Document.lines`). Those after
-    a change move along with it, unless a way out keeps the changed runs to their width.
+    The runs are consecutive spans of one line (`Document.lines`), or a span on none. Those
+    after a change move along, unless a way out holds them; text past a split stays put.
     """
 
     runs: tuple[RunText, ...]
@@ -86,9 +98,13 @@ class ReplaceRuns:
     kind: Literal["replace_runs"] = "replace_runs"
 
     def __post_init__(self) -> None:
-        """Refuse a line emptied whole: taking text out is a redaction's job."""
+        """Refuse a line emptied whole, and a split anywhere but at the edit's two ends."""
         if not any(run.text for run in self.runs):
             raise ValueError("runs: every one is empty; taking text out is a redaction's job")
+        starts_inside = any(run.start is not None for run in self.runs[1:])
+        ends_inside = any(run.end is not None for run in self.runs[:-1])
+        if starts_inside or ends_inside:
+            raise ValueError("runs: only the first may have a start, and only the last an end")
 
 
 @dataclass(frozen=True, slots=True)
