@@ -24,7 +24,7 @@ async function open(page: Page, file: Upload = SAMPLE) {
 
 /**
  * Three pages, each one line in Helvetica naming it: one more page than the sample, so a page
- * deleted still leaves two to split. Written by hand, each object's place counted for the xref.
+ * deleted still leaves two to split. Written by hand.
  */
 function threePages(): Upload {
   const lines = ["First page", "Second page", "Third page"];
@@ -41,6 +41,28 @@ function threePages(): Upload {
       ];
     }),
   ];
+  return pdfOf("three.pdf", objects);
+}
+
+/**
+ * One line, "Text is grouped into spans (one style).", its middle word in Helvetica Bold and the rest in Helvetica:
+ * three spans, one after another on one baseline. Written by hand.
+ */
+function boldSentence(): Upload {
+  const content = String.raw`BT /F1 12 Tf 72 720 Td (Text is grouped into ) Tj /F2 12 Tf (spans) Tj /F1 12 Tf ( \(one style\).) Tj ET`;
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >>",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>",
+    `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
+  ];
+  return pdfOf("bold.pdf", objects);
+}
+
+/** A PDF named `name` of `objects`, the first its catalog, each one's place counted for the xref. */
+function pdfOf(name: string, objects: readonly string[]): Upload {
   let pdf = "%PDF-1.4\n";
   const places = objects.map((object, index) => {
     const place = pdf.length;
@@ -51,7 +73,7 @@ function threePages(): Upload {
   const rows = places.map((place) => `${String(place).padStart(10, "0")} 00000 n \n`).join("");
   pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${rows}`;
   pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
-  return { name: "three.pdf", mimeType: "application/pdf", buffer: Buffer.from(pdf, "latin1") };
+  return { name, mimeType: "application/pdf", buffer: Buffer.from(pdf, "latin1") };
 }
 
 /** A PDF read back as any upload is. */
@@ -438,4 +460,23 @@ test("typing previews in a similar font, says a trouble once, and Tab goes on to
   release();
   await expect(page.locator("img[data-strip]")).toHaveCount(1);
   await expect(preview).toHaveCount(0);
+});
+
+test("a line with a bold word is one mark, and its one field types into each run in its own face", async ({ page }) => {
+  await open(page, boldSentence());
+  const sentence = "Text is grouped into spans (one style).";
+  await page.getByRole("button", { name: sentence }).focus();
+  await page.keyboard.press("Enter");
+  const field = page.getByRole("textbox", { name: `Change “${sentence}”` });
+  await expect(field).toBeFocused();
+  // From the line's end, back past " (one style)." to the end of the bold word, and a letter typed there.
+  await page.keyboard.press("ArrowRight");
+  for (const _letter of " (one style).") await page.keyboard.press("ArrowLeft");
+  await page.keyboard.type("!");
+  const runs = field.locator("[data-run]");
+  const words = () => runs.evaluateAll((each) => each.map((run) => run.textContent));
+  await expect.poll(words).toEqual(["Text is grouped into ", "spans!", " (one style)."]);
+  const faces = await runs.evaluateAll((each) => each.map((run) => getComputedStyle(run).fontFamily));
+  expect(faces[1]).not.toBe(faces[0]);
+  expect(await seriousProblems(page)).toEqual([]);
 });
