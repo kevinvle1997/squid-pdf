@@ -8,12 +8,15 @@ learns why.
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
+from itertools import pairwise
 from typing import assert_never
 
 from squidpdf.core import (
     CONDENSE_LIMIT,
     FACES,
+    MOVED_PT,
     OPTION_KEYS,
     ROOM_SLACK_PT,
     SHRINK_FLOOR,
@@ -141,11 +144,109 @@ class Fitted:
 
 
 @dataclass(frozen=True, slots=True, eq=False)
+class RunFitted:
+    """One run of a line's edit as it's drawn: its words, where it starts, in what plan.
+
+    `report` is the line's fit with this run's own letters and face. `x` is where it starts
+    once the runs before it are drawn; `put_back` plans its own words, to draw it as it was.
+    """
+
+    span: Span  # as the document has it
+    text: str
+    x: float
+    changed: bool  # its words are new
+    moved: bool  # it starts elsewhere than it did
+    report: FitReport
+    plan: DrawPlan = field(repr=False)
+    put_back: DrawPlan = field(repr=False)
+    verdict: Verdict
+    size: float | None = None
+    scale_x: float = 1.0
+
+
+@dataclass(frozen=True, slots=True, eq=False)
+class LineFitted:
+    """A line's edit, run by run: one neither changed nor moved is left as the page has it."""
+
+    runs: list[RunFitted]
+
+    @property
+    def redrawn(self) -> list[RunFitted]:
+        """The runs it erases and draws again: changed, or moved by a change before them."""
+        return [run for run in self.runs if run.changed or run.moved]
+
+
+@dataclass(frozen=True, slots=True, eq=False)
 class EditFits:
-    """A fit for every replace and insert an edit list leaves, drawn or not."""
+    """A fit for every replace, line edit and insert an edit list leaves, drawn or not."""
 
     replaces: dict[str, Fitted]  # by the replaced span's id
+    lines: dict[str, LineFitted]  # by the id of the line's first span
     inserts: dict[int, Fitted]  # by the insert's place in the edit list
+
+
+@dataclass(frozen=True, slots=True)
+class RunWidths:
+    """One run of a line, measured: where the page starts it, and its words' widths."""
+
+    x: float
+    original_pt: float  # its own words'
+    typed_pt: float  # the words it's to read
+    changed: bool
+
+
+@dataclass(frozen=True, slots=True)
+class RunsLaidOut:
+    """A line's runs fitted by those that change: the line's fit, and where each run starts.
+
+    `scale` is how wide the changed runs are drawn, as a share of their typed width: a way
+    out ends them where they ended, so nothing after them moves.
+    """
+
+    report: FitReport  # the line's, without any one run's letters or face
+    scale: float
+    starts: list[float]
+
+
+def runs_laid_out(
+    runs: Sequence[RunWidths], *, room_pt: float, strategy: Strategy
+) -> RunsLaidOut:
+    """A line's runs as typed, fitted in its room by those that change, and set along it."""
+    original_width, delta_pt = _changed_widths(runs)
+    options = options_for(delta_pt, original_width, room_pt=room_pt)
+    drawn_strategy = _strategy_drawn(strategy, options)
+    report = FitReport(
+        delta_pt=round(delta_pt, 2),
+        room_pt=round(room_pt, 2),
+        original_pt=round(original_width, 2),
+        options=options,
+        strategy=drawn_strategy,
+        asked=strategy,
+    )
+    # A way out is offered only past the room, so the changed runs have some width then.
+    scale = 1.0 if drawn_strategy == "as-is" else original_width / (original_width + delta_pt)
+    return RunsLaidOut(report, scale, _run_starts(runs, scale=scale))
+
+
+def _changed_widths(runs: Sequence[RunWidths]) -> tuple[float, float]:
+    """How wide a line's changed runs were, and how much wider they're typed."""
+    changed = [run for run in runs if run.changed]
+    original = sum(run.original_pt for run in changed)
+    return original, sum(run.typed_pt for run in changed) - original
+
+
+def _run_starts(runs: Sequence[RunWidths], *, scale: float) -> list[float]:
+    """Where each run starts once the runs before it are drawn, the changed ones `scale` wide.
+
+    Each keeps the gap the page left after the run before it, so a run with no change
+    before it starts where it did.
+    """
+    gaps = [after.x - (run.x + run.original_pt) for run, after in pairwise(runs)]
+    starts = [runs[0].x]
+    for run, gap in zip(runs[:-1], gaps, strict=True):
+        drawn_pt = run.typed_pt * scale if run.changed else run.typed_pt
+        starts.append(starts[-1] + drawn_pt + gap)
+    return starts
 
 
 def runs_past(delta_pt: float, room_pt: float) -> bool:
@@ -270,6 +371,92 @@ def replace_fit(
     if drawn_strategy == "condense":
         return Fitted(report, typed_plan, verdict, scale_x=original_width / typed_width)
     assert_never(drawn_strategy)
+
+
+def line_fit(
+    engine: Engine,
+    spans: Sequence[Span],
+    texts: Sequence[str],
+    *,
+    room_pt: float,
+    strategy: Strategy = "as-is",
+) -> LineFitted:
+    """What a line's runs come to typed as `texts`, fitted by the runs that change.
+
+    `room_pt` is the line's own (`Line`). As is, the runs after a change move along with it;
+    a way out scales only the changed runs, to their width, so nothing after them moves.
+    """
+    own = [engine.fit.plan_for(span, span.text) for span in spans]
+    plans = [
+        own_plan if text == span.text else engine.fit.plan_for(span, text)
+        for span, text, own_plan in zip(spans, texts, own, strict=True)
+    ]
+    widths = [
+        RunWidths(
+            span.origin[0],
+            original_pt=engine.fit.width_of(span, own_plan),
+            typed_pt=engine.fit.width_of(span, plan),
+            changed=text != span.text,
+        )
+        for span, text, plan, own_plan in zip(spans, texts, plans, own, strict=True)
+    ]
+    laid_out = runs_laid_out(widths, room_pt=room_pt, strategy=strategy)
+    return LineFitted(
+        [
+            _run_fitted(
+                engine,
+                span,
+                text,
+                x=x,
+                changed=run.changed,
+                plans=(plan, own_plan),
+                laid_out=laid_out,
+            )
+            for span, text, x, run, plan, own_plan in zip(
+                spans, texts, laid_out.starts, widths, plans, own, strict=True
+            )
+        ]
+    )
+
+
+def _run_fitted(
+    engine: Engine,
+    span: Span,
+    text: str,
+    *,
+    x: float,
+    changed: bool,
+    plans: tuple[DrawPlan, DrawPlan],
+    laid_out: RunsLaidOut,
+) -> RunFitted:
+    """One run of a line's edit, as `laid_out` sets it: `plans` are its typed and own words'."""
+    plan, own_plan = plans
+    report = replace(
+        laid_out.report,
+        missing=plan.missing,
+        left_out=plan.left_out,
+        substitute=engine.fit.substitute(span, text, plan=plan),
+    )
+    fitted = RunFitted(
+        span,
+        text,
+        x=x,
+        changed=changed,
+        moved=abs(x - span.origin[0]) > MOVED_PT,
+        report=report,
+        plan=plan,
+        put_back=own_plan,
+        verdict=_verdict_of(engine, span, text, plan=plan),
+    )
+    strategy = laid_out.report.strategy
+    # Unchanged, or no way out: at the span's size, no squeeze.
+    if not changed or strategy == "as-is":
+        return fitted
+    if strategy == "shrink":
+        return replace(fitted, size=span.size * laid_out.scale)
+    if strategy == "condense":
+        return replace(fitted, scale_x=laid_out.scale)
+    assert_never(strategy)
 
 
 def _verdict_of(engine: Engine, span: Span, text: str, *, plan: DrawPlan) -> Verdict:

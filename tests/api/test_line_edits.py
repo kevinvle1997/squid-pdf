@@ -1,0 +1,189 @@
+"""A line in several styles, edited as one: each run in its own font, the rest moved along."""
+
+from __future__ import annotations
+
+import pymupdf
+import pytest
+
+from tests.api.conftest import around, render, span_starting, upload
+from tests.conftest import SENTENCE, each_span, write_runs
+from tests.helpers import assert_close, assert_equal, assert_in, assert_problem, assert_true
+
+_SIZE = 10
+_LEFT = 72
+_SENTENCE_AT = (_LEFT, 100)
+# A bill's line, with a rule just after it, so the line has little room.
+_BILL = (("Please pay the full ", "helv"), ("total", "hebo"), (" today.", "helv"))
+_BILL_AT = (_LEFT, 160)
+_RULE_GAP = 6  # between the bill's line and the rule after it: the line's room
+_FAR = (480, 400)  # a word far right, low on the page: the page's rightmost text
+_MOVED = 0.05  # a run further than this from where it was has moved: MOVED_PT
+
+
+def _lines_page() -> bytes:
+    """The sentence with a bold word, with room after it; a bill's line, with little."""
+    doc = pymupdf.open()
+    page = doc.new_page()
+    write_runs(page, SENTENCE, origin=_SENTENCE_AT, size=_SIZE)
+    bill_end = write_runs(page, _BILL, origin=_BILL_AT, size=_SIZE)[-1]
+    rule_x = bill_end + _RULE_GAP
+    page.draw_line((rule_x, _BILL_AT[1] - _SIZE), (rule_x, _BILL_AT[1] + 2), width=0.5)
+    page.insert_text(_FAR, "far", fontsize=_SIZE)
+    return doc.tobytes()
+
+
+@pytest.fixture
+def lines_doc(mine) -> dict:
+    """The lines page, uploaded by `mine`."""
+    return upload(mine, _lines_page()).json()
+
+
+def _line_of(doc: dict, text: str) -> list[dict]:
+    """The spans of the line one of whose spans starts with `text`, left to right."""
+    by_id = {span["id"]: span for span in doc["spans"]}
+    line = next(
+        line
+        for line in doc["lines"]
+        if any(by_id[span_id]["text"].startswith(text) for span_id in line["span_ids"])
+    )
+    return [by_id[span_id] for span_id in line["span_ids"]]
+
+
+def _typed(spans: list[dict], texts: list[str], strategy: str = "as-is") -> dict:
+    """An edit of a line, each of its spans typed as `texts` says."""
+    runs = [
+        {"span_id": span["id"], "text": text} for span, text in zip(spans, texts, strict=True)
+    ]
+    return {"kind": "replace_runs", "runs": runs, "strategy": strategy}
+
+
+def _exported(client, doc: dict, edits: list[dict]) -> list[dict]:
+    """The page's spans as the saved file draws them, with `edits` applied."""
+    response = client.post(f"/api/documents/{doc['id']}/export", json={"edits": edits})
+    assert_equal(response.status_code, 200, "exported")
+    page = pymupdf.open(stream=response.content, filetype="pdf")[0]
+    return list(each_span(page.get_text("dict")["blocks"]))
+
+
+def _drawn(spans: list[dict], text: str) -> dict:
+    """The saved span that reads `text`, spaces aside."""
+    return next(span for span in spans if span["text"].strip() == text.strip())
+
+
+def test_a_line_edited_as_one_keeps_each_runs_font_and_moves_the_runs_after_the_change(
+    mine, lines_doc
+):
+    spans = _line_of(lines_doc, "Text")
+    edit = _typed(spans, ["Text is now grouped into ", "spans", " (one style)."])
+    fits = render(mine, lines_doc, [edit], [around(spans[0])]).json()["fits"]
+
+    saved = _exported(mine, lines_doc, [edit])
+
+    delta = fits[spans[0]["id"]]["delta_pt"]
+    for span in spans[1:]:
+        drawn = _drawn(saved, span["text"])
+        moved_by = drawn["origin"][0] - span["origin"][0]
+        assert_close(moved_by, delta, _MOVED, f"how far {span['text']!r} moved")
+    assert_in("Bold", _drawn(saved, "spans")["font"], "the bold word's font, still bold")
+    plain = [
+        _drawn(saved, text)["font"] for text in ("Text is now grouped into", "(one style).")
+    ]
+    assert_equal(["Bold" in font for font in plain], [False, False], "the rest, still plain")
+
+
+def test_the_runs_before_a_change_are_left_where_the_page_drew_them(mine, lines_doc):
+    spans = _line_of(lines_doc, "Text")
+    edit = _typed(spans, ["Text is grouped into ", "spans", " (one style, one baseline)."])
+
+    saved = _exported(mine, lines_doc, [edit])
+
+    for span in spans[:2]:
+        drawn = _drawn(saved, span["text"])
+        assert_close(drawn["origin"][0], span["origin"][0], 0.01, f"where {span['text']!r} is")
+
+
+def test_a_line_typed_past_its_room_says_so_with_its_ways_out_for_every_run_redrawn(
+    mine, lines_doc
+):
+    spans = _line_of(lines_doc, "Please")
+    edit = _typed(spans, ["Please pay the fuller ", "total", " today."])
+
+    fits = render(mine, lines_doc, [edit], [around(spans[0])]).json()["fits"]
+
+    assert_equal(sorted(fits), sorted(span["id"] for span in spans), "a fit per run redrawn")
+    first = fits[spans[0]["id"]]
+    assert_equal(first["options"], ["shrink", "as-is"], "the ways out")
+    assert_in("too long", first["message"], "what's said of it")
+    shared = {fit["delta_pt"] for fit in fits.values()}
+    assert_equal(shared, {first["delta_pt"]}, "one length, the line's, on every run")
+
+
+def test_a_line_shrunk_to_fit_leaves_the_runs_after_its_change_where_they_were(mine, lines_doc):
+    spans = _line_of(lines_doc, "Please")
+    edit = _typed(spans, ["Please pay the fuller ", "total", " today."], strategy="shrink")
+
+    saved = _exported(mine, lines_doc, [edit])
+
+    changed = _drawn(saved, "Please pay the fuller")
+    assert_true(changed["size"] < _SIZE, f"the changed run drawn smaller: {changed['size']}")
+    for span in spans[1:]:
+        drawn = _drawn(saved, span["text"])
+        assert_close(
+            drawn["origin"][0], span["origin"][0], _MOVED, f"where {span['text']!r} is"
+        )
+    assert_in("Bold", _drawn(saved, "total")["font"], "the bold word, still bold")
+
+
+def test_an_edit_naming_spans_that_are_not_one_line_is_left_out_saying_so(mine, lines_doc):
+    first = span_starting(lines_doc, 0, "Text")
+    other = span_starting(lines_doc, 0, "Please")
+    edit = _typed([first, other], ["Text", "Please"])
+
+    rendered = render(mine, lines_doc, [edit], [around(first)]).json()
+
+    assert_equal([skip["code"] for skip in rendered["skipped"]], ["not_one_line"], "left out")
+
+
+def test_a_redaction_of_one_run_after_its_lines_edit_takes_the_whole_edit(mine, lines_doc):
+    spans = _line_of(lines_doc, "Text")
+    edit = _typed(spans, ["Text is now grouped into ", "spans", " (one style)."])
+    redact = {"kind": "redact", "span_id": spans[1]["id"]}
+
+    saved = _exported(mine, lines_doc, [edit, redact])
+
+    texts = [span["text"].strip() for span in saved]
+    assert_in("Text is grouped into", texts, "the line as it was, but for the redaction")
+    assert_equal("spans" in texts, False, "the word redacted")
+
+
+def test_a_line_edit_beside_a_redaction_on_another_line_downloads_checked(mine, lines_doc):
+    spans = _line_of(lines_doc, "Text")
+    edit = _typed(spans, ["Text is now grouped into ", "spans", " (one style)."])
+    total = span_starting(lines_doc, 0, "total")
+    redact = {"kind": "redact", "span_id": total["id"]}
+
+    saved = _exported(mine, lines_doc, [redact, edit])
+
+    texts = [span["text"].strip() for span in saved]
+    assert_in("Text is now grouped into", texts, "the line edited")
+    assert_equal("total" in texts, False, "the word redacted on the other line")
+
+
+def test_a_line_edit_over_a_run_redacted_before_it_is_refused(mine, lines_doc):
+    """The browser undoes a redaction by leaving it out, so this is its bug: never a leak."""
+    spans = _line_of(lines_doc, "Text")
+    redact = {"kind": "redact", "span_id": spans[1]["id"]}
+    edit = _typed(spans, ["Text is now grouped into ", "spans", " (one style)."])
+
+    response = render(mine, lines_doc, [redact, edit], [around(spans[0])])
+
+    assert_problem(response, "redaction_conflict", 422)
+
+
+def test_a_line_emptied_whole_is_a_bad_request(mine, lines_doc):
+    """Taking text out is a redaction's job: one that checks it's gone."""
+    spans = _line_of(lines_doc, "Text")
+
+    response = render(mine, lines_doc, [_typed(spans, ["", "", ""])], [around(spans[0])])
+
+    assert_problem(response, "invalid_request", 400)

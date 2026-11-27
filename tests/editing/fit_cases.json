@@ -1,5 +1,5 @@
 {
-  "about": "One span and edit each, read by tests/editing/test_fit.py and, in the browser, by react/src/editing/fit.test.ts (`rules` and `cases`) and react/src/editing/verdicts.test.ts (`verdicts`): the server and the browser must give the same verdict. The rules are the server's own. Each of `verdicts` is a line in a stored copy of a font with no shape for `lacking`, or one the file only names, judged at upload as `span` says, then typed into.",
+  "about": "One span and edit each, read by tests/editing/test_fit.py and, in the browser, by react/src/editing/fit.test.ts (`rules` and `cases`) and react/src/editing/verdicts.test.ts (`verdicts`): the server and the browser must give the same verdict. The rules are the server's own. Each of `verdicts` is a line in a stored copy of a font with no shape for `lacking`, or one the file only names, judged at upload as `span` says, then typed into. Each of `line_cases` is a line of runs, each where the page starts it, its own words' width and the typed words', edited as one: it's fitted by the runs that change, and `starts` is where each run is drawn, the way out in `strategy` taken where offered.",
   "rules": {
     "tolerance_pt": 4,
     "room_slack_pt": 0.1,
@@ -182,6 +182,170 @@
       },
       "typed": "Total 2",
       "fidelity": "substitute"
+    }
+  ],
+  "line_cases": [
+    {
+      "what": "a bold word typed longer, into the room after the line: the runs after it move along",
+      "runs": [
+        {
+          "x": 72,
+          "original_pt": 100,
+          "typed_pt": 100,
+          "changed": false
+        },
+        {
+          "x": 172,
+          "original_pt": 30,
+          "typed_pt": 45,
+          "changed": true
+        },
+        {
+          "x": 202,
+          "original_pt": 50,
+          "typed_pt": 50,
+          "changed": false
+        }
+      ],
+      "room_pt": 100,
+      "strategy": "as-is",
+      "original_pt": 30,
+      "delta_pt": 15,
+      "too_long_percent": null,
+      "options": [],
+      "starts": [
+        72,
+        172,
+        217
+      ]
+    },
+    {
+      "what": "a gap the page left between two runs is kept as they move",
+      "runs": [
+        {
+          "x": 72,
+          "original_pt": 100,
+          "typed_pt": 120,
+          "changed": true
+        },
+        {
+          "x": 175,
+          "original_pt": 30,
+          "typed_pt": 30,
+          "changed": false
+        }
+      ],
+      "room_pt": 50,
+      "strategy": "as-is",
+      "original_pt": 100,
+      "delta_pt": 20,
+      "too_long_percent": null,
+      "options": [],
+      "starts": [
+        72,
+        195
+      ]
+    },
+    {
+      "what": "past the line's room, by the changed run's width alone: too long",
+      "runs": [
+        {
+          "x": 72,
+          "original_pt": 100,
+          "typed_pt": 100,
+          "changed": false
+        },
+        {
+          "x": 172,
+          "original_pt": 40,
+          "typed_pt": 46,
+          "changed": true
+        },
+        {
+          "x": 212,
+          "original_pt": 60,
+          "typed_pt": 60,
+          "changed": false
+        }
+      ],
+      "room_pt": 2,
+      "strategy": "as-is",
+      "original_pt": 40,
+      "delta_pt": 6,
+      "too_long_percent": 10,
+      "options": [
+        "as-is"
+      ],
+      "starts": [
+        72,
+        172,
+        218
+      ]
+    },
+    {
+      "what": "two runs changed and shrunk together: the run after them stays where it was",
+      "runs": [
+        {
+          "x": 72,
+          "original_pt": 100,
+          "typed_pt": 104,
+          "changed": true
+        },
+        {
+          "x": 172,
+          "original_pt": 40,
+          "typed_pt": 41,
+          "changed": true
+        },
+        {
+          "x": 212,
+          "original_pt": 60,
+          "typed_pt": 60,
+          "changed": false
+        }
+      ],
+      "room_pt": 0,
+      "strategy": "shrink",
+      "original_pt": 140,
+      "delta_pt": 5,
+      "too_long_percent": 4,
+      "options": [
+        "shrink",
+        "condense",
+        "as-is"
+      ],
+      "starts": [
+        72,
+        172.4138,
+        212
+      ]
+    },
+    {
+      "what": "nothing changed: every run starts where it did",
+      "runs": [
+        {
+          "x": 72,
+          "original_pt": 100,
+          "typed_pt": 100,
+          "changed": false
+        },
+        {
+          "x": 172,
+          "original_pt": 30,
+          "typed_pt": 30,
+          "changed": false
+        }
+      ],
+      "room_pt": 0,
+      "strategy": "as-is",
+      "original_pt": 0,
+      "delta_pt": 0,
+      "too_long_percent": null,
+      "options": [],
+      "starts": [
+        72,
+        172
+      ]
     }
   ]
 }

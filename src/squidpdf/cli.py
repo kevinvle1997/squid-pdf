@@ -53,6 +53,7 @@ from squidpdf.core import (
     Fidelity,
     FidelityReport,
     FontSources,
+    FreeSpace,
     Message,
     Problem,
     Span,
@@ -333,7 +334,8 @@ def _cmd_edit(args: argparse.Namespace) -> int:
             saved = save_edited(
                 opened.engine,
                 opened.index,
-                rooms=opened.rooms,
+                # One span alone: the CLI edits no line.
+                free_space=FreeSpace(opened.rooms, lines=[]),
                 edits=[replace],
                 to=to,
                 driver_factory=DEFAULT_DRIVER_FACTORY,
@@ -369,7 +371,7 @@ def _cmd_redact(args: argparse.Namespace) -> int:
                 saved = save_edited(
                     opened.engine,
                     opened.index,
-                    rooms=opened.rooms,
+                    free_space=FreeSpace(opened.rooms, lines=[]),
                     edits=[Redact(span.id)],
                     to=to,
                     driver_factory=DEFAULT_DRIVER_FACTORY,

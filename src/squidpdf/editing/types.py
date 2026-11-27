@@ -162,7 +162,7 @@ class Rendered:
     """
 
     images: list[ImageInfo] = field(repr=False)  # each a PNG, in base64
-    fits: dict[str, FitReport]  # by the replaced span's id
+    fits: dict[str, FitReport]  # by the replaced span's id, or each redrawn run's of a line
     insert_fits: dict[int, FitReport]  # by the insert's place in the list the browser sent
     verdicts: dict[str, Verdict]  # how each replace came out, by its span's id, as `fits`
     insert_verdicts: dict[int, Verdict]  # how each insert came out, as `insert_fits`
