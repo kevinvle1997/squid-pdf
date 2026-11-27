@@ -27,3 +27,11 @@ export function fieldKeyDown(
   if (event.key === "Enter") enter(editor);
   else finish(editor, false, { returnFocus: true });
 }
+
+/** What Cmd+Z, Cmd+Shift+Z and Ctrl+Y ask of a line field's typing, as an input's keys do: none for any other key. */
+export function typingStepOf(event: Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey" | "shiftKey" | "altKey">) {
+  if (!(event.metaKey || event.ctrlKey) || event.altKey) return null;
+  const key = event.key.toLowerCase();
+  if (key === "z") return event.shiftKey ? "redo" : "undo";
+  return key === "y" && !event.shiftKey ? "redo" : null;
+}

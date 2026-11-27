@@ -4,6 +4,7 @@ import type { FitRules, FontInfo, Insert, Replace, ReplaceRuns, SpanInfo, Strate
 import { type Press, selectionAt } from "./caret";
 import { readDocumentDates } from "./documentDates";
 import { type Also, announce, announcing, change, type Editor, type EditorState, type FocusTo } from "./editor";
+import { type FieldHistory, NO_TYPING, recorded, redone, undone } from "./fieldHistory";
 import {
   type Fit,
   fitOf,
@@ -47,6 +48,7 @@ export interface SpanDraft {
   readonly caret: number | null; // where the caret goes as it opens, in the field's units, if typing put it there
   readonly text: string;
   readonly runs: readonly string[] | null; // a line's: each of its spans' words, in order, `text` read as one; else none
+  readonly fieldHistory: FieldHistory; // a line field's own undo of its typing; an input keeps its own
   readonly strategy: Strategy | undefined; // the way out of a long line chosen, kept while it's offered
   readonly valueEditorOpen: boolean; // a date's or an amount's editor open in the slip (valueEditor.ts)
   readonly value: HeldValue | null; // the date or amount its editor is offered for, held once it's opened or typed in
@@ -97,6 +99,7 @@ export function draftOf(span: SpanInfo, { reading, press }: { reading: Reading; 
     caret: null,
     text,
     runs: null,
+    fieldHistory: NO_TYPING,
     strategy: now?.strategy,
     valueEditorOpen: false,
     value: null,
@@ -108,7 +111,7 @@ export function lineDraftOf(line: Line, { reading, press }: { reading: Reading; 
   const runs = line.spans.map((span) => textIn(reading, span));
   const page = line.spans[0]?.page ?? 0;
   const text = runs.join("");
-  const unchosen = { caret: null, strategy: undefined, valueEditorOpen: false, value: null };
+  const unchosen = { caret: null, strategy: undefined, valueEditorOpen: false, value: null, fieldHistory: NO_TYPING };
   return { kind: "span", spanId: line.id, page, press, text, runs, ...unchosen };
 }
 
@@ -337,14 +340,21 @@ export function typeInto(editor: Editor, text: string, { caret = null }: { caret
   editor.store.set({ draft: { ...draft, text: line }, announcement: heardAsTyped({ ...state, draft }, line) });
 }
 
+/** What a change to a line's field replaced: what was selected, and the words put there. */
+export interface RunsChange {
+  readonly selected: readonly [number, number];
+  readonly typed: string;
+}
+
 /**
  * Type into a line's field, so its runs read `runs`, the caret left at `caret` across them: what it warns of is heard as
- * it changes. With any of its spans' words redacted, it asks first, and what's typed waits for the answer.
+ * it changes, and the field's own undo keeps what it read before the change `made`. With any of its spans' words
+ * redacted, it asks first, and what's typed waits for the answer.
  */
 export function typeIntoRuns(
   editor: Editor,
   runs: readonly string[],
-  { caret = null }: { caret?: number | null } = {},
+  { caret = null, made }: { caret?: number | null; made?: RunsChange } = {},
 ): void {
   const state = editor.store.get();
   const draft = spanDraftOf(state);
@@ -361,7 +371,36 @@ export function typeIntoRuns(
     });
     return;
   }
-  editor.store.set(typedRunsState({ ...state, draft }, runs));
+  const next = typedRunsState({ ...state, draft }, runs);
+  // Words left as they were are nothing to undo.
+  if (!changes) {
+    editor.store.set(next);
+    return;
+  }
+  const at = caret ?? 0;
+  const before = { runs: draft.runs, selected: made?.selected ?? ([at, at] as const) };
+  const fieldHistory = recorded(draft.fieldHistory, { before, typed: made?.typed ?? "", caretAfter: at });
+  editor.store.set({ ...next, draft: { ...next.draft, fieldHistory } });
+}
+
+/**
+ * Cmd+Z or Cmd+Shift+Z in a line's field (`step`), with `selected` there: its words as typed before or after, and
+ * what to select; null with nothing to step to.
+ */
+export function stepTyping(
+  editor: Editor,
+  step: "undo" | "redo",
+  { selected }: { selected: readonly [number, number] },
+): readonly [number, number] | null {
+  const state = editor.store.get();
+  const draft = spanDraftOf(state);
+  if (draft?.runs == null) return null;
+  const now = { runs: draft.runs, selected };
+  const stepped = (step === "undo" ? undone : redone)(draft.fieldHistory, now);
+  if (stepped === null) return null;
+  const next = typedRunsState({ ...state, draft }, stepped.to.runs);
+  editor.store.set({ ...next, draft: { ...next.draft, fieldHistory: stepped.history } });
+  return stepped.to.selected;
 }
 
 /** What typing a line's draft to read `typed`, a run each, makes of the state: its runs, and a trouble heard as it appears. */
