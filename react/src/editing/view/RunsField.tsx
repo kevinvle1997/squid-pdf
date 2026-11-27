@@ -1,4 +1,4 @@
-import { type FocusEvent, useCallback, useContext, useEffect, useRef } from "react";
+import { type FocusEvent, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { createPortal, flushSync } from "react-dom";
 import type { PageInfo } from "../../api/types";
 import { selectionAcross } from "../caret";
@@ -13,7 +13,7 @@ import { asOneLine, fieldFocused, lineNoteOf, spanDraftOf, stepTyping, troublesI
 import { Chip } from "./Chip";
 import { SlipLayerContext, useEditor, useEditorState } from "./context";
 import { fieldKeyDown, typingStepOf } from "./fieldKeys";
-import { boxOf, points, runTextStyle } from "./geometry";
+import { boxOf, fieldScaleOf, points, runTextStyle } from "./geometry";
 import { useLeaveTyping } from "./leaveTyping";
 import { rangeEditedIn, runsWordsIn, selectIn, selectionIn, takesPlainTextOnly } from "./lineSelection";
 import styles from "./RunsField.module.css";
@@ -76,6 +76,9 @@ export function RunsField({ line, info }: { line: Line; info: PageInfo }) {
   const chip = useRef<HTMLDivElement>(null);
   const placed = useRef(false);
   const slipLayer = useContext(SlipLayerContext);
+  const [scale, setScale] = useState(1);
+  // The size the runs are set against: the line's first run's.
+  const basePt = line.spans[0]?.size ?? 1;
   const leave = useLeaveTyping();
 
   const stepField = useCallback(
@@ -128,9 +131,19 @@ export function RunsField({ line, info }: { line: Line; info: PageInfo }) {
       if (element === null) return;
       element.addEventListener("beforeinput", beforeInput);
       element.focus();
-      return () => element.removeEventListener("beforeinput", beforeInput);
+      const layer = element.offsetParent;
+      const resized = new ResizeObserver(() => {
+        const fontPx = parseFloat(getComputedStyle(element).fontSize);
+        const shownPx = layer?.clientWidth ?? 0;
+        setScale(fieldScaleOf(basePt, { pageWidthPt: info.width, shownPx, fontPx }));
+      });
+      if (layer instanceof HTMLElement) resized.observe(layer);
+      return () => {
+        resized.disconnect();
+        element.removeEventListener("beforeinput", beforeInput);
+      };
     },
-    [beforeInput],
+    [beforeInput, basePt, info.width],
   );
 
   // Once, as the field takes focus: what the press that opened it selects, or everything from the keyboard.
@@ -203,12 +216,14 @@ export function RunsField({ line, info }: { line: Line; info: PageInfo }) {
           if (to instanceof Node && chip.current?.contains(to)) return;
           leave(event);
         }}
+        // Its sizes by CSS variables, which a touch screen's stylesheet sets it from (RunsField.module.css).
         style={{
           left: box.left,
           top: box.top,
-          minWidth: box.width,
-          height: box.height,
-          lineHeight: points(line.bbox.y1 - line.bbox.y0, info),
+          "--field-size": points(basePt, info),
+          "--field-width": points(line.bbox.x1 - line.bbox.x0, info),
+          "--field-height": points(line.bbox.y1 - line.bbox.y0, info),
+          "--field-scale": scale,
         }}
       >
         {line.spans.map((span, index) => {
@@ -220,7 +235,8 @@ export function RunsField({ line, info }: { line: Line; info: PageInfo }) {
               // By its place in the line: a run's span never moves.
               key={span.id}
               data-run={index}
-              style={runTextStyle(span, info, {
+              style={runTextStyle(span, {
+                basePt,
                 face: faces[index] ?? DEFAULT_FACE,
                 text,
                 gapPt: previous === undefined ? 0 : span.bbox.x0 - previous.bbox.x1,

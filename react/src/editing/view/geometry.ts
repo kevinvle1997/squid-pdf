@@ -442,27 +442,27 @@ export function previewStyleOf(
 
 /**
  * A run of a line set as its span is, inline after the run before, the page's own gap between them kept: in `face`,
- * and set at `scale` when the edit changed it, as the server scales only the runs changed.
+ * and set at `scale` when the edit changed it, as the server scales only the runs changed. Every length is in ems of
+ * the field's size, `basePt` as the page shows it, so the field can be set at 16 px and scaled as one.
  */
 export function runTextStyle(
   span: SpanInfo,
-  page: PageInfo,
-  { face, text, gapPt, scale }: { face: string; text: string; gapPt: number; scale: LineScale },
+  { face, text, gapPt, scale, basePt }: { face: string; text: string; gapPt: number; scale: LineScale; basePt: number },
 ): CSSProperties {
-  const { fontFamily, color, letterSpacing } = spanTextStyle(span, page, face);
   const sizePt = span.size * scale.size;
+  const inEms = (lengthPt: number) => `${lengthPt / sizePt}em`;
   const set = {
-    fontFamily,
-    color,
-    letterSpacing,
-    fontSize: points(sizePt, page),
-    marginInlineStart: points(gapPt, page),
+    fontFamily: familyOf(face),
+    color: rgbOf(span.color),
+    letterSpacing: span.letter_spacing_em === 0 ? undefined : `${span.letter_spacing_em}em`,
+    fontSize: `${sizePt / basePt}em`,
+    marginInlineStart: inEms(gapPt),
   };
   if (scale.scaleX === 1) return set;
   // Narrowed from its start, as the server narrows it, and the runs after it close up by what it gave.
   const widthPt = shownWidthPt(text, face, sizePt) + letterSpacingPt({ ...span, size: sizePt }, text);
   const narrowed = { display: "inline-block", transform: `scaleX(${scale.scaleX})`, transformOrigin: "0 0" };
-  return { ...set, ...narrowed, marginInlineEnd: points(-widthPt * (1 - scale.scaleX), page) };
+  return { ...set, ...narrowed, marginInlineEnd: inEms(-widthPt * (1 - scale.scaleX)) };
 }
 
 // One canvas measures every field's text: it draws nothing, so it never joins the page.

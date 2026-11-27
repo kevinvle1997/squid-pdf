@@ -1978,6 +1978,22 @@ describe("a line of several runs", () => {
     expect(editor.store.get().history.done).toEqual([]);
   });
 
+  test("on a touch screen it's set at 16 px, so iOS doesn't zoom, and its runs drawn at the line's size", async () => {
+    await emulateTouchScreen();
+    const screen = await draw();
+    const field = (await editLine(screen)).element();
+    expect(getComputedStyle(field).fontSize).toBe("16px");
+    const layer = field.closest("section")?.querySelector("img")?.getBoundingClientRect();
+    if (layer === undefined) throw new Error("no page image");
+    const shownPx = (pt: number) => (pt / A4.width) * layer.width;
+    await expect.poll(() => field.getBoundingClientRect().height).toBeCloseTo(shownPx(12), 0);
+    expect(field.getBoundingClientRect().left).toBeCloseTo(layer.left + shownPx(72), 0);
+    // Its first run's letters drawn at 10 pt: 16 px, scaled down.
+    const [first] = field.querySelectorAll<HTMLElement>("[data-run]");
+    const scale = new DOMMatrix(getComputedStyle(field).transform).a;
+    expect(first && parseFloat(getComputedStyle(first).fontSize) * scale).toBeCloseTo(shownPx(10), 1);
+  });
+
   test("Escape puts it back as it was, and focus on the line's one mark", async () => {
     const screen = await draw();
     await editLine(screen);
