@@ -79,6 +79,19 @@ export function selectIn(field: HTMLElement, start: number, end: number): void {
   selection.setBaseAndExtent(startNode, startOffset, endNode, endOffset);
 }
 
+/**
+ * Whether the field still holds its runs and nothing else. An input method typing over words of more than one run can
+ * take their elements out and write its own.
+ */
+export function runsIntact(field: HTMLElement, count: number): boolean {
+  return field.children.length === count && runsIn(field).length === count && !holdsLooseWords(field);
+}
+
+/** Whether words stand in the field outside every run. */
+function holdsLooseWords(field: HTMLElement): boolean {
+  return [...field.childNodes].some((node) => node.nodeType === Node.TEXT_NODE && node.textContent !== "");
+}
+
 /** The words each run of the field holds now, as an input method left them: a run gone holds none. */
 export function runsWordsIn(field: HTMLElement, count: number): string[] {
   const words = Array.from({ length: count }, () => "");

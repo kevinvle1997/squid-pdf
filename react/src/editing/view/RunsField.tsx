@@ -28,7 +28,15 @@ import { SlipLayerContext, useEditor, useEditorState } from "./context";
 import { fieldKeyDown, typingStepOf } from "./fieldKeys";
 import { boxOf, fieldPartOf, fieldScaleOf, points, runTextStyle } from "./geometry";
 import { useLeaveTyping } from "./leaveTyping";
-import { rangeEditedIn, runsWordsIn, runUnder, selectIn, selectionIn, takesPlainTextOnly } from "./lineSelection";
+import {
+  rangeEditedIn,
+  runsIntact,
+  runsWordsIn,
+  runUnder,
+  selectIn,
+  selectionIn,
+  takesPlainTextOnly,
+} from "./lineSelection";
 import styles from "./RunsField.module.css";
 
 const NO_RUNS: readonly string[] = [];
@@ -103,6 +111,8 @@ export function RunsField({ line, info }: { line: Line; info: PageInfo }) {
   const selected = useRef<readonly [number, number]>([0, 0]);
   // What an input method's words go in over, for their undo to select again.
   const composedOver = useRef<readonly [number, number]>([0, 0]);
+  // Counts the times the field was drawn afresh, its runs' elements having been taken out from under it.
+  const [drawing, setDrawing] = useState(0);
   const field = useRef<HTMLDivElement>(null);
   const chip = useRef<HTMLDivElement>(null);
   const placed = useRef(false);
@@ -227,11 +237,24 @@ export function RunsField({ line, info }: { line: Line; info: PageInfo }) {
   // An input method's words, once it's done: read back from the runs it typed into.
   function composed(words: string) {
     const element = field.current;
-    if (element === null) return;
-    const caret = selectionIn(element)?.[1] ?? null;
+    const before = spanDraftOf(editor.store.get())?.runs;
+    if (element === null || before == null) return;
     const made = { selected: composedOver.current, typed: words };
-    flushSync(() => typeIntoRuns(editor, runsWordsIn(element, line.spans.length), { caret, made }));
-    if (caret !== null) selectIn(element, caret, caret);
+    if (runsIntact(element, line.spans.length)) {
+      const caret = selectionIn(element)?.[1] ?? null;
+      flushSync(() => typeIntoRuns(editor, runsWordsIn(element, line.spans.length), { caret, made }));
+      if (caret !== null) selectIn(element, caret, caret);
+      return;
+    }
+    // Its runs gone, there's nothing to read back: the words go in as typed ones do, and the field is drawn afresh.
+    const [start, end] = composedOver.current;
+    const caret = start + words.length;
+    flushSync(() => {
+      typeIntoRuns(editor, runsEdited(before, { start, end, typed: words }), { caret, made });
+      setDrawing((drawn) => drawn + 1);
+    });
+    field.current?.focus();
+    if (field.current !== null) selectIn(field.current, caret, caret);
   }
 
   const ring = value === undefined ? undefined : ringOf(value);
@@ -252,6 +275,7 @@ export function RunsField({ line, info }: { line: Line; info: PageInfo }) {
     <>
       {/* biome-ignore lint/a11y/useSemanticElements: see `role` below */}
       <div
+        key={drawing}
         {...dropProps}
         onDragEnter={filesOnly(dropProps.onDragEnter)}
         onDragOver={filesOnly(dropProps.onDragOver)}
