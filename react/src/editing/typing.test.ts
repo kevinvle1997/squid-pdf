@@ -14,6 +14,7 @@ import {
 } from "../fixtures";
 import { change, createEditor, type Editor, undo } from "./editor";
 import { changeAll, openFind, typeQuery, typeReplacement } from "./find";
+import { caretRunValueIn, lineValueIn } from "./formattedValues";
 import { setWarningMuted } from "./mutedWarnings";
 import { openNewTextAt } from "./newText";
 import { deletePage } from "./pageDeletion";
@@ -22,12 +23,15 @@ import {
   enter,
   fieldFocused,
   finish,
+  spanDraftOf,
+  stepTyping,
   stepWayOut,
   troublesIn,
   typeInto,
   typeIntoNewText,
   typeIntoRuns,
 } from "./typing";
+import { chooseAmount, openValueEditor } from "./valueEditor";
 import { fill } from "./words";
 
 vi.mock(import("../api/client"), async (original) => ({ ...(await original()), renderStrips: vi.fn() }));
@@ -397,5 +401,37 @@ describe("a line's typing, kept", () => {
     changeAll(editor);
     const texts = [...editor.store.get().reading.spans.values()].map(({ text }) => text);
     expect(texts).toEqual(["Text is grouped into ", "SPANS", " (one face)"]);
+  });
+});
+
+describe("a value in one of a line's runs", () => {
+  const glyphs = halfWideGlyphs("abcdefghijklmnopqrstuvwxyzPT$,.0123456789 ");
+  const run = (id: string, text: string, x0: number) =>
+    aSpan({ id, text, bbox: { x0, y0: 100, x1: x0 + 5 * text.length, y1: 112 }, origin: [x0, 110] });
+  const spans = [run("due", "Total due ", 72), run("sum", "$1,200.00", 122), run("paid", " paid $5.00", 167)];
+  const lines = [{ span_ids: spans.map(({ id }) => id), room_pt: 200 }];
+  const words = spans.map(({ text }) => text);
+
+  beforeEach(() => {
+    editor = createEditor(FILE, aDoc({ spans, lines, fonts: [aFont("Times-Roman", { glyphs })] }), 2);
+  });
+
+  test("Alt+Down takes the one in the caret's run, and what's chosen is written into that run alone", () => {
+    const value = caretRunValueIn(words, { dates: null, caret: words[0]?.length ?? 0 });
+    // At the boundary typing goes to the run before, which holds no value: none there.
+    expect(value).toBeUndefined();
+    const last = caretRunValueIn(words, { dates: null, caret: 22 });
+    expect(words.join("").slice(last?.start, last?.end)).toBe("$5.00");
+    edit(editor, "due", null);
+    if (last === undefined || last.kind !== "amount") throw new Error("an amount in the last run");
+    expect(openValueEditor(editor, last)).toBe(true);
+    chooseAmount(editor, last, { amount: 70, leaving: false });
+    expect(spanDraftOf(editor.store.get())?.runs).toEqual(["Total due ", "$1,200.00", " paid $70.00"]);
+    expect(stepTyping(editor, "undo", { selected: [0, 0] })).not.toBeNull();
+    expect(spanDraftOf(editor.store.get())?.runs).toEqual(words);
+  });
+
+  test("a value across two runs is offered no editor: writing it would give one run's words the other's style", () => {
+    expect(lineValueIn(["Pay $1,", "200.00 now"], { dates: null, at: undefined, held: null })).toBeUndefined();
   });
 });

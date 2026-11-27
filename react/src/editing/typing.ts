@@ -17,7 +17,15 @@ import {
   wayDrawn,
   waysOffered,
 } from "./fit";
-import { editableValueIn, emailCountIn, type HeldValue, heldOf, heldThrough, heldValueIn } from "./formattedValues";
+import {
+  editableValueIn,
+  emailCountIn,
+  type HeldValue,
+  heldOf,
+  heldThrough,
+  heldValueIn,
+  lineValueIn,
+} from "./formattedValues";
 import type { HistoryAction } from "./history";
 import { type Line, runsRedrawn } from "./lines";
 import { editNote, type Note } from "./marks";
@@ -153,15 +161,20 @@ function redrawnVerdictsOf(
  * and where it lay are still held, so a value of that kind back over it is the one held again, as a year retyped
  * by hand passes through no date at all. Meanwhile, and if none ever comes back, the control offers what's there.
  */
-function heldIn(state: EditorState & { draft: SpanDraft }, text: string): { value: HeldValue | null; lost: boolean } {
+function heldIn(
+  state: EditorState & { draft: SpanDraft },
+  text: string,
+  runs: readonly string[] | null,
+): { value: HeldValue | null; lost: boolean } {
   const { draft, layout, reading, dates } = state;
   const span = layout.spans.get(draft.spanId);
-  // A line's words are its runs', in their own fonts: its dates and amounts aren't offered an editor.
-  if (span === undefined || draft.runs !== null) return { value: null, lost: false };
+  if (span === undefined) return { value: null, lost: false };
   const held = draft.value === null ? null : heldThrough(draft.value, { before: draft.text, after: text });
   const glyphs = fontOf(layout.fonts, span)?.glyphs ?? {};
   const at = draft.press === null ? undefined : selectionAt(textIn(reading, span), draft.press, { glyphs, span })[0];
-  const value = editableValueIn(text, { dates, at, held });
+  // A line's value lies in one of its runs, and a press across it isn't measured here: the one held, else the first.
+  const value =
+    runs === null ? editableValueIn(text, { dates, at, held }) : lineValueIn(runs, { dates, at: undefined, held });
   const lost = held !== null && heldValueIn(text, { dates, held }) === undefined;
   if (lost) return { value: held, lost };
   return { value: value === undefined ? null : heldOf(value, text), lost };
@@ -407,13 +420,31 @@ export function stepTyping(
 export function typedRunsState(
   state: EditorState & { draft: SpanDraft },
   typed: readonly string[],
-): Pick<EditorState, "announcement"> & { draft: SpanDraft } {
+): Pick<EditorState, "announcement"> & Partial<Pick<EditorState, "focusTo">> & { draft: SpanDraft } {
   const runs = typed.map(asOneLine);
-  const announcement = heardOfTroubles(state, {
-    was: troublesIn(state, state.draft.runs ?? []),
-    now: troublesIn(state, runs),
-  });
-  return { draft: { ...state.draft, runs, text: runs.join("") }, announcement };
+  const was = troublesIn(state, state.draft.runs ?? []);
+  const announcement = heardOfTroubles(state, { was, now: troublesIn(state, runs) });
+  return { ...withValueHeld(state, { text: runs.join(""), runs }), announcement };
+}
+
+/**
+ * The draft reading `text`, a line's as `runs`, with the value held carried along: its editor goes, and focus to the
+ * field, once the value open there is gone from the text.
+ */
+function withValueHeld(
+  state: EditorState & { draft: SpanDraft },
+  { text, runs }: { text: string; runs: readonly string[] | null },
+): Partial<Pick<EditorState, "focusTo">> & { draft: SpanDraft } {
+  // The value whose editor is open gone from the text, the editor goes with it, and focus goes to the field: where it
+  // is when typed there, and never to the page's body from the editor going under it. Never another value's editor in
+  // its place, taking focus from the field typed in.
+  const { value, lost } = heldIn(state, text, runs);
+  const closing = state.draft.valueEditorOpen && lost;
+  const valueEditorOpen = state.draft.valueEditorOpen && !lost;
+  return {
+    draft: { ...state.draft, text, runs, value, valueEditorOpen },
+    ...(closing && { focusTo: { spanId: state.draft.spanId } }),
+  };
 }
 
 /** What typing `typed` into a span's draft makes of the state: its text, and a trouble announced as it appears. */
@@ -423,17 +454,7 @@ export function typedState(
 ): Pick<EditorState, "announcement"> & Partial<Pick<EditorState, "focusTo">> & { draft: SpanDraft } {
   const text = asOneLine(typed);
   const announcement = heardAsTyped(state, text);
-  // The value whose editor is open gone from the text, the editor goes with it, and focus goes to the field: where it
-  // is when typed there, and never to the page's body from the editor going under it. Never another value's editor in
-  // its place, taking focus from the field typed in.
-  const { value, lost } = heldIn(state, text);
-  const closing = state.draft.valueEditorOpen && lost;
-  const valueEditorOpen = state.draft.valueEditorOpen && !lost;
-  return {
-    draft: { ...state.draft, text, value, valueEditorOpen },
-    announcement,
-    ...(closing && { focusTo: { spanId: state.draft.spanId } }),
-  };
+  return { ...withValueHeld(state, { text, runs: null }), announcement };
 }
 
 /** Type `typed` into new text: grown past the room to its right, its start moves left, so its end stays on its page. */

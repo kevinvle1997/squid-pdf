@@ -32,6 +32,8 @@
   border-inline-start: 2px dashed var(--mark-warn);
   pointer-events: none;
 }
+/* The date or amount its editor rewrites, ringed as Find rings the place it went to, over the field's words. */
+.valueRing { composes: valueRing from "./EditField.module.css"; }
 /* The shadows go in high contrast: an outline keeps the field's line, dashed in trouble as a warning's is. */
 @media (forced-colors: active) {
   .field { outline: 2px solid Highlight; }

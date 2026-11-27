@@ -5,7 +5,8 @@ import { selectionAcross } from "../caret";
 import { focusMoved } from "../editor";
 import { addFaces, DEFAULT_FACE, previewFaceOf } from "../faces";
 import { lineFitOf, runsPast, type Setting, setAs, wayDrawn, waysOffered } from "../fit";
-import { deletedBy, type Line, runsEdited } from "../lines";
+import { caretRunValueIn, type EditableValue, lineValueIn, runExtents } from "../formattedValues";
+import { deletedBy, type Line, lineDrawnAs, runsEdited } from "../lines";
 import { textIn } from "../project";
 import { fontOf } from "../spanFonts";
 import { shallowEqual } from "../store";
@@ -13,7 +14,7 @@ import { asOneLine, fieldFocused, lineNoteOf, spanDraftOf, stepTyping, troublesI
 import { Chip } from "./Chip";
 import { SlipLayerContext, useEditor, useEditorState } from "./context";
 import { fieldKeyDown, typingStepOf } from "./fieldKeys";
-import { boxOf, fieldScaleOf, points, runTextStyle } from "./geometry";
+import { boxOf, fieldPartOf, fieldScaleOf, points, runTextStyle } from "./geometry";
 import { useLeaveTyping } from "./leaveTyping";
 import { rangeEditedIn, runsWordsIn, selectIn, selectionIn, takesPlainTextOnly } from "./lineSelection";
 import styles from "./RunsField.module.css";
@@ -72,6 +73,22 @@ export function RunsField({ line, info }: { line: Line; info: PageInfo }) {
     const { note, fonts: warnedFonts } = lineNoteOf(state, spanDraftOf(state)?.runs ?? NO_RUNS);
     return { sentence: note?.sentence ?? null, why: note?.why ?? null, fonts: warnedFonts.join("\n") };
   }, shallowEqual);
+  // A date or an amount in one of the runs: the one held, else under the press that opened the field, else the first.
+  const press = useEditorState((state) => spanDraftOf(state)?.press ?? null);
+  const dates = useEditorState((state) => state.dates);
+  const held = useEditorState((state) => spanDraftOf(state)?.value ?? null);
+  // None with some of its words redacted: any change to its words asks first, which typing does.
+  const redacted = useEditorState((state) =>
+    line.spans.some(({ id }) => state.reading.spans.get(id)?.redacted != null),
+  );
+  const at = press === null ? undefined : selectionAcross(measuresOf(), press)[0];
+  const value = redacted ? undefined : lineValueIn(runs, { dates, at, held });
+  // Sent back from the value's editor in the slip, the field takes focus again, its selection as it was.
+  const refocus = useEditorState((state) => {
+    const { focusTo } = state;
+    return focusTo !== null && "spanId" in focusTo && focusTo.spanId === line.id ? focusTo : null;
+  });
+  const selected = useRef<readonly [number, number]>([0, 0]);
   const field = useRef<HTMLDivElement>(null);
   const chip = useRef<HTMLDivElement>(null);
   const placed = useRef(false);
@@ -130,7 +147,14 @@ export function RunsField({ line, info }: { line: Line; info: PageInfo }) {
       field.current = element;
       if (element === null) return;
       element.addEventListener("beforeinput", beforeInput);
-      element.focus();
+      // Focus on its first drawing, and again when sent back from the slip, then with the selection it had.
+      if (refocus === null && !placed.current) element.focus();
+      // Sent back while it has focus already, no focus event comes to take it, so it's taken here.
+      if (refocus !== null && element === document.activeElement) focusMoved(editor);
+      if (refocus !== null && element !== document.activeElement) {
+        element.focus();
+        selectIn(element, ...selected.current);
+      }
       const layer = element.offsetParent;
       const resized = new ResizeObserver(() => {
         const fontPx = parseFloat(getComputedStyle(element).fontSize);
@@ -143,7 +167,7 @@ export function RunsField({ line, info }: { line: Line; info: PageInfo }) {
         element.removeEventListener("beforeinput", beforeInput);
       };
     },
-    [beforeInput, basePt, info.width],
+    [beforeInput, basePt, info.width, refocus, editor],
   );
 
   // Once, as the field takes focus: what the press that opened it selects, or everything from the keyboard.
@@ -180,6 +204,18 @@ export function RunsField({ line, info }: { line: Line; info: PageInfo }) {
     if (caret !== null) selectIn(element, caret, caret);
   }
 
+  const ring = value === undefined ? undefined : ringOf(value);
+
+  /** Where `value` sits on the page, in the run it lies in, as the field sets that run. */
+  function ringOf(shown: EditableValue) {
+    const index = runExtents(runs).findIndex(({ start, end }) => start <= shown.start && shown.end <= end);
+    const drawnAs = lineDrawnAs(line, { texts: runs, fonts, asked, rules })?.[index];
+    const start = runExtents(runs)[index]?.start ?? 0;
+    if (drawnAs === undefined) return undefined;
+    const part = { text: drawnAs.text, start: shown.start - start, end: shown.end - start };
+    return fieldPartOf(drawnAs.moved, { ...part, face: faces[index] ?? DEFAULT_FACE, scale: drawnAs.scale });
+  }
+
   const box = boxOf(line.bbox, info);
   const widthPt = line.bbox.x1 - line.bbox.x0 + Math.max(fit?.deltaPt ?? 0, 0);
   return (
@@ -203,7 +239,10 @@ export function RunsField({ line, info }: { line: Line; info: PageInfo }) {
         onKeyDown={(event) => {
           const step = typingStepOf(event);
           if (step === null) {
-            fieldKeyDown(editor, event, { value: undefined });
+            // Alt+Down opens the value in the run the caret is in.
+            const caret = selectionIn(event.currentTarget)?.[0] ?? 0;
+            const caretValue = event.altKey ? caretRunValueIn(runs, { dates, caret }) : value;
+            fieldKeyDown(editor, event, { value: redacted ? undefined : caretValue });
             return;
           }
           event.preventDefault();
@@ -212,6 +251,7 @@ export function RunsField({ line, info }: { line: Line; info: PageInfo }) {
         onCompositionEnd={composed}
         // Only leaving the field ends the typing: the slip goes on with it.
         onBlur={(event) => {
+          selected.current = selectionIn(event.currentTarget) ?? selected.current;
           const to = event.relatedTarget;
           if (to instanceof Node && chip.current?.contains(to)) return;
           leave(event);
@@ -255,6 +295,10 @@ export function RunsField({ line, info }: { line: Line; info: PageInfo }) {
           style={boxOf({ ...line.bbox, x0: line.bbox.x1 + line.roomPt, x1: line.bbox.x1 + line.roomPt }, info)}
         />
       )}
+      {ring !== undefined && (
+        // The part the value's editor rewrites, ringed as Find rings the place it went to.
+        <span className={styles.valueRing} aria-hidden="true" style={boxOf(ring, info)} />
+      )}
       {slipLayer !== null &&
         line.spans[0] !== undefined &&
         createPortal(
@@ -266,7 +310,7 @@ export function RunsField({ line, info }: { line: Line; info: PageInfo }) {
             trouble={trouble}
             verdict={verdict}
             setting={setting}
-            value={undefined}
+            value={value}
             field={field}
             lineNote={{
               note: warned.sentence === null ? null : { warn: true, sentence: warned.sentence, why: warned.why },
