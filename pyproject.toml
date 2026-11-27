@@ -6,14 +6,13 @@ readme = "README.md"
 license = "AGPL-3.0-or-later"
 requires-python = ">=3.14"
 dependencies = [
-    # The version the suite passes on: older ones name fonts and embed them differently.
-    # Caches are keyed on MuPDF's version (BUILD), so move this pin on purpose, like ty's.
+    # Caches are keyed on MuPDF's version (BUILD), so move this pin on purpose.
     "pymupdf>=1.28.2,<1.29",
     "fonttools>=4.53",
-    "httpx>=0.28",  # fetches Google's copy of a font, in the CLI as in the app
-    "orjson>=3.10",  # core keeps spans and pages as JSON, in the store's files
-    "zlib-ng>=1.0",  # compresses page images and strips: zlib's format, faster
-    "sqlalchemy>=2.0",  # the accounts table, in SQLite, and the CLI invites without the api extra
+    "httpx>=0.28",
+    "orjson>=3.10",
+    "zlib-ng>=1.0",
+    "sqlalchemy>=2.0",
 ]
 
 [project.optional-dependencies]
@@ -30,12 +29,11 @@ squidpdf = "squidpdf.cli:main"
 [dependency-groups]
 dev = [
     "pytest>=8.3",
-    "pytest-xdist>=3.6",  # CI runs the suite across the runner's cores
+    "pytest-xdist>=3.6",
     "ruff>=0.7",
     "mypy>=1.13",
     # Pre-1.0: its checks change between releases, so move this pin on purpose.
     "ty==0.0.84",
-    # The API's tests need it, and the CLI must still run without it.
     "squidpdf[api]",
 ]
 
@@ -44,15 +42,11 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.uv]
-# 0.9 is the first uv that installs a released Python 3.14. An older one settles for
-# 3.14.0rc2, where pydantic fails on import and takes every API test with it.
+# Older uv settles for Python 3.14.0rc2, where pydantic fails on import.
 required-version = ">=0.9"
-# Only uv's own Python: a laptop, CI and the image then run one build, not each its own.
 python-preference = "only-managed"
 
 [tool.hatch.build.targets.wheel]
-# Every file in the package ships, not only Python: the fonts we draw with
-# (`squidpdf/fonts/`), their licences and README go in the wheel as they are.
 packages = ["src/squidpdf"]
 
 [tool.ruff]
@@ -60,44 +54,31 @@ line-length = 96
 src = ["src", "tests"]
 
 [tool.ruff.lint]
-# BLE: a broad except says why. D1: docstrings everywhere. RUF100: no stale noqa.
-# TID: only core/pdf/lowlevel/ talks to MuPDF's low-level API.
-# RUF001-3: no invisible or look-alike characters in strings, docstrings or comments.
-# PLR0917: past three parameters, the rest are keyword-only, so every call names them.
-# S101: no bare assert; a failure says what it expected (tests/helpers.py). RET505/506: no
-# else after a return or raise. PLR2004: a number in a comparison is a named constant.
-# ASYNC: nothing blocking on the event loop.
-# PLC2701: no import of another module's _name (rules/backend/python.md, Style). A preview
-# rule, so check it on each ruff upgrade; explicit-preview-rules keeps every other rule as it is.
+# Rules held: BLE broad except says why; RUF100 no stale noqa; TID MuPDF's low-level API in lowlevel/;
+# RUF001-3 no look-alike characters; PLR0917 keyword-only past three; S101 no bare assert;
+# RET505/506 no else after return; PLR2004 named constants; ASYNC no blocking on the loop;
+# PLC2701 no other module's _name (a preview rule: check it on each ruff upgrade).
 select = [
-    "E", "F", "I", "UP", "B", "BLE", "D1", "RUF001", "RUF002", "RUF003", "RUF100", "TID",
+    "E", "F", "I", "UP", "B", "BLE", "RUF001", "RUF002", "RUF003", "RUF100", "TID",
     "PLR0917", "S101", "RET505", "RET506", "PLR2004", "ASYNC", "PLC2701",
 ]
 preview = true
 explicit-preview-rules = true
-# ASYNC109: a timeout parameter on an async function. Ours go to the pool, which kills a
-# worker at its deadline (pebble); asyncio's own timeout can't stop a process.
+# Our timeouts go to the pool, which kills a worker at its deadline; asyncio's can't stop a process.
 ignore = ["ASYNC109"]
 
 [tool.ruff.lint.per-file-ignores]
-# Test names are sentences already; a docstring there is welcome, not required.
-# A test's parameters are fixtures, which pytest passes by name anyway.
-# A test's numbers are the case it sets up, said once. A test may poll until something
-# happens: it has nothing to await.
-"tests/**" = ["D1", "PLR0917", "PLR2004", "ASYNC110"]
-# The one place a bare assert belongs: the helpers every other check goes through.
+"tests/**" = ["PLR0917", "PLR2004", "ASYNC110"]
 "tests/helpers.py" = ["S101"]
 "src/squidpdf/core/pdf/lowlevel/**" = ["TID251"]
 
 [tool.ruff.lint.isort]
-# A package's re-exports (`from x import Name as Name`) stay one import, not one per name.
 combine-as-imports = true
 
 [tool.ruff.lint.pylint]
 max-positional-args = 3
 
 [tool.ruff.lint.flake8-tidy-imports]
-# Absolute only, so the layer rules in tests/test_layers.py read every import by its full name.
 ban-relative-imports = "all"
 
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
@@ -105,13 +86,11 @@ ban-relative-imports = "all"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# A new warning fails the suite. These are our dependencies' own, not ours to fix.
 filterwarnings = [
     "error",
     "ignore:Using `httpx` with `starlette.testclient` is deprecated",
     "ignore:The anyio.abc.BlockingPortal alias is deprecated",
-    # PyMuPDF's SWIG types, on import. Made an error, it's raised inside the library's
-    # start-up, which then never returns (seen on macOS): the suite hangs, saying nothing.
+    # Made an error, it's raised inside PyMuPDF's start-up, which then hangs (macOS).
     "ignore:builtin type (swigvarlink|SwigPyObject|SwigPyPacked) has no __module__ attribute:DeprecationWarning",
 ]
 
@@ -120,14 +99,12 @@ python_version = "3.14"
 files = ["src", "tests", "scripts"]
 warn_unused_ignores = true
 warn_redundant_casts = true
-# Test functions are unannotated; without this mypy skips their bodies entirely.
 check_untyped_defs = true
 
 [[tool.mypy.overrides]]
 module = ["pymupdf.*", "fontTools.*"]
 ignore_missing_imports = true
 
-# Only the shipped package is required to be fully annotated; tests are not.
 [[tool.mypy.overrides]]
 module = "squidpdf.*"
 disallow_untyped_defs = true
