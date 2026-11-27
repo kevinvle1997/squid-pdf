@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
-import { anInsert, aSpan } from "../fixtures";
+import { aBoldSentence, aDoc, anInsert, aSpan } from "../fixtures";
 import { NEW_TEXT_ASCENT_EM, NEW_TEXT_DESCENT_EM } from "./constants";
+import { linesBySpan } from "./lines";
 import { changedWordsIn, excerptsOf, inLine, insertedWordsIn, marginNotesOf, noteOf, notePlaces } from "./margin";
 import type { SpanReading } from "./project";
 
@@ -153,9 +154,26 @@ describe("what a note says", () => {
 describe("a page's margin notes", () => {
   test("are each changed span's, then each piece of new text's, level with its line, a proof's caret before its words", () => {
     const newText = { id: 3, newTextId: 2, edit: anInsert({ text: "Signed", origin: [72, 400], size: 10 }) };
-    const notes = marginNotesOf([changeAt("one", 100)], [newText]);
+    const notes = marginNotesOf([changeAt("one", 100)], [newText], new Map());
     expect(notes.map(({ key }) => key)).toEqual(["one", "new text 2"]);
     expect(notes[1]?.line).toMatchObject({ y0: 400 - 10 * NEW_TEXT_ASCENT_EM, y1: 400 + 10 * NEW_TEXT_DESCENT_EM });
     expect(notes[1]?.note).toMatchObject({ label: "Undo: take out “Signed”", inserted: "Signed", was: [] });
   });
+});
+
+test("a line's runs changed are one note, its words as one line, cut round the change, and one press puts it back", () => {
+  const sentence = aBoldSentence();
+  const lines = linesBySpan(aDoc(sentence));
+  const changes = sentence.spans.map((span) => ({
+    span,
+    text: span.id === "bold" ? "SPANS" : span.text,
+    replaced: span.id === "bold",
+    strategy: undefined,
+    redacted: null,
+  }));
+  const [only, ...rest] = marginNotesOf(changes, [], lines);
+  expect(rest).toEqual([]);
+  expect(only?.key).toBe("before");
+  expect(only?.line).toEqual(lines.get("bold")?.bbox);
+  expect(only?.note).toMatchObject({ struck: ["spans"], was: ["into spans (one"], now: "into SPANS (one" });
 });

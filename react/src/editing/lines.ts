@@ -1,6 +1,8 @@
 // The page's lines: spans the server found on one baseline, a word space apart, whatever their style, edited as
 // one field (`Document.lines`). A span on no line of more than one is a line of its own.
-import type { Box, Document, SpanInfo } from "../api/types";
+import type { Box, Document, FitRules, SpanInfo, Strategy } from "../api/types";
+import { type LineScale, runsLaidOut, runWidthsOf, setAs } from "./fit";
+import { type FontsByObject, fontOf } from "./spanFonts";
 
 /** Spans one field edits, left to right, the box they make together, and how far its end can run. */
 export interface Line {
@@ -24,6 +26,9 @@ export function linesBySpan(doc: Pick<Document, "spans" | "lines">): ReadonlyMap
   }
   return lines;
 }
+
+// A run drawn further than this from where the page has it has moved: `MOVED_PT` in core/constants.py.
+const MOVED_PT = 0.05;
 
 /** The box `spans` cover together. */
 function unionOf(spans: readonly SpanInfo[]): Box {
@@ -113,4 +118,44 @@ function wordEndAfter(text: string, at: number): number {
   while (to < text.length && /\s/.test(text[to] ?? "")) to++;
   while (to < text.length && /\S/.test(text[to] ?? "")) to++;
   return to;
+}
+
+/** A run of a line's edit as it's drawn: its span moved to where it starts now, its words, and how they're set. */
+export interface DrawnRun {
+  readonly span: SpanInfo; // as the document has it
+  readonly moved: SpanInfo; // the same, its box where the run is drawn
+  readonly text: string;
+  readonly scale: LineScale;
+  readonly redrawn: boolean; // changed, or moved by a change before it: the rest stays as the page has it
+}
+
+/**
+ * `line`'s runs as an edit reading `texts` draws them, the way out `asked` while it's offered: where each starts, and
+ * which the server redraws. None while one's font is unknown, which only the render can place.
+ */
+export function lineDrawnAs(
+  line: Pick<Line, "spans" | "roomPt">,
+  {
+    texts,
+    fonts,
+    asked,
+    rules,
+  }: { texts: readonly string[]; fonts: FontsByObject; asked: Strategy | undefined; rules: FitRules },
+): DrawnRun[] | null {
+  const typed = line.spans.flatMap((span, index) => {
+    const font = fontOf(fonts, span);
+    return font === undefined ? [] : [{ span, font, text: texts[index] ?? span.text }];
+  });
+  if (typed.length !== line.spans.length) return null;
+  const widths = runWidthsOf(typed);
+  const { way, fit, starts } = runsLaidOut(widths, { roomPt: line.roomPt, asked, rules });
+  const set = setAs(way, fit);
+  return typed.map(({ span, text }, index) => {
+    const run = widths[index];
+    const dx = (starts[index] ?? 0) - (run?.x ?? 0);
+    const changed = run?.changed ?? false;
+    const moved = { ...span, bbox: { ...span.bbox, x0: span.bbox.x0 + dx, x1: span.bbox.x1 + dx } };
+    const redrawn = changed || Math.abs(dx) > MOVED_PT;
+    return { span, moved, text, scale: changed ? set : { size: 1, scaleX: 1 }, redrawn };
+  });
 }

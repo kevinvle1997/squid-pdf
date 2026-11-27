@@ -19,7 +19,7 @@ import { type Box, fontOfNewText, newTextFaceOf, newTextLineOf } from "../newTex
 
 /** Where a span's mark sits: over its line as drawn, so a replacement left long is pressed along its length. */
 export function markBoxOf(
-  span: SpanInfo,
+  span: Pick<SpanInfo, "bbox">,
   { replaced, fit }: { replaced: boolean; fit: FitInfo | undefined },
 ): SpanInfo["bbox"] {
   // A way out ends the line where the original did, and a shorter one keeps its place to press.

@@ -14,7 +14,8 @@ export const EXACT: Verdict = { fidelity: "exact", why: null, substitute: null, 
 
 /**
  * The one verdict the note, the chip's short warning and the bar's count say: untouched, the span's own;
- * changed, its render's once that lands (`fit`), else the one worked out as it's typed (`live`).
+ * changed, or a line's run its edit moved and the render redrew, its render's once that lands (`fit`), else the one
+ * worked out as it's typed (`live`).
  */
 export function verdictOf(
   span: SpanInfo,
@@ -22,10 +23,18 @@ export function verdictOf(
     reading,
     fit,
     live,
-  }: { reading: Pick<SpanReading, "replaced"> | undefined; fit: FitInfo | undefined; live: () => Verdict },
+  }: { reading: Pick<SpanReading, "replaced" | "lineEdit"> | undefined; fit: FitInfo | undefined; live: () => Verdict },
 ): Verdict {
-  if (!(reading?.replaced ?? false)) return span;
+  if (!isDrawnAgain(reading, fit)) return span;
   return fit ?? live();
+}
+
+/** Whether a span reading `reading` is drawn again: changed, or a line's run the render redrew (`fit`). */
+export function isDrawnAgain(
+  reading: Pick<SpanReading, "replaced" | "lineEdit"> | undefined,
+  fit: FitInfo | undefined,
+): boolean {
+  return reading !== undefined && (reading.replaced || (reading.lineEdit !== undefined && fit !== undefined));
 }
 
 /**

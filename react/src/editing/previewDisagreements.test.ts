@@ -34,7 +34,7 @@ function drawnOf(reading: Reading, pages: number[], reply: Partial<Drawn> = {}):
 const fitsOn = (page: number, fits: Record<string, FitInfo>) => new Map([[page, fits]]);
 
 const judged = (disagreements: ReadonlyMap<number, PreviewDisagreement> = NO_DISAGREEMENTS) => ({
-  layout: { fonts: FONTS, spans: new Map() },
+  layout: { fonts: FONTS, spans: new Map(), lines: new Map() },
   rules: RULES,
   disagreements,
 });

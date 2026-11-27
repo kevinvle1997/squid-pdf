@@ -1,8 +1,8 @@
 // In the settle, the spans whose render disagrees with their preview pulse (decisions/frontend.md, Motion).
 // Verdicts are compared, not pixels: the preview draws in a face we ship.
-import type { FitInfo, FitRules, Strategy } from "../api/types";
+import type { FitInfo, FitRules, FontInfo, Strategy } from "../api/types";
 import type { Layout } from "./editor";
-import { type Fit, fitOf, runsPast } from "./fit";
+import { type Fit, fitOf, lineFitOf, missingIn, runsPast } from "./fit";
 import { spansOf } from "./history";
 import { newTextDrawingOf, newTextVerdictOf } from "./newText";
 import { type Differing, differing, type NewTextReading, type Reading } from "./project";
@@ -20,7 +20,7 @@ export interface PreviewDisagreement {
 export const NO_DISAGREEMENTS: ReadonlyMap<number, PreviewDisagreement> = new Map();
 
 interface Judged {
-  layout: Pick<Layout, "fonts" | "spans">;
+  layout: Pick<Layout, "fonts" | "spans" | "lines">;
   rules: FitRules;
   disagreements: ReadonlyMap<number, PreviewDisagreement>; // what pulsed before, kept for the pages this landing didn't draw
 }
@@ -37,7 +37,7 @@ export function disagreementsAfter(
     // Not drawn by this landing: whatever it showed stays.
     if (was === reading) continue;
     const previewed = differing(reading.pages.get(page), was?.pages.get(page));
-    const landed = { reading, page, after, fonts: layout.fonts, rules };
+    const landed = { reading, page, after, fonts: layout.fonts, lines: layout.lines, rules };
     const spanIds = new Set(previewed.filter((each) => disagrees(each, landed)).map(({ span }) => span.id));
     const drawnBefore = new Set(was?.pages.get(page)?.newTexts.map((text) => text.id));
     const textsPreviewed = (reading.pages.get(page)?.newTexts ?? []).filter((text) => !drawnBefore.has(text.id));
@@ -56,11 +56,14 @@ interface PageLanded {
   readonly page: number;
   readonly after: Drawn;
   readonly fonts: FontsByObject;
+  readonly lines: Layout["lines"];
   readonly rules: FitRules;
 }
 
 /** Whether the render of a previewed span says something the browser's live check didn't. */
-function disagrees({ span, text, redacted }: Differing, { reading, page, after, fonts, rules }: PageLanded): boolean {
+function disagrees(each: Differing, landed: PageLanded): boolean {
+  const { span, text, redacted } = each;
+  const { reading, page, after, fonts, rules } = landed;
   // A redaction previews bare, as it's drawn: there's no verdict to differ from.
   if (redacted) return false;
   // The browser never foresees a notice or a skip.
@@ -75,17 +78,32 @@ function disagrees({ span, text, redacted }: Differing, { reading, page, after, 
   // Put back, or a font the browser can't measure: nothing was foreseen.
   if (fit === undefined || font === undefined) return false;
   return !sameVerdict(fit, {
-    live: fitOf(span, { font, text, rules }),
+    live: liveFitOf(each, { ...landed, font }),
     liveVerdict: liveVerdictOf(span, { font, text }),
     asked: reading.spans.get(span.id)?.strategy,
     rules,
   });
 }
 
+/** The live check's fit of a previewed span: a line's run's is the whole line's, with the run's own letters. */
+function liveFitOf(
+  { span, text, lineEdit }: Differing,
+  { fonts, lines, rules, font }: PageLanded & { font: FontInfo },
+): Fit {
+  const line = lines.get(span.id);
+  if (lineEdit === undefined || line === undefined) return fitOf(span, { font, text, rules });
+  const runs = line.spans.flatMap((each, index) => {
+    const runFont = fontOf(fonts, each);
+    return runFont === undefined ? [] : [{ span: each, font: runFont, text: lineEdit.runs[index]?.text ?? each.text }];
+  });
+  const fit = lineFitOf(runs, { roomPt: line.roomPt, rules });
+  return { ...fit, missing: text === span.text ? [] : missingIn(text, font.glyphs) };
+}
+
 /** Whether the render of new text previewed says something its live check didn't: the letters lacking, or the verdict's kind. */
 function newTextDisagrees(
   text: NewTextReading,
-  { reading, page, after, layout }: PageLanded & { layout: Pick<Layout, "fonts" | "spans"> },
+  { reading, page, after, layout }: PageLanded & { layout: Pick<Layout, "fonts" | "spans" | "lines"> },
 ): boolean {
   const sentAt = reading.edits.indexOf(text.edit);
   // The browser never foresees a notice or a skip.

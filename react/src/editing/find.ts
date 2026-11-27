@@ -5,9 +5,10 @@ import { FIND_DELAY_MS } from "./constants";
 import { announcing, change, type Editor, type EditorState, type Layout, scrollingTo } from "./editor";
 import { fitOf, type LineScale, lineWidthPt, runsPast, settingOf, wayDrawn } from "./fit";
 import { entriesOf, historyReducer, spansOf } from "./history";
+import { type DrawnRun, lineDrawnAs } from "./lines";
 import { type FindOptions, type Match, matchesIn, replacedIn } from "./matching";
 import type { PageState } from "./page";
-import { differing, project, type Reading, textIn } from "./project";
+import { differing, project, type Reading, type SpanReading, textIn } from "./project";
 import type { Drawn } from "./render";
 import { type FontsByObject, fontOf } from "./spanFonts";
 import { finish, isEmpty, keptEditOf, typingEnd } from "./typing";
@@ -165,7 +166,7 @@ export function matchesAcross(
 
 /** Where find's tints sit on a page: each match across its line as drawn, with its span; none on the span typed in. */
 export function tintsOn(
-  page: Pick<PageState, "spans" | "edits" | "drawnFrom" | "fits" | "fonts" | "rules" | "typingIn">,
+  page: Pick<PageState, "spans" | "edits" | "drawnFrom" | "fits" | "fonts" | "rules" | "typingIn" | "layout">,
   matches: ReadonlyMap<string, readonly Match[]>,
 ): { span: SpanInfo; x0: number; x1: number }[] {
   const readings = new Map(page.edits?.spans.map((reading) => [reading.span.id, reading]));
@@ -173,16 +174,31 @@ export function tintsOn(
   const previewed = new Set(differing(page.edits, page.drawnFrom).map(({ span }) => span.id));
   return page.spans.flatMap((span) => {
     const inSpan = matches.get(span.id);
-    if (inSpan === undefined || span.id === page.typingIn) return [];
+    if (inSpan === undefined || (page.layout.lines.get(span.id)?.id ?? span.id) === page.typingIn) return [];
     const reading = readings.get(span.id);
     const text = reading?.text ?? span.text;
     const font = fontOf(page.fonts, span);
     const glyphs = font?.glyphs;
-    const scale = settingOf(span, { font, text, asked: reading?.strategy, rules: page.rules });
-    const fit = reading?.replaced && !previewed.has(span.id) ? page.fits[span.id] : undefined;
-    const widePt = drawnWidthOf(span, { text, glyphs, scale, fit });
-    return matchesAcross(span, { text, matches: inSpan, glyphs, widePt }).map(({ x0, x1 }) => ({ span, x0, x1 }));
+    const run = runDrawnAt(page, { span, readings });
+    const scale = run?.scale ?? settingOf(span, { font, text, asked: reading?.strategy, rules: page.rules });
+    const fit = reading?.replaced && !previewed.has(span.id) && run === undefined ? page.fits[span.id] : undefined;
+    const placed = run?.moved ?? span;
+    const widePt = drawnWidthOf(placed, { text, glyphs, scale, fit });
+    return matchesAcross(placed, { text, matches: inSpan, glyphs, widePt }).map(({ x0, x1 }) => ({ span, x0, x1 }));
   });
+}
+
+/** Where a line's edit draws `span`, one of its runs: none for a span no line edit reads. */
+function runDrawnAt(
+  page: Pick<PageState, "fonts" | "rules" | "layout">,
+  { span, readings }: { span: SpanInfo; readings: ReadonlyMap<string, SpanReading> },
+): DrawnRun | undefined {
+  const lineEdit = readings.get(span.id)?.lineEdit;
+  const line = page.layout.lines.get(span.id);
+  if (lineEdit === undefined || line === undefined) return undefined;
+  const texts = lineEdit.runs.map((run) => run.text);
+  const drawn = lineDrawnAs(line, { texts, fonts: page.fonts, asked: lineEdit.strategy, rules: page.rules });
+  return drawn?.find((run) => run.span.id === span.id);
 }
 
 /** The find bar's marks found again in `reading`; the place gone to stays while it's still found. */

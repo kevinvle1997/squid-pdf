@@ -408,8 +408,9 @@ function stepped(
   const redacting = step.some(({ edit }) => edit.kind === "redact");
   // A redaction is said by the words it puts back or takes out, not by the line, which may keep others redacted.
   const redaction = redacting ? { was: before.spans.get(spanId)?.redacted ?? null } : null;
+  const line = layout.lines.get(spanId);
   change(editor, action, ({ reading, doc }) => ({
-    announcement: announcing(stepAnnouncement(doc.sentences, { key, span, reading, redaction })),
+    announcement: announcing(stepAnnouncement(doc.sentences, { key, span, line, reading, redaction })),
     scrollTo: scrollingTo(spanId),
     ...(on.marginNote && { focusTo: { spanId } }),
   }));
@@ -424,17 +425,20 @@ function stepAnnouncement(
   {
     key,
     span,
+    line,
     reading,
     redaction,
   }: {
     key: "back_to" | "changed_to";
     span: SpanInfo | undefined;
+    line: Line | undefined; // the line it's a run of, said whole
     reading: Reading;
     redaction: { was: Redacted | null } | null;
   },
 ): string {
   if (span === undefined) return fill(sentences[key], { text: "" });
-  if (redaction === null) return fill(sentences[key], { text: textIn(reading, span) });
+  const spans = line?.spans ?? [span];
+  if (redaction === null) return fill(sentences[key], { text: spans.map((each) => textIn(reading, each)).join("") });
   const { was } = redaction;
   const now = reading.spans.get(span.id)?.redacted ?? null;
   if (key === "back_to") return fill(sentences.put_back, { text: redactedBetween(span.text, { from: was, to: now }) });
@@ -513,9 +517,14 @@ export function announce(editor: Editor, text: string): void {
   editor.store.set({ announcement: announcing(text) });
 }
 
-/** The changed spans on the pages the download keeps: a page left out takes its edits with it. */
-function keptChanges(reading: Reading): SpanReading[] {
+/** What's read of spans on the pages the download keeps, a line's runs left alone too: a page left out takes its edits. */
+function keptReadings(reading: Reading): SpanReading[] {
   return [...reading.spans.values()].filter(({ span }) => !reading.deleted.has(span.page));
+}
+
+/** The changed spans among them: a line's run left alone is no change of its own. */
+function keptChanges(reading: Reading): SpanReading[] {
+  return keptReadings(reading).filter(({ replaced, redacted }) => replaced || redacted !== null);
 }
 
 /**
@@ -568,10 +577,12 @@ export function atRestSentence({ count, reasons }: Mismatches, sentences: Senten
 
 /** How many changed spans the server drew past their room, left long as typed: each warned on its mark, and counted in the bar. */
 function runLongCount({ reading, drawn }: Pick<EditorState, "reading" | "drawn">): number {
-  return keptChanges(reading).filter(({ span, replaced }) => {
+  const long = keptChanges(reading).filter(({ span, replaced }) => {
     const fit = drawn.fits.get(span.page)?.[span.id];
     return replaced && fit?.message_parts.some((part) => part.code === "too_long") === true;
-  }).length;
+  });
+  // A line runs long as one, however many of its runs changed.
+  return new Set(long.map((each) => each.lineEdit ?? each)).size;
 }
 
 /**
@@ -584,13 +595,13 @@ export function runLongSentence(state: Pick<EditorState, "reading" | "drawn" | "
   return fillCounted(state.doc.sentences.changes_too_long, count);
 }
 
-/** The changed spans whose edit won't match, in a similar font or set apart from the text around them, then the new text that won't. */
+/** The spans drawn again whose edit won't match, in a similar font or set apart from the text around them, then the new text that won't. */
 export function changedMismatches({
   reading,
   drawn,
   layout,
 }: Pick<EditorState, "reading" | "drawn" | "layout">): MismatchPlace[] {
-  const spans = keptChanges(reading).flatMap((spanReading) => {
+  const spans = keptReadings(reading).flatMap((spanReading) => {
     const { span } = spanReading;
     const fit = landedFitOf(drawn, spanReading);
     return placeOf(span, { changed: true, reading: spanReading, fit, font: fontOf(layout.fonts, span) }) ?? [];
