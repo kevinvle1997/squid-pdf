@@ -71,14 +71,15 @@ export function entriesOf(history: History): Entry[] {
   return history.done.flat();
 }
 
-/** The span an edit is to, if it's to one. */
-export function spanOf(edit: Edit): string | undefined {
-  return "span_id" in edit ? edit.span_id : undefined;
+/** The spans an edit is to: one, a line's every one, or none. */
+export function spansOf(edit: Edit): readonly string[] {
+  if (edit.kind === "replace_runs") return edit.runs.map((run) => run.span_id);
+  return "span_id" in edit ? [edit.span_id] : [];
 }
 
 /** The ids of every edit in effect to `spanId`: what putting the span back takes out. */
 export function touching(history: History, spanId: string): Set<number> {
-  return new Set(entriesOf(history).flatMap((entry) => (spanOf(entry.edit) === spanId ? [entry.id] : [])));
+  return new Set(entriesOf(history).flatMap((entry) => (spansOf(entry.edit).includes(spanId) ? [entry.id] : [])));
 }
 
 /** The ids of every delete in effect of page `page`: what putting the page back takes out. */

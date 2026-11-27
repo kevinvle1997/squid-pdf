@@ -20,12 +20,11 @@ export type CountedSentence = Schemas["CountedSentence"];
 export type FitRules = Schemas["FitRules"];
 export type Replace = Schemas["Replace"];
 export type Redact = Schemas["Redact"];
-// Not sent yet, so not an `Edit`: a line's one field sends it (squid-pdf#371).
 export type ReplaceRuns = Schemas["ReplaceRuns"];
 export type RunText = Schemas["RunText"];
 export type Insert = Schemas["Insert"];
 export type DeletePage = Schemas["DeletePage"];
-export type Edit = Replace | Redact | Insert | DeletePage;
+export type Edit = Replace | ReplaceRuns | Redact | Insert | DeletePage;
 export type Region = Schemas["Region"];
 export type RenderBody = Schemas["RenderBody"];
 export type Render = Schemas["Render"];

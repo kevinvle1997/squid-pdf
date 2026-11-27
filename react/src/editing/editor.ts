@@ -17,7 +17,7 @@ import {
   historyReducer,
   newTextIdsOf,
   type Step,
-  spanOf,
+  spansOf,
   touching,
 } from "./history";
 import type { FailedImage } from "./images";
@@ -398,7 +398,7 @@ function stepped(
     newTextStepped(editor, action, { step, entry: newText, key, on });
     return;
   }
-  const spanId = step?.map((entry) => spanOf(entry.edit)).find((id) => id !== undefined);
+  const spanId = step?.flatMap((entry) => spansOf(entry.edit))[0];
   if (step === undefined || spanId === undefined) {
     change(editor, action);
     return;

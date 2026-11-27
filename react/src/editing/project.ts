@@ -1,7 +1,7 @@
 // The one reading of the history that what's drawn, rendered and exported agree on. An object nothing
 // changed stays the same object from one reading to the next, so whatever draws it can skip it.
-import type { Document, Edit, Insert, PageInfo, Redact, Replace, SpanInfo, Strategy } from "../api/types";
-import { type Entry, newTextIdsOf } from "./history";
+import type { Document, Edit, Insert, PageInfo, Redact, Replace, ReplaceRuns, SpanInfo, Strategy } from "../api/types";
+import { type Entry, newTextIdsOf, spansOf } from "./history";
 
 /** A range of a span's text by code point, as the server counts it: what a redaction names. */
 export type CodePoints = NonNullable<Redact["range"]>;
@@ -21,6 +21,7 @@ export interface SpanReading {
   readonly replaced: boolean; // it reads other than the original
   readonly strategy: Strategy | undefined; // how a replacement too long is to fit, when one is asked for
   readonly redacted: Redacted | null; // what's to be taken out of the file, if anything
+  readonly lineEdit?: ReplaceRuns; // the line's edit it's a run of: any of its runs may be moved, so each is drawn from it
 }
 
 /** A piece of new text as its latest version has it. */
@@ -95,7 +96,20 @@ export function textIn(reading: Reading, span: SpanInfo): string {
 export function sameSpan(a: SpanReading | undefined, b: SpanReading | undefined): boolean {
   if (a === b) return true;
   if (a === undefined || b === undefined) return false;
-  return a.text === b.text && sameRedacted(a.redacted, b.redacted) && a.strategy === b.strategy;
+  const same = a.text === b.text && sameRedacted(a.redacted, b.redacted) && a.strategy === b.strategy;
+  // A line's run moves as the others are typed, so it draws the same only while every run of its line does.
+  return same && sameRuns(a.lineEdit, b.lineEdit);
+}
+
+/** Whether two line edits read the same runs the same. */
+function sameRuns(a: ReplaceRuns | undefined, b: ReplaceRuns | undefined): boolean {
+  if (a === b) return true;
+  return (
+    a !== undefined &&
+    b !== undefined &&
+    a.runs.length === b.runs.length &&
+    a.runs.every((run, index) => run.text === b.runs[index]?.text)
+  );
 }
 
 /** Whether two redactions of a span take the same: all of it, or the same ranges of words. */
@@ -192,7 +206,7 @@ export function samePage(a: PageEdits | undefined, b: PageEdits | undefined): bo
 }
 
 /** A span that reads differently than its page's strips show: what it reads now, or that it's redacted. */
-export type Differing = Pick<SpanReading, "span" | "text" | "redacted" | "strategy">;
+export type Differing = Pick<SpanReading, "span" | "text" | "redacted" | "strategy" | "lineEdit">;
 
 /**
  * The spans that read differently in `now` than in `then`, with what each reads now: the
@@ -202,8 +216,8 @@ export function differing(now: PageEdits | undefined, then: PageEdits | undefine
   const was = new Map(then?.spans.map((reading) => [reading.span.id, reading]));
   const out: Differing[] = [];
   for (const reading of now?.spans ?? []) {
-    const { span, text, redacted, strategy } = reading;
-    if (!sameSpan(reading, was.get(span.id))) out.push({ span, text, redacted, strategy });
+    const { span, text, redacted, strategy, lineEdit } = reading;
+    if (!sameSpan(reading, was.get(span.id))) out.push({ span, text, redacted, strategy, lineEdit });
     was.delete(span.id);
   }
   for (const reading of was.values()) {
@@ -223,7 +237,7 @@ export function project(
 ): Reading {
   const { spans } = doc;
   // The last replace to a span wins, as on the server; a redaction is for good, with any others of the span.
-  const replaces = new Map<string, Replace>();
+  const replaces = new Map<string, Replace | ReplaceRuns>();
   const redactions = new Map<string, Redact[]>();
   // New text's latest version wins, as a span's last replace does: by its first version's id, in the order last made.
   const latest = new Map<number, NewTextReading>();
@@ -231,9 +245,12 @@ export function project(
   for (const { id, edit } of entries) {
     switch (edit.kind) {
       case "replace":
-        replaces.set(edit.span_id, edit);
+      case "replace_runs":
+        keepLast(replaces, edit);
         break;
       case "redact":
+        // A line is drawn whole or not at all: one of its spans redacted, its edit is gone from every one.
+        if (replaces.get(edit.span_id)?.kind === "replace_runs") forget(replaces, edit.span_id);
         redactions.set(edit.span_id, [...(redactions.get(edit.span_id) ?? []), edit]);
         break;
       case "insert": {
@@ -258,15 +275,18 @@ export function project(
     return edits;
   };
   const live = new Set<Edit>(); // the replaces that change what a span reads, and new text's latest versions
+  const changed = changedLines(spans, replaces);
   for (const span of spans) {
     const replace = replaces.get(span.id);
-    const text = replace?.text ?? span.text;
+    const text = textOf(replace, span);
     const replaced = text !== span.text;
-    if (replaced && replace !== undefined) live.add(replace);
+    // A line edit that changes any run is every run's reading, since the others may move with it.
+    const lineEdit = replace?.kind === "replace_runs" && changed.has(replace) ? replace : undefined;
+    if (replace !== undefined && (replaced || lineEdit !== undefined)) live.add(replace);
     const redacted = redactedBy(span, redactions.get(span.id));
-    if (!replaced && redacted === null) continue;
-    const strategy = replaced ? replace?.strategy : undefined;
-    const reading: SpanReading = { span, text, replaced, strategy, redacted };
+    if (!replaced && redacted === null && lineEdit === undefined) continue;
+    const strategy = replaced || lineEdit !== undefined ? replace?.strategy : undefined;
+    const reading: SpanReading = { span, text, replaced, strategy, redacted, ...(lineEdit && { lineEdit }) };
     const was = previous.spans.get(span.id);
     const kept = was !== undefined && sameSpan(was, reading) ? was : reading;
     readings.set(span.id, kept);
@@ -284,10 +304,41 @@ export function project(
   }
 
   // Sent: every edit but a replace or new text a later one overrides, or one that puts back the original or takes it out.
-  const overridable = (edit: Edit) => edit.kind === "replace" || edit.kind === "insert";
+  const overridable = (edit: Edit) => edit.kind === "replace" || edit.kind === "replace_runs" || edit.kind === "insert";
   const sent = entries.filter(({ edit }) => !overridable(edit) || live.has(edit));
   const edits = sent.map((entry) => entry.edit);
   return { spans: readings, pages, edits, ...pagesKept(doc.pages.length, { edits, previous }) };
+}
+
+/** Keep `edit` as each of its spans' last: a line edit it takes over a span of is gone from every span of that line. */
+function keepLast(replaces: Map<string, Replace | ReplaceRuns>, edit: Replace | ReplaceRuns): void {
+  const spanIds = spansOf(edit);
+  for (const spanId of spanIds) forget(replaces, spanId);
+  for (const spanId of spanIds) replaces.set(spanId, edit);
+}
+
+/** Forget the replace `spanId` is last in, from every span it's to. */
+function forget(replaces: Map<string, Replace | ReplaceRuns>, spanId: string): void {
+  const last = replaces.get(spanId);
+  if (last === undefined) return;
+  for (const each of spansOf(last)) replaces.delete(each);
+}
+
+/** What `span` reads after `replace`, its run's words for a line's: its own with none. */
+function textOf(replace: Replace | ReplaceRuns | undefined, span: SpanInfo): string {
+  if (replace === undefined) return span.text;
+  if (replace.kind === "replace") return replace.text;
+  return replace.runs.find((run) => run.span_id === span.id)?.text ?? span.text;
+}
+
+/** The line edits kept that change a run's words: one that reads as the page does is no edit. */
+function changedLines(spans: readonly SpanInfo[], replaces: ReadonlyMap<string, Replace | ReplaceRuns>) {
+  const changed = new Set<ReplaceRuns>();
+  for (const span of spans) {
+    const replace = replaces.get(span.id);
+    if (replace?.kind === "replace_runs" && textOf(replace, span) !== span.text) changed.add(replace);
+  }
+  return changed;
 }
 
 /** The pages a download keeps after `edits`, and those it leaves out: `previous`'s own while they're the same. */

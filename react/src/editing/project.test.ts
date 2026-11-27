@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import shared from "../../../tests/editing/page_order_cases.json";
 import redactedWords from "../../../tests/editing/redacted_words_cases.json";
 import type { Edit, Insert } from "../api/types";
-import { A4, aDeletePage, anInsert, aRedact, aReplace, aSpan } from "../fixtures";
+import { A4, aBoldSentence, aDeletePage, aDoc, anInsert, aRedact, aReplace, aSpan } from "../fixtures";
 import { EMPTY_HISTORY, entriesOf, type History, historyReducer } from "./history";
 import {
   differing,
@@ -214,5 +214,50 @@ describe("the pages as shown", () => {
     expect(shownNumberOf([0, 1, 3], 3)).toBe(3);
     expect(shownNumberOf([0, 1, 3], 2)).toBe(3);
     expect(shownNumberOf([1], 0)).toBe(1);
+  });
+});
+
+describe("a line's edit", () => {
+  const { spans } = aBoldSentence();
+  const reads = (...words: string[]): Edit => ({
+    kind: "replace_runs",
+    runs: spans.map((span, index) => ({ span_id: span.id, text: words[index] ?? span.text })),
+  });
+  const typedBold = reads("Text is grouped into ", "SPANS");
+
+  test("is every run's reading once one changes, the rest not counted as changed, and is sent", () => {
+    const reading = project(aDoc({ spans }), entriesOf(add(EMPTY_HISTORY, typedBold)));
+    expect([...reading.spans.values()].map(({ text, replaced }) => [text, replaced])).toEqual([
+      ["Text is grouped into ", false],
+      ["SPANS", true],
+      [" (one style)", false],
+    ]);
+    expect(reading.edits).toEqual([typedBold]);
+  });
+
+  test("typed back as the page reads, it's no edit at all", () => {
+    const reading = project(aDoc({ spans }), entriesOf(add(EMPTY_HISTORY, reads())));
+    expect([reading.spans.size, reading.edits]).toEqual([0, []]);
+  });
+
+  test("a later edit of one of its spans, or its redaction, takes the whole line's edit back", () => {
+    const later = add(add(EMPTY_HISTORY, typedBold), aReplace("after", " now"));
+    expect(project(aDoc({ spans }), entriesOf(later)).edits).toEqual([aReplace("after", " now")]);
+    const redacted = add(add(EMPTY_HISTORY, typedBold), aRedact("before"));
+    expect(project(aDoc({ spans }), entriesOf(redacted)).edits).toEqual([aRedact("before")]);
+  });
+
+  test("a run it leaves alone draws differently once another run changes, since it may move", () => {
+    const then = project(aDoc({ spans }), entriesOf(add(EMPTY_HISTORY, typedBold)));
+    const now = project(
+      aDoc({ spans }),
+      entriesOf(add(EMPTY_HISTORY, typedBold, reads("Text is grouped into ", "S"))),
+      then,
+    );
+    expect(differing(now.pages.get(0), then.pages.get(0)).map(({ span }) => span.id)).toEqual([
+      "before",
+      "bold",
+      "after",
+    ]);
   });
 });
