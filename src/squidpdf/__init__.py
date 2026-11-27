@@ -1,5 +1,3 @@
-"""squid-pdf: correct text already in a PDF, and know beforehand how it will look."""
-
 from __future__ import annotations
 
 from squidpdf.core import (

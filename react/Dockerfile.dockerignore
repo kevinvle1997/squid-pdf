@@ -1,4 +1,3 @@
-# The web image needs the app's source, its compress script, its fonts and the Caddyfile, nothing else.
 *
 !react/package.json
 !react/package-lock.json

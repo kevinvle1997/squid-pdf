@@ -16,7 +16,6 @@ vi.mock(import("../api/client"), async (original) => ({
   stillThere: vi.fn(),
 }));
 
-// Its sentences are the server's, in a language made up for tests, so any the browser writes itself stands out.
 const DOC = aDoc({
   sentences: PSEUDO_SENTENCES,
   spans: [
@@ -54,7 +53,6 @@ describe("export", () => {
 
   beforeEach(() => {
     names = [];
-    // Each download is a link clicked: its name is what the browser saves the file as.
     const link = {
       click: vi.fn(function (this: { download: string }) {
         names.push(this.download);
@@ -73,7 +71,6 @@ describe("export", () => {
     expect(exportPdf).toHaveBeenCalledWith("doc", [{ kind: "replace", span_id: "own", text: "typed" }], {
       pages: undefined,
     });
-    // Named once the typing is in: it's the edit that marks the file edited.
     expect(editor.store.get().notices.export).toEqual([plain("DOWNLOADED contract, edited.pdf.")]);
     expect(editor.store.get().exporting).toBe(false);
   });

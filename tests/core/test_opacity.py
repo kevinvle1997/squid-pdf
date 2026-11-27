@@ -1,5 +1,3 @@
-"""A redraw paints as see-through as the text it replaces."""
-
 from __future__ import annotations
 
 import pymupdf
@@ -16,14 +14,13 @@ _BYTE_MAX = 255  # MuPDF reads opacity back as 0 to 255
 @pytest.mark.parametrize(
     ("fixture", "text", "substitute"),
     [
-        ("translucent", "Valid in March", False),  # its own font, by letter
-        ("translucent", "Válid until March", True),  # no á in the trimmed font
-        ("coded_translucent", "BA AB", False),  # its own font, by code
+        ("translucent", "Valid in March", False),
+        ("translucent", "Válid until March", True),
+        ("coded_translucent", "BA AB", False),
     ],
     ids=["own font", "substitute", "by code"],
 )
 def test_a_redraw_keeps_the_originals_opacity(request, tmp_path, fixture, text, substitute):
-    """Grey small print at 60% came back solid black."""
     out = str(tmp_path / "redrawn.pdf")
     with open_pdf(request.getfixturevalue(fixture)) as engine:
         [span] = engine.index()

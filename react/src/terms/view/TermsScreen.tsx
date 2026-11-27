@@ -5,12 +5,9 @@ import { ScreenTop } from "../../ui/ScreenTop";
 import type { TermsAnswer } from "../terms";
 import styles from "./TermsScreen.module.css";
 
-// Its heading until the deployment's own title comes, and where it can't.
 const HEADING = "Terms of use";
-// How many paragraphs' shape shows while the terms are asked for.
 const SHAPED_PARAGRAPHS = 3;
 
-/** The service's terms on a page of the app's own, with the way home at its top and its foot. */
 export function TermsScreen({ answer }: { answer: Exclude<TermsAnswer, { kind: "none" }> }) {
   return (
     <div className={styles.screen}>
@@ -40,7 +37,6 @@ export function TermsScreen({ answer }: { answer: Exclude<TermsAnswer, { kind: "
   );
 }
 
-/** The terms as the deployment wrote them: the title, when they last changed, then each paragraph led in bold. */
 function Read({ terms }: { terms: Terms }) {
   return (
     <>
@@ -61,7 +57,6 @@ function Read({ terms }: { terms: Terms }) {
   );
 }
 
-/** One piece of a paragraph: its words, or an address to write to. */
 function Piece({ piece }: { piece: TermsPiece }) {
   if (piece.kind === "words") return piece.text;
   return (
@@ -71,7 +66,6 @@ function Piece({ piece }: { piece: TermsPiece }) {
   );
 }
 
-/** The shape of the paragraphs on their way: lines, drawn quietly, that no screen reader reads. */
 function Shape() {
   return (
     <div className={styles.shape} aria-hidden="true">

@@ -2,7 +2,6 @@ import { describe, expect, test } from "vitest";
 import { aSpan, halfWideGlyphs } from "../fixtures";
 import { letterAt, pressOf, selectionAcross, selectionAt, wordAround } from "./caret";
 
-// Every letter half the size wide: 5 pt each at 10 pt.
 const glyphs = halfWideGlyphs("abcdefghijklmnopqrstuvwxyz ");
 const TEN_PT = { size: 10, letter_spacing_em: 0 };
 
@@ -10,7 +9,6 @@ describe("the caret a press puts down", () => {
   test("a press lands as far into the span, in points, as it is into its mark", () => {
     const span = aSpan({ id: "s", bbox: { x0: 100, y0: 0, x1: 200, y1: 12 } });
     expect(pressOf(span, { pressX: 50, shownPx: 200, selects: "caret" })).toEqual({ atPt: 25, selects: "caret" });
-    // Not laid out yet: nothing to say where it landed, so the whole span is selected.
     expect(pressOf(span, { pressX: 50, shownPx: 0, selects: "caret" })).toBeNull();
   });
 
@@ -31,7 +29,6 @@ describe("the caret a press puts down", () => {
 
   test("a letter outside the basic plane counts as the field counts it, two units", () => {
     const script = { 𝒳: 500, " ": 500 };
-    // The second 𝒳 starts 5 pt in, and 2 units into the field's text.
     expect(letterAt("𝒳𝒳 ab", 7, { glyphs: script, span: TEN_PT })).toBe(2);
   });
 

@@ -1,5 +1,3 @@
-// The bar over the document: its name and pages, what's changed and how much of it won't match, and
-// the tools and the one action, Export.
 import { useCallback } from "react";
 import type { Sentences } from "../../api/types";
 import { AfterDelay } from "../../ui/AfterDelay";
@@ -21,7 +19,6 @@ import { COMMAND } from "./keys";
 import { MismatchCount } from "./Mismatches";
 import { Shortcuts } from "./Shortcuts";
 
-/** The bar, held at the top. */
 export function Bar() {
   const editor = useEditor();
   const changed = useEditorState(changedCount);
@@ -32,7 +29,6 @@ export function Bar() {
   const atRest = useEditorState((state) => state.layout.mismatchesAtRest);
   const sentences = useEditorState((state) => state.doc.sentences);
   const exporting = useEditorState((state) => state.exporting);
-  // The document opened again, or couldn't: shown in the bar's status, beside the counts.
   const reopen = useEditorState((state) => state.notices.reopen);
   return (
     <header className={styles.bar}>
@@ -41,7 +37,6 @@ export function Bar() {
         <h1 className={styles.name}>{editor.file.name}</h1>
         <Where />
       </span>
-      {/* What's changed and the buttons, together: beside the file while they fit, under it when they don't. */}
       <span className={styles.end}>
         {reopen !== null && (
           <span className={styles.reopen}>{reopen.tone === "warn" ? <Warn>{reopen.text}</Warn> : reopen.text}</span>
@@ -52,7 +47,6 @@ export function Bar() {
           ) : (
             <Changed changed={changed} warned={warned} sentences={sentences} />
           )}
-          {/* Left long past its room: each change says so on its mark, and the bar counts them. */}
           {runLong !== "" && (
             <span className={styles.runLong}>
               <Warn>{runLong}</Warn>
@@ -85,13 +79,12 @@ export function Bar() {
   );
 }
 
-/** Which page is in view: drawn alone, since it changes with each page the document scrolls past. */
+/** Drawn alone, since it changes with each page the document scrolls past. */
 function Where() {
   const where = useEditorState(whereSentence);
   return <span className={styles.meta}>{where}</span>;
 }
 
-/** The changes, and how many of them won't match: that part warned, and pressed for where. */
 function Changed({
   changed,
   warned,
@@ -114,7 +107,6 @@ function Changed({
   );
 }
 
-/** Before any change, where an edit won't match, warned and pressed for where (Rule 1): nothing when it all will. */
 function AtRest({ mismatches, sentences }: { mismatches: Mismatches; sentences: Sentences }) {
   const sentence = atRestSentence(mismatches, sentences);
   if (sentence === "") return null;
@@ -125,7 +117,6 @@ function AtRest({ mismatches, sentences }: { mismatches: Mismatches; sentences: 
   );
 }
 
-/** Opens find and replace; focus comes back here when the find bar closes from inside. */
 function FindButton() {
   const editor = useEditor();
   const closed = useEditorState((state) => state.find.closed);

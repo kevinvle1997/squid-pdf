@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { NOTE_CLOSE_DELAY_MS } from "../constants";
 import { createNotes, isShowing } from "./notes";
 
-// Which mark a note is over, and whether that mark is still drawn.
 const markA = { isConnected: true } as Element;
 const markB = { isConnected: true } as Element;
 
@@ -120,7 +119,6 @@ describe("a page's note", () => {
     vi.advanceTimersByTime(NOTE_CLOSE_DELAY_MS);
     expect(notes.store.get().shown?.via).toBe("focus");
 
-    // Closed by Escape, or focus leaving: a hover's note after it closes as the pointer leaves.
     notes.hide("a");
     notes.show("a", markA, "hover");
     notes.hideSoon("a");

@@ -9,7 +9,6 @@ const REACT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const USE_PRESS = join(REACT, "node_modules/react-aria/dist/private/interactions/usePress.mjs");
 const CADDYFILE = join(REACT, "../Caddyfile");
 
-/** The text of the style tag usePress adds, as the browser hashes it. */
 function pressableStyle(): string {
   const source = readFileSync(USE_PRESS, "utf8");
   const template = /style\.textContent = `([^`]*)`\.trim\(\)/.exec(source)?.[1];

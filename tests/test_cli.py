@@ -1,8 +1,4 @@
-"""The command line, driven the way a person types it.
-
-Only the wiring is checked; the pieces have tests of their own. Colour needs
-a real terminal, so its tests run the command in a process of its own.
-"""
+"""Colour needs a real terminal, so its tests run the command in a process of its own."""
 
 from __future__ import annotations
 
@@ -33,18 +29,15 @@ from tests.helpers import (
     assert_true,
 )
 
-# What the server signs and keys bounces with, as the environment would set it.
 _SECRET = b"a test's secret, long enough to sign with"
 
 
 def _span_id(pdf: str, needle: str) -> str:
-    """The id of the first span whose text contains `needle`, as `squidpdf spans` lists it."""
     with open_pdf(pdf) as engine:
         return next(s.id for s in engine.index() if needle in s.text)
 
 
 def _read_until_closed(fd: int) -> str:
-    """Everything written to the terminal whose other end is `fd`, once the writer is gone."""
     chunks = []
     while True:
         try:
@@ -61,11 +54,6 @@ def _read_until_closed(fd: int) -> str:
 def _run_in_a_terminal(
     args: list[str], *, terminal: Literal["stdout", "stderr"]
 ) -> dict[str, str]:
-    """What `squidpdf <args>` writes to each stream when only `terminal` is a terminal.
-
-    NO_COLOR is unset, as in most shells. The terminal is read only once the
-    command ends, so its output must be short.
-    """
     reader, writer = pty.openpty()
     streams = {"stdout": subprocess.PIPE, "stderr": subprocess.PIPE, terminal: writer}
     env = {name: value for name, value in os.environ.items() if name != "NO_COLOR"}
@@ -84,7 +72,6 @@ def _run_in_a_terminal(
 
 
 def _text(path) -> str:
-    """All the text MuPDF reads back from a saved PDF."""
     with pymupdf.open(path) as doc:
         return "".join(page.get_text() for page in doc)
 
@@ -100,7 +87,6 @@ def test_spans_lists_every_span_and_a_summary(pdf, capsys):
 
 
 def test_every_fidelity_has_its_mark_in_the_spans_listing():
-    """One without would fail `spans` on the first span judged so."""
     assert_equal(sorted(_MARKS), sorted(get_args(Fidelity)), "the fidelities `spans` marks")
 
 
@@ -128,7 +114,6 @@ def test_a_pdf_that_wont_open_says_why_without_a_traceback(tmp_path, capsys):
 
 @pytest.mark.parametrize(("terminal", "colored"), [("stdout", False), ("stderr", True)])
 def test_an_error_is_colored_only_when_stderr_is_a_terminal(tmp_path, terminal, colored):
-    """`2> errors.log` keeps no colour codes, even when stdout is a terminal."""
     broken = tmp_path / "broken.pdf"
     broken.write_text("not a pdf")
 
@@ -140,8 +125,7 @@ def test_an_error_is_colored_only_when_stderr_is_a_terminal(tmp_path, terminal, 
 
 @pytest.mark.parametrize("command", ["spans", "report"])
 def test_a_rate_below_the_warning_line_is_red_wherever_it_is_shown(tmp_path, command):
-    """`spans` and `report`'s total colour a rate as `report`'s rows do."""
-    named = named_only(str(tmp_path / "named.pdf"), "Calibri")  # drawn in a substitute: 0%
+    named = named_only(str(tmp_path / "named.pdf"), "Calibri")
 
     said = _run_in_a_terminal([command, named], terminal="stdout")
 
@@ -214,7 +198,6 @@ def test_edit_replaces_the_text_and_saves(pdf, tmp_path, capsys):
 def test_a_signed_file_says_what_the_command_does_to_its_signature(
     tmp_path, monkeypatch, capsys, command, said
 ):
-    """As the browser does: a change breaks the signature, and a redaction takes it away."""
     monkeypatch.chdir(tmp_path)
     (tmp_path / "signed.pdf").write_bytes(with_hidden_copies(["signature"]))
     span_id = _span_id("signed.pdf", OTHER_LINE)
@@ -241,7 +224,6 @@ def test_edit_refuses_what_will_not_fit_and_writes_nothing(pdf, tmp_path, capsys
 
 
 def test_edit_takes_a_way_out_check_offered_without_force(pdf, tmp_path, capsys):
-    """`check` offers shrink for a line a little too long; `edit` can take it."""
     span_id = _span_id(pdf, "Made on")
     out_pdf = tmp_path / "shrunk.pdf"
     longer = "Made on 14 March 2026 between Wescott and Rowe!!"
@@ -277,8 +259,6 @@ def test_redact_removes_the_text_and_says_it_verified(pdf, tmp_path, capsys):
     assert_not_in("Invoices are due", _text(out_pdf), "the saved PDF after a redact")
 
 
-# Behind an owner password alone, AES-128, its XMP kept plain, as `fixtures/plain_xmp.py`
-# writes it; its page's one line is "Quarterly report".
 _PLAIN_XMP = str(Path(__file__).parents[1] / "fixtures" / "plain_xmp_aes128.pdf")
 
 
@@ -290,7 +270,6 @@ _PLAIN_XMP = str(Path(__file__).parents[1] / "fixtures" / "plain_xmp_aes128.pdf"
 def test_a_protected_files_plain_xmp_is_left_out_of_the_saved_file_and_said(
     tmp_path, capsys, command
 ):
-    """As the upload does: MuPDF writes that XMP as encrypted, and anyone can undo it."""
     out_pdf = tmp_path / "out.pdf"
     name, *rest = command
 
@@ -309,9 +288,7 @@ def test_a_protected_files_plain_xmp_is_left_out_of_the_saved_file_and_said(
     assert_in(words.sentence("plain_xmp_dropped"), capsys.readouterr().out, "what it says")
 
 
-# The line `_kept_where_no_redaction_reaches` draws, and keeps a hidden copy of.
 _KEPT_LINE = "Secret plan"
-# A tiling pattern: painted in its own colours, a 20 point tile every 20 points.
 _TILING = {
     "PatternType": "1",
     "PaintType": "1",
@@ -324,17 +301,12 @@ _TILING = {
 
 
 def _kept_where_no_redaction_reaches(path: Path) -> str:
-    """A page drawing `_KEPT_LINE`, a copy of it kept in a dictionary MuPDF can't read.
-
-    The copy is a screen reader's, in a tiling pattern the page paints a square with: the
-    redaction can't rewrite it, so the re-read finds the words still in the file.
-    """
     doc = pymupdf.open()
     page = doc.new_page()
     page.insert_text((72, 600), _KEPT_LINE, fontname="helv", fontsize=12)
     tile = f"/Span <</ActualText ({_KEPT_LINE}) /Bad>> BDC 10 10 20 20 re f EMC"
     pattern = new_stream(doc, tile, **_TILING)
-    _kind, resources = doc.xref_get_key(page.xref, "Resources")  # "3 0 R": an object
+    _kind, resources = doc.xref_get_key(page.xref, "Resources")
     doc.xref_set_key(int(resources.split()[0]), "Pattern/P1", f"{pattern} 0 R")
     [contents] = page.get_contents()
     painted = doc.xref_stream(contents) + b"\n/Pattern cs /P1 scn 10 10 20 20 re f"
@@ -344,7 +316,6 @@ def _kept_where_no_redaction_reaches(path: Path) -> str:
 
 
 def test_redact_the_re_read_cannot_confirm_keeps_no_file_and_says_why(tmp_path, capsys):
-    """Text still in the saved file means no file is kept."""
     pdf = _kept_where_no_redaction_reaches(tmp_path / "kept.pdf")
     out_pdf = tmp_path / "redacted.pdf"
 
@@ -357,14 +328,12 @@ def test_redact_the_re_read_cannot_confirm_keeps_no_file_and_says_why(tmp_path, 
 
 
 def _copy_onto_a_full_disk(*_paths: object) -> None:
-    """Fails as a copy onto a full disk does."""
     raise OSError(errno.ENOSPC, os.strerror(errno.ENOSPC))
 
 
 def test_a_save_that_cannot_be_written_names_its_path_and_leaves_the_file_as_it_was(
     pdf, tmp_path, monkeypatch, capsys
 ):
-    """A full disk is the user's to clear, so they're told where, not that it was ours."""
     out_pdf = tmp_path / "edited.pdf"
     out_pdf.write_bytes(b"what was there")
     monkeypatch.setattr(shutil, "copyfile", _copy_onto_a_full_disk)
@@ -391,7 +360,6 @@ def test_an_unknown_span_id_fails_and_points_at_spans(pdf, capsys):
 
 
 def test_report_rates_each_file_and_carries_on_past_a_bad_one(pdf, tmp_path, capsys):
-    """One unreadable file must not stop the rest of the corpus being scored."""
     broken = tmp_path / "broken.pdf"
     broken.write_text("not a pdf")
 
@@ -405,7 +373,6 @@ def test_report_rates_each_file_and_carries_on_past_a_bad_one(pdf, tmp_path, cap
 
 
 def test_report_fails_when_it_could_read_no_file(tmp_path, capsys):
-    """A script running it sees that nothing was measured."""
     broken = tmp_path / "broken.pdf"
     broken.write_text("not a pdf")
 
@@ -417,10 +384,6 @@ def test_report_fails_when_it_could_read_no_file(tmp_path, capsys):
 
 @pytest.mark.parametrize(("command", "exit_code"), [("spans", 0), ("report", 1)])
 def test_a_document_with_no_text_has_no_green_rate(tmp_path, capsys, command, exit_code):
-    """Nothing to edit isn't nothing kept: 0% would mark it red, as if every edit failed.
-
-    `report` fails all the same, having measured nothing, so a script running it sees it.
-    """
     blank = tmp_path / "blank.pdf"
     with pymupdf.open() as doc:
         doc.new_page()
@@ -447,7 +410,6 @@ def test_fixture_writes_a_pdf_the_other_commands_can_read(tmp_path, capsys):
 
 
 def test_fixture_with_pages_writes_a_long_contract_of_full_pages(tmp_path):
-    """The browser's performance probe opens it: every page as full as a contract's."""
     out_pdf = tmp_path / "dense.pdf"
 
     code = main(["fixture", str(out_pdf), "--pages", "3"])
@@ -461,7 +423,6 @@ def test_fixture_with_pages_writes_a_long_contract_of_full_pages(tmp_path):
 
 
 def test_fixture_with_pages_never_replaces_the_committed_sample(tmp_path, monkeypatch, capsys):
-    """Other checks read the sample."""
     monkeypatch.chdir(tmp_path)
     (tmp_path / "fixtures").mkdir()
 
@@ -484,7 +445,6 @@ def test_a_pdf_that_is_not_there_is_a_usage_error_not_a_crash(tmp_path, capsys):
 
 
 def test_saving_over_the_pdf_being_read_is_refused(pdf, tmp_path, capsys):
-    """Were anything to go wrong, the original would be lost with it."""
     copy = tmp_path / "copy.pdf"
     shutil.copy(pdf, copy)
     before = copy.read_bytes()
@@ -512,7 +472,6 @@ _TERMS = Path(__file__).parents[1] / "fixtures" / "terms.md"
 
 @pytest.mark.parametrize("named", ["as its argument", "by SQUIDPDF_TERMS"])
 def test_terms_checks_a_terms_file_as_the_server_reads_it(monkeypatch, capsys, named):
-    """Run before a restart; it reads what SQUIDPDF_TERMS names, as the server does."""
     if named == "as its argument":
         code = main(["terms", str(_TERMS)])
     else:
@@ -552,7 +511,6 @@ def test_terms_with_no_file_named_says_so(monkeypatch, capsys):
 
 @pytest.fixture
 def database(tmp_path, monkeypatch) -> Path:
-    """A users' database of this test's own for the commands, and the server's secret."""
     database = tmp_path / "users.sqlite3"
     monkeypatch.setenv("SQUIDPDF_DATABASE", str(database))
     monkeypatch.setenv("SQUIDPDF_SECRET", _SECRET.decode())
@@ -574,7 +532,6 @@ def test_invite_lets_someone_in_and_unlimited_lifts_their_limit_until_invited_ag
 def test_remove_keeps_an_account_whose_month_is_paid_until_its_subscription_ends(
     database, capsys
 ):
-    """Removed while paying, they'd be charged for an account that's gone."""
     users = open_users(database)
     account = users.invite("payer@example.com", now=0, is_unlimited=False, secret=_SECRET).id
     now = int(time.time())
@@ -626,7 +583,6 @@ def test_billing_says_whether_an_account_is_paid_and_lists_what_stripe_said(data
 
 
 def test_billing_set_up_in_stripe_but_not_here_is_left_as_it_is(database, capsys):
-    """Without Stripe's keys, the command line can't ask Stripe, so it changes nothing."""
     users = open_users(database)
     account = users.invite("payer@example.com", now=0, is_unlimited=False, secret=_SECRET).id
     users.keep_customer(account, "cus_test")
@@ -638,7 +594,6 @@ def test_billing_set_up_in_stripe_but_not_here_is_left_as_it_is(database, capsys
 
 
 def test_invite_clears_a_bounce_kept_for_the_address_before_it_had_an_account(database):
-    """Invited, the address is trusted mended: its account, taken off later, blocks nothing."""
     users = open_users(database)
     users.note_bounce("friend@example.com", secret=_SECRET, now=0)
     assert_equal(users.has_bounced("friend@example.com", secret=_SECRET), True, "bounced")
@@ -651,7 +606,6 @@ def test_invite_clears_a_bounce_kept_for_the_address_before_it_had_an_account(da
 def test_invite_without_the_servers_secret_invites_no_one_and_says_so(
     tmp_path, monkeypatch, capsys
 ):
-    """Run where the server isn't, it would leave a bounce kept for the address standing."""
     database = tmp_path / "users.sqlite3"
     monkeypatch.setenv("SQUIDPDF_DATABASE", str(database))
     monkeypatch.delenv("SQUIDPDF_SECRET", raising=False)
@@ -672,6 +626,5 @@ def test_remove_takes_an_account_off_and_says_when_there_was_none(database, caps
     assert_equal(main(["remove", " Friend@Example.com"]), 0, "exit code")
     assert_in("friend@example.com is removed", capsys.readouterr().out, "said")
     assert_equal(open_users(database).find("friend@example.com"), None, "no account kept")
-    # A typo, or someone removed already: said, so it isn't taken for done.
     assert_equal(main(["remove", "friend@example.com"]), 1, "exit code, removed again")
     assert_in("has no account here", capsys.readouterr().err, "said")

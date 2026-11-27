@@ -1,42 +1,32 @@
-/* The whole window takes a drop: its focus shows on the sheet, below. */
 .zone { outline: none; }
-/* While a file hovers anywhere, the sheet takes it: the pencil's wash, its line solid, as a dash is a warning's. */
 .zone[data-drop-target] .sheet {
   background: var(--mark-change-soft);
   outline: 2px solid var(--mark-change); outline-offset: calc(-1 * var(--s3));
 }
-/* The zone's focus is a hidden button's: the sheet shows it inside its edge, clear of the crop marks. */
+/* The zone's focus is a hidden button's, so the sheet shows it. */
 .zone[data-focus-visible] .sheet { outline: 2px solid var(--mark-change); outline-offset: calc(-1 * var(--s2)); }
-/* Under the heading: what happens once the file is open. */
 .then { margin: var(--s3) 0 0; font-size: var(--fs-lg); color: var(--ink-lo); text-wrap: balance; }
-/* The landing's one call to act. */
 .choose { composes: act from "../../ui/Sheet.module.css"; }
 /* Its line is kept when empty, so progress showing up moves nothing. */
 .status {
   margin: var(--s3) 0 0; min-height: 1.5em;
   font-size: var(--fs-sm); color: var(--ink-lo); font-variant-numeric: tabular-nums; text-wrap: balance;
 }
-/* Paying for no limit, offered under the month's limit: bordered, as the sheet's one act is still choosing a PDF. */
 .pay { margin-block-start: var(--s3); }
-/* A document this browser persisted, offered back: under the call to act, not in its place. */
 .persisted { display: flex; flex-direction: column; align-items: center; gap: var(--s3); margin-block-start: var(--s3); }
 .persistedSentence { margin: 0; font-size: var(--fs-sm); color: var(--ink); text-wrap: balance; }
 .persistedActions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--s2); }
-/* Who this browser is signed in as, last on the sheet and quiet, with the way out beside it. */
 .signedIn {
   display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: var(--s2);
   margin: var(--s4) 0 0; font-size: var(--fs-sm); color: var(--ink-lo);
 }
-/* The heading's verb: a file is seldom dropped on a touch screen, so there it asks for one opened. */
+/* A file is seldom dropped on a touch screen, so there it asks for one opened. */
 .byTouch { display: none; }
 @media (pointer: coarse) {
   .byPointer { display: none; }
   .byTouch { display: inline; }
 }
-/* Typed into, as the editor shows a word being typed: the caret after it, which blinks and then rests. */
 .typed { composes: caret from "../../ui/Caret.module.css"; }
-/* Under the sheet, on the mat: what becomes of the file, then two facts beside each other, one above the other
-   on a narrow screen. */
 .facts {
   composes: ground from "../../ui/Ground.module.css";
   width: min(100%, var(--landing-width));
@@ -44,7 +34,6 @@
   text-align: start;
 }
 .promise { display: flex; flex-direction: column; gap: var(--s2); }
-/* The promise, in the heading's face, the highlighter over what it promises. */
 .promiseTitle {
   margin: 0;
   font-family: var(--display); font-size: var(--fs-lead); font-weight: 600; letter-spacing: -0.02em; line-height: 1.3;
@@ -55,11 +44,9 @@
   box-decoration-break: clone; -webkit-box-decoration-break: clone;
 }
 .promiseSentence { margin: 0; font-size: var(--fs-base); line-height: 1.45; color: var(--ink-lo); }
-/* The code that keeps the promise, and the service's terms beside it, which break as one. */
 .source { composes: link from "../../ui/Link.module.css"; }
 .terms { composes: source; position: relative; white-space: nowrap; }
-/* Its target, a touch's size, grows down from its words over the gap below: the line above keeps
-   its own taps, and nothing moves. */
+/* Its target grows down over the gap below, so the line above keeps its own taps. */
 .terms::before {
   content: ""; position: absolute; top: 0; left: 50%;
   width: max(100%, var(--hit)); height: max(100%, var(--hit));

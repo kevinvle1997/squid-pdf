@@ -1,7 +1,6 @@
 import { classes } from "./classes";
 import styles from "./Wordmark.module.css";
 
-/** The mascot's outline, drawn for 18 px, and the name; `compact`, a narrow screen shows the squid alone, the name still read. */
 export function Wordmark({ compact = false }: { compact?: boolean }) {
   return (
     <span className={classes(styles.wordmark, compact && styles.compact)}>

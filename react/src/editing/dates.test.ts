@@ -2,22 +2,18 @@ import { beforeAll, describe, expect, test } from "vitest";
 import { learnDateLanguages } from "./dateNames";
 import { type DateReading, type DateValue, dateReadingOf, datesIn, withDate } from "./dates";
 
-// Every language a date is read in, learnt in the background as an editor would: the dates here need them.
 beforeAll(() => learnDateLanguages());
 
-/** How the dates of a document of `texts` read, for a reader of `readerLanguages`. */
 function readingOf(texts: string[], readerLanguages: string[] = []): DateReading {
   return dateReadingOf(texts, { readerLanguages });
 }
 
-/** The one date `text` holds, read as `reading` settles it; none where it doesn't. */
 function dateIn(text: string, reading: DateReading): DateValue | undefined {
   const [date, ...more] = datesIn(text, reading);
   expect(more).toEqual([]);
   return date;
 }
 
-/** `text`, its one date changed to the 2nd of `month` of `year`, or undefined where no date is read. */
 function asSecondOf(
   text: string,
   { month, year = 2026, reading }: { month: number; year?: number; reading: DateReading },
@@ -26,7 +22,6 @@ function asSecondOf(
   return date === undefined ? undefined : withDate(text, date, { year, month, day: 2 });
 }
 
-/** `text`, its one date changed to `day` of March 2026, or undefined where no date is read. */
 function asDayOf(text: string, { day, reading }: { day: number; reading: DateReading }) {
   const date = dateIn(text, reading);
   return date === undefined ? undefined : withDate(text, date, { year: 2026, month: 3, day });
@@ -74,13 +69,11 @@ describe("a month name, by the document's own months", () => {
     expect(asSecondOf("14 novembre 2026", { month: 5, reading: italian })).toBeUndefined();
     const french = readingOf(["2 janvier 2026", "3 octobre 2026", "14 mar 2026"], ["es-ES"]);
     expect(asSecondOf("14 mar 2026", { month: 4, reading: french })).toBeUndefined();
-    // Cebuano names "Enero" and "Sep", but not "marzo".
     const spanish = readingOf(["2 de enero de 2026", "3 de marzo de 2026", "14 Sep 2026"], ["es-ES"]);
     expect(asSecondOf("14 Sep 2026", { month: 10, reading: spanish })).toBeUndefined();
   });
 
   test("names it where the language would end it with a full stop, so the reader's languages decide among them", () => {
-    // Dutch writes "feb", Swedish "feb.": both name every month here, and write March apart.
     const swedish = readingOf(["2 januari 2026", "14 feb 2026"], ["sv-SE"]);
     expect(asSecondOf("14 feb 2026", { month: 3, reading: swedish })).toBe("2 mars 2026");
     const dutchOrSwedish = ["2 januari 2026", "3 oktober 2026", "14 Dec 2026"];
@@ -89,7 +82,6 @@ describe("a month name, by the document's own months", () => {
   });
 
   test("named in no one language CLDR covers fully, is no date to edit, though a constructed one names it all", () => {
-    // Interlingue alone names both "Januar" and "may", and it's no document's language.
     const reading = readingOf(["2 Januar 2026", "14 may 2026"], ["es-ES"]);
     expect(asSecondOf("14 may 2026", { month: 3, reading })).toBeUndefined();
     expect(dateIn("14 marto 2026", readingOf([], ["eo"]))).toBeUndefined();
@@ -118,7 +110,6 @@ describe("a month name, by the document's own months", () => {
       month: 1,
       comesTo: "2 de janeiro de 2026",
     },
-    // Another date in Italian, as "marzo" alone is Spanish too.
     {
       texts: ["14 marzo 2026", "2 gennaio 2026"],
       stray: "Pagina 1 di 12",
@@ -184,7 +175,6 @@ describe("a date's own marks", () => {
     const short = dateIn("SAT 14 MAR 2026", english);
     if (short === undefined) throw new Error("no date");
     expect(withDate("SAT 14 MAR 2026", short, { year: 2026, month: 3, day: 16 })).toBe("MON 16 MAR 2026");
-    // A word before it that isn't its weekday stays outside it.
     expect(asSecondOf("Due 14 March 2026", { month: 3, reading: english })).toBe("Due 2 March 2026");
   });
 
@@ -194,7 +184,6 @@ describe("a date's own marks", () => {
   });
 
   test("its weekday's full stop, where its language writes one, is the language's, written as it writes the next", () => {
-    // Romanian writes "sâm." but "joi", Galician "sáb." but "luns", German "Sa." and "Mo." alike.
     const cases = [
       ["sâm. 14 mar. 2026", "ro-RO", "joi 2 apr. 2026"],
       ["sâm., 14 mar. 2026", "ro-RO", "joi, 2 apr. 2026"],
@@ -221,7 +210,6 @@ describe("a date's own marks", () => {
     expect(asSecondOf("Due 14 March 2026", { month: 4, reading: readingOf(document, ["en-GB"]) })).toBe(
       "Due 2 April 2026",
     );
-    // "Sen" is Monday in Indonesian and September in Uzbek: the document's months are "Mac" alone, Malay's March.
     expect(readingOf(["Rev 2 - Sen 16 Mac 2026"], ["ms-MY"]).monthWords).toEqual(["mac"]);
   });
 
@@ -275,7 +263,6 @@ describe("a range of days", () => {
     for (const text of ["14.-15. März 2026", "14. & 15. März 2026"]) {
       expect(dateIn(text, readingOf([], ["de-DE"]))).toBeUndefined();
     }
-    // Year first, the date's own pattern refuses a day run on into another.
     expect(dateIn("2026. március 14-15.", readingOf([]))).toBeUndefined();
   });
 
@@ -299,7 +286,6 @@ describe("a range of days", () => {
     ]) {
       expect(dateIn(text, readingOf([text], ["en-US"]))).toBeUndefined();
     }
-    // "1 - March 14", its day first, still reads as 1 March 2014, as before: a misreading kept, no plain date lost.
     const text = "March 1 - March 14, 2026";
     const read = datesIn(text, readingOf([text], ["en-US"])).map(({ start, end }) => text.slice(start, end));
     expect(read).toEqual(["1 - March 14"]);
@@ -309,7 +295,6 @@ describe("a range of days", () => {
     const cases = [
       ["14 Mar 26 1430hrs", "en-GB", ["2 Apr 26 1430hrs"]],
       ["Shipped 14 Mar 26 1500.00", "en-GB", ["Shipped 2 Apr 26 1500.00"]],
-      // Both readings, as before: "Mar 26, 2000" is a date of its own too.
       [
         "Delivered 14 Mar 26, 2000 units",
         "en-GB",
@@ -317,7 +302,6 @@ describe("a range of days", () => {
       ],
       ["1 - March 14, 2026", "en-US", ["2 - April 26, 2026", "1 - April 2, 2026"]],
       ["Item 1 March 14, 2026", "en-US", ["Item 2 April 26, 2026", "Item 1 April 2, 2026"]],
-      // Its month first, the number no year after a comma, or the day joined to its year by a bare space.
       ["Mar 14 26 1430", "en-US", ["Apr 2 26 1430"]],
       ["Mar 14 26 1430", "en-GB", ["Apr 2 26 1430"]],
       ["Signed Mar 14 26 1430", "en-US", ["Signed Apr 2 26 1430"]],
@@ -326,10 +310,8 @@ describe("a range of days", () => {
       ["Mar 14, 26 1430", "en-US", ["Apr 2, 26 1430"]],
       ["Mar 14 26 1430hrs", "en-US", ["Apr 2 26 1430hrs"]],
       ["Mar 14 26 1500.00", "en-US", ["Apr 2 26 1500.00"]],
-      // After a comma, a number that ends no date as a year.
       ["Mar 14, 26, 1430hrs", "en-US", ["Apr 2, 26, 1430hrs"]],
       ["Mar 14, 26, 1500.00", "en-US", ["Apr 2, 26, 1500.00"]],
-      // A hyphen before it, but no whole date after: the misreading main offered stays.
       ["14 March - 15 March 2026a", "en-GB", ["2 April - 26 March 2026a"]],
       ["14 March - 15 March 2026.5", "en-GB", ["2 April - 26 March 2026.5"]],
       ["14 March - 15 March 26x", "en-GB", ["2 April - 26 March 26x"]],
@@ -356,7 +338,6 @@ describe("a range of days", () => {
   });
 
   test("with no year on its first date, is a range only where that date is the later one's month or earlier, and starts the text or follows its weekday", () => {
-    // "Set", "Ion" and "Out" are months in other languages; May and June come after March.
     for (const label of [
       "Set 2 – ",
       "Ion 2 – ",
@@ -373,13 +354,11 @@ describe("a range of days", () => {
     expect(asSecondOf(spanish, { month: 4, reading: readingOf([spanish], ["es-ES"]) })).toBe(
       "Set 2 - 2 de abril de 2026",
     );
-    // "May 2 - 14" is no date, so the document names no May for "März" to be read beside.
     const german = "May 2 - 14. März 2026";
     expect(asSecondOf(german, { month: 4, reading: readingOf([german], ["de-DE"]) })).toBe("May 2 - 2. April 2026");
   });
 
   test("is no date's end where a month's name with no year follows a two digit year", () => {
-    // "Sat" is a month in Hausa, and after this date a weekday in English.
     const text = "Date: Mar-14-26 Sat";
     expect(dateIn(text, readingOf([text], ["en-US"]))?.date).toEqual({ year: 2026, month: 3, day: 14 });
   });
@@ -406,7 +385,6 @@ describe("a range of days", () => {
     }
   });
 
-  // Only an unmistakable range loses the editor: a plain date losing it is worse than a range missed.
   test("spaced after a word, or after a number no smaller a day, is a date that keeps its editor", () => {
     const english = readingOf([], ["en-US"]);
     for (const label of [
@@ -434,7 +412,6 @@ describe("a range of days", () => {
       "age 21 - ",
       "20-",
       "step 2 done – ",
-      // A range after a word, spaced, is read as its last day, as before: half rewritten, which is accepted.
       "held 13 – ",
     ]) {
       expect(asSecondOf(`${label}14 March 2026`, { month: 4, reading: english })).toBe(`${label}2 April 2026`);
@@ -460,7 +437,6 @@ describe("a range of days", () => {
     expect(asSecondOf("Ref 123 - 14 March 2026", { month: 4, reading: english })).toBe("Ref 123 - 2 April 2026");
     expect(asSecondOf("14-Mar-2026", { month: 4, reading: english })).toBe("2-Apr-2026");
     expect(asSecondOf("Mar-14-26", { month: 4, reading: english })).toBe("Apr-2-26");
-    // A two digit year with no dash before it, though a month's name follows.
     expect(asSecondOf("Signed 14 Mar 26 may be late", { month: 4, reading: english })).toBe(
       "Signed 2 Apr 26 may be late",
     );
@@ -468,11 +444,8 @@ describe("a range of days", () => {
     expect(asSecondOf("Due 14 Mar 26 March invoice", { month: 4, reading: english })).toBe(
       "Due 2 Apr 26 March invoice",
     );
-    // A weekday before its last day alone.
     expect(asSecondOf("Fri 13 – 14 March 2026", { month: 4, reading: english })).toBe("Fri 13 – 2 April 2026");
-    // A dash before a two digit year, but no month's name after it.
     expect(asSecondOf("14 Mar-26 delivery", { month: 4, reading: english })).toBe("2 Apr-26 delivery");
-    // A word before the number that isn't its own weekday: "Pt" is Friday in Polish, and the 3rd a Tuesday.
     expect(asSecondOf("Pt. 3 – Sat 14 March 2026", { month: 4, reading: english })).toBe("Pt. 3 – Thu 2 April 2026");
   });
 });
@@ -505,7 +478,6 @@ describe("a CJK date", () => {
   });
 
   test("a bracket after it that holds more than its weekday leaves it with no editor", () => {
-    // Rewritten or left, what else the bracket says may no longer hold: 祝 marks a holiday.
     const reading = readingOf([], ["en-US"]);
     for (const text of ["2026年3月14日(土・祝)", "2026年3月14日(土曜日まで)", "2026年3月14日 (Sat, holiday)"]) {
       expect(dateIn(text, reading)).toBeUndefined();
@@ -513,8 +485,6 @@ describe("a CJK date", () => {
   });
 
   test("a weekday after it that no language settles on leaves it with no editor, in brackets or as a word alone", () => {
-    // "Sat" is English's and Igbo's, which write Monday apart; the 19th is a Thursday, "to" in Finnish and in
-    // Nynorsk, which write the next day apart.
     for (const reader of ["ja-JP", "fr-FR"]) {
       expect(dateIn("2026年3月14日 Sat", readingOf([], [reader]))).toBeUndefined();
     }
@@ -524,7 +494,6 @@ describe("a CJK date", () => {
   });
 
   test("a word before a year alone after it, not a whole date, is read as its weekday", () => {
-    // "to" names the 19th's day, Thursday, in Finnish and in Nynorsk, which write the next day apart.
     expect(dateIn("2026年3月19日 to 2026年度", readingOf([], ["en-US"]))).toBeUndefined();
   });
 
@@ -586,15 +555,12 @@ describe("a CJK date", () => {
   });
 
   test("a word in other letters after it is no weekday, though it starts with the date's own", () => {
-    // The 16th is a Monday, the 18th a Wednesday.
     const reading = readingOf([]);
     expect(asDayOf("2026年3月16日 Monthly report", { day: 17, reading })).toBe("2026年3月17日 Monthly report");
     expect(asDayOf("2026年3月18日 Wedding", { day: 19, reading })).toBe("2026年3月19日 Wedding");
   });
 
   test("a word in other letters after it doesn't take its editor, though it is or starts with a weekday elsewhere", () => {
-    // The 14th is a Saturday ("Sa" in German), the 16th a Monday ("ma" in Dutch), the 19th a Thursday ("to" in
-    // Finnish and Nynorsk, which write the next day apart).
     const reading = readingOf([]);
     expect(asDayOf("2026年3月14日 Sales report", { day: 16, reading })).toBe("2026年3月16日 Sales report");
     expect(asDayOf("2026年3月16日 manager", { day: 17, reading })).toBe("2026年3月17日 manager");
@@ -606,7 +572,6 @@ describe("a CJK date", () => {
   });
 
   test("a letter after it that only starts a word is no weekday, though it names the date's own", () => {
-    // The 15th is a Sunday, 日 in Japanese, and 日本 is Japan.
     expect(asDayOf("2026年3月15日日本にて", { day: 16, reading: readingOf([]) })).toBe("2026年3月16日日本にて");
     expect(asDayOf("2026년 3월 15일 일정", { day: 16, reading: readingOf([]) })).toBe("2026년 3월 16일 일정");
   });

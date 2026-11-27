@@ -1,5 +1,3 @@
-"""Page sizes and images: what the browser lays out and shows."""
-
 from __future__ import annotations
 
 import pymupdf
@@ -9,14 +7,13 @@ from squidpdf.core import Page, open_pdf
 from tests.conftest import TAGGED_LINES
 from tests.helpers import assert_at_most, assert_equal
 
-_A4_WIDTH, _A4_HEIGHT = 595.0, 842.0  # points; pymupdf's default new_page()
+_A4_WIDTH, _A4_HEIGHT = 595.0, 842.0
 _SCALE = 2
-_INK = 128  # a channel darker than this is text, not paper
+_INK = 128
 
 
 @pytest.fixture
 def turned(tmp_path) -> str:
-    """One A4 page of text whose file asks for a quarter turn."""
     doc = pymupdf.open()
     page = doc.new_page()
     page.insert_text((72, 96), "Turned a quarter", fontname="tiro", fontsize=14)
@@ -27,12 +24,10 @@ def turned(tmp_path) -> str:
 
 
 def _page_lines(path: str) -> list[str]:
-    """Each page's text in the saved file, in page order."""
     return [page.get_text().strip() for page in pymupdf.open(path).pages()]
 
 
 def test_pages_kept_are_saved_in_the_order_asked_with_their_tags(tagged, tmp_path):
-    """A reorder leaves nothing out, so a screen reader's tags stay."""
     out = str(tmp_path / "reordered.pdf")
     with open_pdf(tagged) as engine:
         said = engine.keep_pages([1, 0])
@@ -45,7 +40,6 @@ def test_pages_kept_are_saved_in_the_order_asked_with_their_tags(tagged, tmp_pat
 
 
 def test_a_turned_page_stays_unrotated_and_says_its_turn(turned):
-    """The browser turns it; everything the server sends stays in one system."""
     with open_pdf(turned) as engine:
         pages = engine.pages()
         pix = pymupdf.Pixmap(engine.page_image(0, _SCALE))
@@ -55,7 +49,6 @@ def test_a_turned_page_stays_unrotated_and_says_its_turn(turned):
 
 
 def test_on_a_turned_page_the_span_box_covers_its_ink(turned):
-    """A box that misses its text would show fidelity on the wrong words."""
     with open_pdf(turned) as engine:
         box = next(iter(engine.index())).bbox
         [png] = engine.box_images(0, _SCALE, [box])

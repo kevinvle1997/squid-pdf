@@ -20,10 +20,8 @@ import { fill } from "./words";
 
 vi.mock(import("../api/client"), async (original) => ({ ...(await original()), renderStrips: vi.fn() }));
 
-// Every language a date is read in, learnt in the background as an editor would: the dates here need them.
 beforeAll(() => learnDateLanguages());
 
-/** The one amount `text` holds. */
 function amountIn(text: string): AmountValue {
   const [amount] = amountsIn(text);
   if (amount === undefined) throw new Error(`no amount: ${text}`);
@@ -33,7 +31,6 @@ function amountIn(text: string): AmountValue {
 describe("a day in the calendar", () => {
   test("is marked when its date needs a digit or letter the span's font lacks, in the server's short sentence", () => {
     vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
-    // A subset that drew only "Due 14 March 2026": no 5 and no 7.
     const glyphs = halfWideGlyphs("Due 14 March 2026");
     const span = aSpan({ id: "due", text: "Due 14 March 2026", room_pt: 100 });
     const doc = aDoc({ spans: [span], fonts: [aFont("Times-Roman", { glyphs })] });
@@ -43,10 +40,8 @@ describe("a day in the calendar", () => {
     if (date === undefined) throw new Error("no date");
 
     const marked = markedDays(editor.store.get(), { value: date, text: span.text, year: 2026, month: 3 });
-    // The letters alone: what draws the line instead is the slip's full verdict, above the calendar.
     expect(marked.get(17)).toBe("no 7 in this font");
     expect(marked.get(15)).toBe(fill(SENTENCES.not_in_font, { chars: ["5"] }));
-    // The days it can write are left unmarked.
     expect(marked.has(14)).toBe(false);
     expect(marked.has(16)).toBe(false);
   });
@@ -71,7 +66,6 @@ describe("a day in the calendar", () => {
   test("names only the letters its own date adds, beside one the line lacks already", () => {
     vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
     const words = "Due 14 March 2026";
-    // No 5 and no 7, nor the é typed in front of the date.
     const span = aSpan({ id: "due", text: words, room_pt: 400 });
     const doc = aDoc({ spans: [span], fonts: [aFont("Times-Roman", { glyphs: halfWideGlyphs(words) })] });
     const editor = createEditor(new File(["%PDF-"], "invoice.pdf"), doc, 2);
@@ -89,7 +83,6 @@ describe("a day in the calendar", () => {
   test("is marked for a date its own month can't fit in the line, not for a line long before it", () => {
     vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
     const words = "Due 14 May 2026";
-    // Each letter 6 points wide: "September" is 36 points longer than "May", and the line has 12 to spare.
     const glyphs = halfWideGlyphs(`${words}abcdefghijklmnopqrstuvwxyzJFMASOND0123456789 `);
     const span = aSpan({ id: "due", text: words, room_pt: 12 });
     const doc = aDoc({ spans: [span], fonts: [aFont("Times-Roman", { glyphs })] });
@@ -100,7 +93,6 @@ describe("a day in the calendar", () => {
 
     expect(markedDays(editor.store.get(), { value: date, text: words, year: 2026, month: 9 }).get(14)).toMatch(/\d+/);
     expect(markedDays(editor.store.get(), { value: date, text: words, year: 2026, month: 6 }).size).toBe(0);
-    // Typed long before the date, the line is past its room whatever's chosen: the slip says so, the days don't.
     const long = "Due without fail and in full 14 May 2026";
     typeInto(editor, long);
     const [later] = datesIn(long, dateReadingOf([words], { readerLanguages: ["en"] }));
@@ -111,7 +103,6 @@ describe("a day in the calendar", () => {
   test("isn't marked, least of all the day chosen, for words typed elsewhere, shorter than the date, that run the line past", () => {
     vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
     const words = "Due 14 May 2026";
-    // Each letter 6 points wide, and the line has 12 to spare: " on the" runs it past, and is shorter than the date.
     const glyphs = halfWideGlyphs(`${words}abcdefghijklmnopqrstuvwxyzJFMASOND0123456789 `);
     const span = aSpan({ id: "due", text: words, room_pt: 12 });
     const doc = aDoc({ spans: [span], fonts: [aFont("Times-Roman", { glyphs })] });
@@ -122,7 +113,6 @@ describe("a day in the calendar", () => {
     const [date] = datesIn(typed, dateReadingOf([words], { readerLanguages: ["en"] }));
     if (date === undefined) throw new Error("no date");
 
-    // The line is past its room whatever's chosen: the slip says so, the days don't.
     const may = markedDays(editor.store.get(), { value: date, text: typed, year: 2026, month: 5 });
     expect(may.has(14)).toBe(false);
     expect(may.size).toBe(0);
@@ -130,7 +120,6 @@ describe("a day in the calendar", () => {
 
   test("can give no reason the calendar hasn't laid out, nor one longer, in the year open or another", () => {
     vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
-    // A subset that drew only "Due 14 March 2026": most months' names and 2027 can't be written.
     const words = "Due 14 March 2026";
     const span = aSpan({ id: "due", text: words, room_pt: 400 });
     const doc = aDoc({ spans: [span], fonts: [aFont("Times-Roman", { glyphs: halfWideGlyphs(words) })] });
@@ -171,20 +160,16 @@ describe("the value its editor is open on", () => {
     edit(editor, "due", null);
     await vi.waitFor(() => expect(editor.store.get().dates).not.toBeNull());
     const { dates } = editor.store.get();
-    /** The value its control is offered for, as the field shows it. */
     const offered = (text: string) =>
       editableValueIn(text, { dates, at: undefined, held: spanDraftOf(editor.store.get())?.value ?? null });
     expect(openValueEditor(editor, offered(words))).toBe(true);
     expect(offered(words)?.kind).toBe("date");
-    // Opening, it takes focus as it's drawn; open already, focus is sent into it from the field.
     expect(editor.store.get().focusTo).toBeNull();
     expect(openValueEditor(editor, offered(words))).toBe(true);
     expect(editor.store.get().focusTo).toEqual({ valueEditor: "due" });
 
-    // The year retyped by hand: "2026" is "202" a moment, then "2027".
     typeInto(editor, "Due 14 March 202, total 1.250,00 €");
     expect(spanDraftOf(editor.store.get())?.valueEditorOpen).toBe(false);
-    // Closed under it, the editor sends focus back to the field: never left to fall to the page's body.
     expect(editor.store.get().focusTo).toEqual({ spanId: "due" });
     typeInto(editor, "Due 14 March 20, total 1.250,00 €");
     typeInto(editor, "Due 14 March 202, total 1.250,00 €");
@@ -195,7 +180,6 @@ describe("the value its editor is open on", () => {
 });
 
 describe("a date chosen twice in one edit", () => {
-  /** An editor typing into `words`, and its date's editor opened on what the field reads, as Alt+Down does. */
   async function editing(words: string) {
     vi.mocked(renderStrips).mockReturnValue(new Promise<Render>(() => undefined));
     const span = aSpan({ id: "s", text: words, room_pt: 400 });
@@ -208,7 +192,6 @@ describe("a date chosen twice in one edit", () => {
       const held = spanDraftOf(state)?.value ?? null;
       return editableValueIn(spanDraftOf(state)?.text ?? "", { dates: state.dates, at: undefined, held });
     };
-    /** Choose `date` in the date's editor, and what the field reads then. */
     const choose = (date: CalendarDay) => {
       const value = offered();
       if (value?.kind !== "date" || !openValueEditor(editor, value)) throw new Error("no date");

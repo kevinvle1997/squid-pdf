@@ -1,5 +1,3 @@
-"""Every sentence is said in the language the browser asks for, and kept apart by it."""
-
 from __future__ import annotations
 
 import pymupdf
@@ -12,7 +10,6 @@ from tests.helpers import assert_equal, assert_in, assert_problem
 
 
 def _in(language: str) -> dict[str, str]:
-    """The header a browser asks for `language` with."""
     return {"accept-language": language}
 
 
@@ -44,7 +41,6 @@ def test_the_language_answered_in_is_the_most_wanted_one_we_have(
 
 
 def test_a_document_s_sentences_come_in_the_language_asked_for(pseudo, mine, doc, monkeypatch):
-    """Uploaded in English, read in another: the analysis keeps codes, not sentences."""
     # English's joiner has no letters to shout, so the test language is given its own.
     monkeypatch.setitem(words.CATALOGS[pseudo], "join_parts", " / ")
     response = mine.get(f"/api/documents/{doc['id']}", headers=_in(PSEUDO))
@@ -96,7 +92,6 @@ def test_a_document_s_sentences_come_in_the_language_asked_for(pseudo, mine, doc
     assert_equal(
         hyphen, pseudo_sentence(words.sentence("char_u00ad")), "a letter that draws nothing"
     )
-    # Times is only named in the sample: why its own copy can't be used, said and unsaid.
     times = next(font for font in response.json()["fonts"] if font["name"] == "Times-Roman")
     said = (times["why"], times["why_code"], times["why_params"])
     expected: tuple[str, str, dict] = (

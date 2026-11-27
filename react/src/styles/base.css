@@ -1,7 +1,6 @@
 * { box-sizing: border-box; }
 html, body, #root { min-height: 100%; }
 html { scrollbar-color: var(--ground-ink-faint) var(--ground); }
-/* The bookcloth the page lies on: a linen weave, a thread across and a thread down every third pixel. */
 body {
   margin: 0;
   background-color: var(--ground);
@@ -23,7 +22,6 @@ kbd {
   padding: 0 var(--s1); border-radius: var(--r-1);
   background: var(--rule-soft); color: var(--ink-lo);
 }
-/* available to assistive tech, not to the eye */
 .vh {
   position: absolute; width: 1px; height: 1px;
   margin: -1px; padding: 0; overflow: hidden;

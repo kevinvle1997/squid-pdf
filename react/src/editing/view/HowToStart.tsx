@@ -4,16 +4,9 @@ import { sentenceOrNothing } from "../words";
 import { useEditorState } from "./context";
 import styles from "./HowToStart.module.css";
 
-/**
- * How to start, until the first edit: a note in the first page's margin says how to fix a word and how to add
- * text. Where there's no margin, on a narrow screen, it sits above the first page instead (`beside` false).
- * A reading persisted before its sentences were sent shows none of it.
- */
 export function HowToStart({ beside }: { beside: boolean }) {
   const sentences = useEditorState((state) => state.doc.sentences);
-  // The page list's ticks hang beside the first page too: the note goes under them.
   const ticks = useEditorState((state) => state.reading.order.length);
-  // A finger taps where a mouse clicks.
   const touch = useSyncExternalStore(onPointerChange, coarsePointer);
   const lines = [
     sentenceOrNothing(touch ? sentences.how_to_fix_touch : sentences.how_to_fix),

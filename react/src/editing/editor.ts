@@ -1,5 +1,3 @@
-// One open document: its state, and the change every edit, undo and put-back goes through. Each action
-// is a function of the editor in the module named for it (typing, export).
 import type { Document, Edit, Sentences, SpanInfo } from "../api/types";
 import { lacksSentences } from "../documents/localPersistence";
 import { Reopener } from "../documents/reopen";
@@ -48,101 +46,77 @@ import { fill, fillCounted } from "./words";
 import { type Persistence, persistUntil, persistWork, stopForgetting } from "./workPersistence";
 import { FITTED, type Zoom } from "./zoom";
 
-/**
- * A span whose mark takes focus as soon as it's drawn: back from its field, or put back from its
- * margin note. Its note stays shut until focus moves on, since it would cover the words. While it's
- * typed into, its field takes it instead: back from a value's editor in the slip.
- */
+/** Its note stays shut until focus moves on, since it would cover the words. */
 export interface FocusSpan {
   readonly spanId: string;
-  readonly inPlace?: boolean; // taken where the view is, never scrolled to: a pointer's press away from its field sent it
+  readonly inPlace?: boolean;
 }
 
-/**
- * A page whose own control takes focus as soon as it's drawn: its delete button, or its deleted page's
- * Put back, whichever is there. Brought into view at `block`, unless taken `inPlace`.
- */
 export interface FocusPage {
   readonly page: number;
-  readonly block: ScrollLogicalPosition; // "nearest" where the control replaced the one pressed; "start" for a page gone to
-  readonly inPlace?: boolean; // taken where the view is, as a span's can be
+  readonly block: ScrollLogicalPosition;
+  readonly inPlace?: boolean;
 }
 
-/** A page's tick in the page list, taking focus as soon as it's drawn: the only page left, whose delete button can't be pressed. */
 export interface FocusTick {
-  readonly tick: number; // the page, by its number in the original
+  readonly tick: number;
 }
 
-/** New text whose mark takes focus as soon as it's drawn: back from its field, or moved. */
 export interface FocusNewText {
   readonly newTextId: number;
-  readonly inPlace?: boolean; // taken where the view is, as a span's can be
+  readonly inPlace?: boolean;
 }
 
-/** The field new text is typed in, taking focus back from its slip: a face chosen with a pointer leaves the typing there. */
 export interface FocusField {
   readonly field: true;
 }
 
-/** The fonts in the slip of new text being typed, taking focus from its field: Tab, which the slip hangs apart from. */
 export interface FocusFaces {
   readonly faces: true;
 }
 
-/**
- * The open value's editor in the slip of the span typed into, taking focus back from its field by Alt+Down: the
- * calendar's focused day, or the amount's number field. Opening, it takes focus as it's drawn.
- */
 export interface FocusValueEditor {
-  readonly valueEditor: string; // the span typed into
+  readonly valueEditor: string;
 }
 
-/** Where focus is sent, to take as it's drawn. */
 export type FocusTo = FocusSpan | FocusPage | FocusTick | FocusNewText | FocusField | FocusFaces | FocusValueEditor;
 
-/** A redacted span the user asked to edit: it asks first, in place, before the redaction goes. */
 export interface Unredacting {
   readonly spanId: string;
-  readonly press: Press | null; // the press that asked: where the caret goes, if it's edited
-  readonly typed: Typed | null; // what was typed in it that asked, if typing did: typed in once it's edited
+  readonly press: Press | null;
+  readonly typed: Typed | null;
 }
 
-/** What a field reads as typed, and where the caret was: typed in again once the field opens. */
 export interface Typed {
   readonly text: string;
   readonly runs: readonly string[] | null; // a line's, its words a run each; none for a span alone
   readonly caret: number | null; // in the field's units; none known
 }
 
-/** Words for a screen reader, counted: the same words announced again are heard again. */
 export interface Announcement {
   readonly text: string;
   readonly count: number;
 }
 
-/** A span its page brings into view, if it's off screen: what undo or redo changed, or the place find went to. Counted, as `Announcement` is. */
 export interface ScrollTo {
   readonly spanId: string;
   readonly count: number;
-  readonly block: ScrollLogicalPosition; // "nearest" for what changed in place; "center" for a place gone to
+  readonly block: ScrollLogicalPosition;
 }
 
-// The last count given, for the whole page: two editors' counts never meet, so one will do.
+// Module-wide: two editors' counts never meet, so one will do.
 let lastCount = 0;
 
-/** `text`, to be announced now. */
 export function announcing(text: string): Announcement {
   lastCount += 1;
   return { text, count: lastCount };
 }
 
-/** `spanId`, to be brought into view now: as little as it takes, or into the middle (`block`). */
 export function scrollingTo(spanId: string, block: ScrollLogicalPosition = "nearest"): ScrollTo {
   lastCount += 1;
   return { spanId, count: lastCount, block };
 }
 
-/** What's worked out once from the document: its spans and fonts, looked up by what the page needs. */
 export interface Layout {
   readonly spans: ReadonlyMap<string, SpanInfo>; // by id: where a split cuts a span, its parts, each by its own
   readonly ordered: readonly SpanInfo[]; // them all, in the document's order
@@ -157,48 +131,46 @@ export interface Layout {
 }
 
 export interface EditorState {
-  readonly doc: Document; // the server's copy now
+  readonly doc: Document;
   readonly layout: Layout;
-  // What settles how its dates read, once every language is learnt after the first edit starts. Kept as the layout
-  // is worked out again: its spans' words don't change.
   readonly dates: DateReading | null;
-  readonly scale: number; // pixels per point, as the page images are drawn
-  readonly zoom: Zoom; // how large the pages show
-  readonly pageInView: number; // the page under the window's middle, as the bar says where the reader is
+  readonly scale: number;
+  readonly zoom: Zoom;
+  readonly pageInView: number;
   readonly history: History;
-  readonly reading: Reading; // what the history reads as
-  readonly drawn: Drawn; // the server's strips, and what they were drawn from
-  readonly disagreements: ReadonlyMap<number, PreviewDisagreement>; // by page: the spans the last render there disagreed with
+  readonly reading: Reading;
+  readonly drawn: Drawn;
+  readonly disagreements: ReadonlyMap<number, PreviewDisagreement>;
   readonly draft: Draft | null;
   readonly unredacting: Unredacting | null;
   readonly focusTo: FocusTo | null;
-  readonly notices: Notices; // the lines under the bar, and reopening in it; the render's lines are in `drawn`
-  readonly announcement: Announcement; // what a screen reader hears, for what the page doesn't show
+  readonly notices: Notices;
+  readonly announcement: Announcement;
   readonly scrollTo: ScrollTo | null;
   readonly exporting: boolean;
-  readonly exported: readonly Edit[]; // the edits the last export that worked sent: none before one
-  readonly attaching: string | null; // the font whose copy is being added or removed, one at a time
-  readonly focusFont: string | null; // the font whose button in the fonts list takes focus once drawn
-  readonly shownMismatches: ReadonlySet<string>; // the rows of the mismatch list shown on the page, by key
-  readonly mutedFonts: ReadonlySet<string>; // the fonts whose warning an edit no longer shows in full, by name shown
-  readonly images: ReadonlyMap<number, FailedImage>; // by page: each image that failed, until it loads
+  readonly exported: readonly Edit[];
+  readonly attaching: string | null;
+  readonly focusFont: string | null;
+  readonly shownMismatches: ReadonlySet<string>;
+  readonly mutedFonts: ReadonlySet<string>;
+  readonly images: ReadonlyMap<number, FailedImage>;
   readonly find: FindState;
-  readonly shortcutsOpen: boolean; // the list of the editor's keys, from the bar
-  readonly shippedFaces: ShippedFaces; // the handwriting faces new text offers, once the font list comes
-  readonly nudged: number | null; // the version of new text the last nudge made, which the next nudge folds into
+  readonly shortcutsOpen: boolean;
+  readonly shippedFaces: ShippedFaces;
+  readonly nudged: number | null;
 }
 
 export interface Editor {
   readonly store: Store<EditorState>;
   readonly file: File;
-  readonly attached: Map<string, Blob>; // the user's copies of its fonts, beside the PDF, by font
+  readonly attached: Map<string, Blob>;
   readonly reopener: Reopener;
   readonly queue: RenderQueue;
-  readonly near: Set<number>; // the pages near the screen, as each one's sheet finds: drawn first
-  readonly retries: Map<number, ReturnType<typeof setTimeout>>; // by page: when its failed image is asked for again
-  readonly finding: { timer?: ReturnType<typeof setTimeout> }; // when what's typed in "Find" is found, and "Change to" counted
-  readonly ahead: ExportAhead; // the export started on the way to pressing Export
-  readonly persistence: Persistence; // what's persisted of it in this browser
+  readonly near: Set<number>;
+  readonly retries: Map<number, ReturnType<typeof setTimeout>>;
+  readonly finding: { timer?: ReturnType<typeof setTimeout> };
+  readonly ahead: ExportAhead;
+  readonly persistence: Persistence;
 }
 
 export function layoutOf(doc: Document): Layout {
@@ -312,10 +284,6 @@ export function createEditor(file: File, opened: Document, scale: number): Edito
   return editor;
 }
 
-/**
- * The server no longer had the document, and it opened again: the same spans, under a new id,
- * with the user's copies back before anything is drawn or exported from it.
- */
 async function reopened(editor: Editor, doc: Document): Promise<Document> {
   const { store, queue } = editor;
   const { judged, refusal } = await reattach(editor, doc);
@@ -331,10 +299,6 @@ async function reopened(editor: Editor, doc: Document): Promise<Document> {
   return judged;
 }
 
-/**
- * A render landed or failed: what it drew goes in, where it disagrees with the preview pulses,
- * and a line it adds under the bar is heard.
- */
 function drawnNow(store: Store<EditorState>, drawn: Drawn): void {
   const { notices, drawn: before, layout, doc, disagreements, reading } = store.get();
   const heard = newlyHeard(noticeLines(notices, before, reading), noticeLines(notices, drawn, reading));
@@ -342,17 +306,14 @@ function drawnNow(store: Store<EditorState>, drawn: Drawn): void {
   store.set({ drawn, disagreements: after, ...(heard !== "" && { announcement: announcing(heard) }) });
 }
 
-/** The editor is on screen: what opening the file found is heard, now its live region is there to announce it. */
 export function announceOpening(editor: Editor): void {
   const { notices, reading } = editor.store.get();
   const found = openingLines(notices, reading);
   if (found.length > 0) announce(editor, heardIn(found));
 }
 
-/** The rest of an action, or what it is once the change is made: what undo says the span reads. */
 export type Also = Partial<EditorState> | ((next: EditorState) => Partial<EditorState>);
 
-/** The state once `actions` are made, in turn: the history, what it reads as, and what clears with it. Nothing is set. */
 export function changed(state: EditorState, actions: readonly HistoryAction[]): EditorState {
   const history = actions.reduce(historyReducer, state.history);
   if (history === state.history) return state;
@@ -368,10 +329,6 @@ export function changed(state: EditorState, actions: readonly HistoryAction[]): 
   };
 }
 
-/**
- * Every change to the history comes through here, and redraws what it changed. `also` is the
- * rest of the action that made it, so what's drawn never sees one half without the other.
- */
 export function change(editor: Editor, action: HistoryAction | readonly HistoryAction[], also: Also = {}): void {
   const { store, queue } = editor;
   const state = store.get();
@@ -429,10 +386,6 @@ export function putBack(editor: Editor, spanId: string): void {
   );
 }
 
-/**
- * Where a key was pressed: on a page, anything on it or its tick in the page list, by the page; on new text, by its
- * id; or on a margin note, which an undo or redo may take away.
- */
 export interface PressedOn {
   readonly page: number | null;
   readonly newTextId: number | null;
@@ -441,16 +394,11 @@ export interface PressedOn {
 
 const PRESSED_NOWHERE: PressedOn = { page: null, newTextId: null, marginNote: false };
 
-/**
- * Take off the last thing done; announce what its span reads now and bring it into view. Focus stays, but on what
- * it may take away: on a page its delete takes, focus goes to the page's control; on a margin note, to what it changed.
- */
 export function undo(editor: Editor, on: PressedOn = PRESSED_NOWHERE): void {
   const step = editor.store.get().history.done.at(-1);
   stepped(editor, { kind: "undo" }, { step, key: "back_to", on });
 }
 
-/** Bring back the last thing undone, announced and brought into view as undo does, and focus moved as it moves it. */
 export function redo(editor: Editor, on: PressedOn = PRESSED_NOWHERE): void {
   const step = editor.store.get().history.undone.at(-1);
   stepped(editor, { kind: "redo" }, { step, key: "changed_to", on });
@@ -489,10 +437,6 @@ function stepped(
   }));
 }
 
-/**
- * What an undo or redo of an edit of `span` says: what it reads now; of a `redaction`, by what it took before (`was`,
- * null for nothing), the words the undo puts back, or the redo takes out.
- */
 function stepAnnouncement(
   sentences: Sentences,
   {
@@ -518,11 +462,6 @@ function stepAnnouncement(
   return fill(sentences.redacted, { text: redactedBetween(span.text, { from: now, to: was }) });
 }
 
-/**
- * Undo or redo of new text: said as it reads now, or that it's out. Focus on its mark, gone with it, goes to the
- * text nearest it, brought into view; on a margin note, to its mark on a page near, or the text nearest it once it's
- * out; anywhere else it stays.
- */
 function newTextStepped(
   editor: Editor,
   action: HistoryAction,
@@ -530,7 +469,6 @@ function newTextStepped(
 ): void {
   const { history, reading: before } = editor.store.get();
   const newTextId = newTextIdsOf([...entriesOf(history), ...step]).get(entry.id);
-  // Taken out, it's said by the words it had, not an emptied version's none.
   const had = keptNewTexts(before).find((text) => text.newTextId === newTextId)?.edit.text ?? "";
   change(editor, action, ({ reading, layout, doc }) => {
     const now = keptNewTexts(reading).find((text) => text.newTextId === newTextId);
@@ -551,15 +489,10 @@ function newTextStepped(
   });
 }
 
-/** Focus sent to `target`, a span brought into view with it: a far page draws no mark to take it. */
 function sendingFocus(target: FocusTo): Partial<Pick<EditorState, "focusTo" | "scrollTo">> {
   return "spanId" in target ? { focusTo: target, scrollTo: scrollingTo(target.spanId) } : { focusTo: target };
 }
 
-/**
- * Undo or redo of a page's delete: said as the page now is, in or out. Focus on that page or its tick, which go
- * with it, goes to its control in its place (Put back, or its delete button); anywhere else it stays.
- */
 function pageStepped(editor: Editor, action: HistoryAction, { page, on }: { page: number; on: PressedOn }): void {
   change(editor, action, ({ reading, doc }) => ({
     announcement: announcing(
@@ -569,12 +502,10 @@ function pageStepped(editor: Editor, action: HistoryAction, { page, on }: { page
   }));
 }
 
-/** Focus has left the span or page control it was sent to: the next visit is an ordinary one. */
 export function focusMoved(editor: Editor): void {
   editor.store.set({ focusTo: null });
 }
 
-/** The editor is going: a render in flight, and any image still to be asked for, are dropped rather than landing on nothing. */
 export function closeEditor(editor: Editor): void {
   editor.queue.stop();
   for (const retry of editor.retries.values()) clearTimeout(retry);
@@ -585,7 +516,6 @@ export function closeEditor(editor: Editor): void {
   stopForgetting(editor.persistence);
 }
 
-/** Tell a screen reader, for what the page doesn't show. */
 export function announce(editor: Editor, text: string): void {
   editor.store.set({ announcement: announcing(text) });
 }
@@ -628,10 +558,6 @@ export function warnedCount(state: EditorState): { count: number; different: boo
   return { count: lineCount(state.layout, spanIds) + newTextCount, different };
 }
 
-/**
- * The bar's count of `changed` changes, `count` of them warned, in the server's words: the part that warns kept apart,
- * as Find's count is. Nothing where a reading persisted by an earlier build lacks either half.
- */
 export function changesShown(
   { changed, count, different }: { changed: number; count: number; different: boolean },
   sentences: Sentences,
@@ -649,10 +575,8 @@ export function changesShown(
   return { plain, warned };
 }
 
-/** The bar's count before any change, in the server's words: the places an edit won't match, or nothing. */
 export function atRestSentence({ count, reasons }: Mismatches, sentences: Sentences): string {
   if (count === 0) return "";
-  // A reason the file's own font won't match makes some of them look different, as `different` does after a change.
   return fillCounted(reasons.length > 0 ? sentences.at_rest_different : sentences.at_rest_similar, count);
 }
 

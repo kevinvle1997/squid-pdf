@@ -20,14 +20,12 @@ import { type Drawn, NOTHING_DRAWN } from "./render";
 
 const ONE = aSpan({ id: "one", page: 0 });
 const TWO = aSpan({ id: "two", page: 1 });
-// Every letter these tests type, as wide as each other: "now" is shorter than "was one", so it fits.
 const TIMES = aFont("Times-Roman", { glyphs: halfWideGlyphs("wasonetu ") });
 const FONTS = new Map([[TIMES.name, TIMES]]);
 
 const readingOf = (...edits: Edit[]) =>
   project(aDoc({ spans: [ONE, TWO] }), entriesOf(historyReducer(EMPTY_HISTORY, { kind: "add", edits })));
 
-/** `reading` drawn on `pages`, with the server's reply for each span. */
 function drawnOf(reading: Reading, pages: number[], reply: Partial<Drawn> = {}): Drawn {
   return { ...NOTHING_DRAWN, from: new Map(pages.map((page) => [page, reading])), ...reply };
 }
@@ -83,7 +81,6 @@ describe("where a render disagrees with its preview", () => {
 
   test("a verdict other than the one worked out as it was typed pulses, as the chip said otherwise", () => {
     const reading = readingOf(aReplace(ONE.id));
-    // Its own font draws every letter typed, so the chip said it looks identical; the page refused the font.
     const similar = aFit({ delta_pt: -12, fidelity: "substitute", substitute: "Liberation Serif Regular" });
     const after = drawnOf(reading, [0], { fits: fitsOn(0, { one: similar }) });
 
@@ -115,7 +112,6 @@ describe("where a render disagrees with its preview", () => {
       ]),
     });
     const once = disagreementsAfter(NOTHING_DRAWN, both, judged());
-    // Only the first page changes, and only it is drawn again.
     const next = readingOf(aReplace(ONE.id, "nous"), aReplace(TWO.id));
     const twice = disagreementsAfter(
       both,

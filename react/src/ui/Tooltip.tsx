@@ -10,20 +10,16 @@ import { Warn } from "./Warn";
 
 interface Props {
   heading: string;
-  warn?: boolean; // the heading says it won't match
-  children?: ReactNode; // the detail under the heading
-  triggerRef: RefObject<Element | null>; // what it's shown over
+  warn?: boolean;
+  children?: ReactNode;
+  triggerRef: RefObject<Element | null>;
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
-  onHoverChange?: (isHovered: boolean) => void; // the pointer came onto it or left it; without one, leaving closes it
-  id: string; // its words', for what it describes to name in aria-describedby
+  onHoverChange?: (isHovered: boolean) => void;
+  id: string;
 }
 
-/**
- * A note on hover or focus: a heading, and a detail under it. It needs no TooltipTrigger, so
- * many triggers can share one, each saying when it's theirs. React Aria's Tooltip reads its
- * state from a trigger's context even on its own, so it's given one.
- */
+/** React Aria's Tooltip reads its state from a trigger's context even on its own, so it's given one. */
 export function Tooltip({
   heading,
   warn = false,
@@ -38,7 +34,7 @@ export function Tooltip({
     isOpen,
     shouldSkipAnimation: false,
     open: () => (onHoverChange ?? onOpenChange)(true),
-    // React Aria closes it at once when what it's over scrolls; otherwise the pointer left it.
+    // React Aria closes it at once when what it's over scrolls.
     close: (immediate) => (immediate || onHoverChange === undefined ? onOpenChange(false) : onHoverChange(false)),
   };
   const closeOnEscape = useEffectEvent((event: KeyboardEvent) => {
@@ -46,7 +42,6 @@ export function Tooltip({
     event.stopPropagation();
     onOpenChange(false);
   });
-  // Escape closes it and nothing else, wherever focus is, as React Aria's own trigger does (WCAG 1.4.13, Dismissible).
   useEffect(() => {
     if (!isOpen) return;
     document.addEventListener("keydown", closeOnEscape, true);
@@ -62,9 +57,8 @@ export function Tooltip({
         placement="top"
         offset={NOTE_OFFSET_PX}
         style={{ "--note-gap": `${NOTE_OFFSET_PX}px` }}
-        // It covers the text beside what it's on: a press on it closes it, so the next reaches that text.
+        // It covers the text beside what it's on, so a press on it closes it.
         onPointerDown={() => onOpenChange(false)}
-        // Kept off the window's edge by the body's gutter, as every line of words is.
         containerPadding={GUTTER_PX}
       >
         <span id={id} className={styles.words}>
@@ -76,10 +70,6 @@ export function Tooltip({
   );
 }
 
-/**
- * A button's keyboard shortcut, shown under it on hover or focus, as editors show theirs; or beside it
- * (`end`), where what's under it is another button to press.
- */
 export function Shortcut({
   keys,
   placement = "bottom",
@@ -99,10 +89,7 @@ export function Shortcut({
   );
 }
 
-/**
- * The name of a control drawn as an icon alone, beside it on hover or focus, after it.
- * A touch screen shows none: React Aria opens a tooltip only on hover and focus.
- */
+/** A touch screen shows none: React Aria opens a tooltip only on hover and focus. */
 export function NameTip({ name, children }: { name: string; children: ReactElement }) {
   return (
     <TooltipTrigger delay={SHORTCUT_DELAY_MS}>
@@ -114,10 +101,6 @@ export function NameTip({ name, children }: { name: string; children: ReactEleme
   );
 }
 
-/**
- * A note in full over what's pressed, on hover or focus: a heading, and a detail under it, or what the heading
- * became (`changed`), an arrow down to it.
- */
 export function Tip({
   heading,
   detail,
@@ -143,7 +126,6 @@ export function Tip({
   );
 }
 
-/** An arrow down from what was to what is, drawn at its own size so the stroke stays 1.5px. The words say it. */
 function BecameMark() {
   return (
     <svg
@@ -163,14 +145,13 @@ function BecameMark() {
   );
 }
 
-// The focus ring of what it's over, as a page's marks draw it (`outline: 2px`, `outline-offset: 1px`).
 const RING_WIDTH_PX = 2;
 const RING_OFFSET_PX = 1;
 
-// Just clear of that ring, which it would cover; the gap is the note's to the pointer (WCAG 1.4.13, Hoverable).
+// Just clear of that ring, which it would cover (WCAG 1.4.13, Hoverable).
 const NOTE_OFFSET_PX = RING_WIDTH_PX + RING_OFFSET_PX;
 
-// --s4, the gutter text keeps from the window's edge (design.md, Space and layout).
+// --s4, the gutter text keeps from the window's edge.
 const GUTTER_PX = 16;
 
 // Long enough that passing over the bar shows nothing; short enough that a pause on a button does.

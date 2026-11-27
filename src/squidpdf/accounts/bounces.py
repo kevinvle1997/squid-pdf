@@ -1,5 +1,3 @@
-"""Hearing from Brevo which addresses bounce for good, so no more mail goes to them."""
-
 from __future__ import annotations
 
 import asyncio
@@ -15,18 +13,14 @@ from squidpdf.core import LogController, LogEvent, Reply
 
 _log = LogController.for_module(__name__)
 
-# The one event Brevo sends that means mail to the address will never arrive.
 _HARD_BOUNCE = "hard_bounce"
 
 
 @dataclass(frozen=True, slots=True, eq=False)
 class BounceController:
-    """Noting each address Brevo's webhook says mail can never reach."""
-
     accounts: Accounts
 
     async def note(self, sent: MailEvent | list[MailEvent]) -> Reply[bytes]:
-        """Note each hard bounce in `sent`, and no other kind; nothing is sent back."""
         # Brevo sends one event, or a list where its webhook batches them.
         events = sent if isinstance(sent, list) else [sent]
         bounced = [
@@ -34,7 +28,6 @@ class BounceController:
         ]
         now = int(time.time())
         for email in bounced:
-            # Off the loop: it writes the table.
             had_account = await asyncio.to_thread(
                 self.accounts.users.note_bounce, email, secret=self.accounts.secret, now=now
             )
@@ -43,7 +36,6 @@ class BounceController:
 
 
 def is_brevo(accounts: Accounts, authorization: str | None) -> bool:
-    """Whether `authorization` is the bearer token Brevo's webhook was given; no if none was."""
     if accounts.webhook_token is None or authorization is None:
         return False
     # Compared in constant time, so the token can't be guessed a letter at a time.

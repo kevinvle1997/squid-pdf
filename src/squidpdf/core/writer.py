@@ -1,10 +1,3 @@
-"""Drawing a line in the font its plan names, and cutting the fonts we added down on save.
-
-A font is added to a page once, under a resource name (see
-`core.types.FontResource`) made from what it is, and every line drawn in it
-there uses that name.
-"""
-
 from __future__ import annotations
 
 import hashlib
@@ -35,116 +28,78 @@ from squidpdf.core.types import (
     TextRun,
 )
 
-_NAME_DIGEST_SIZE = 6  # bytes -> 12 hex chars, as for span ids
-# Substitution, positioning and their glyph classes: how a shaper sets text, which a PDF
-# never asks, since it places each letter itself.
+_NAME_DIGEST_SIZE = 6
+# A PDF places each letter itself, so a shaper's tables are never asked.
 _LAYOUT_TABLES = ("GSUB", "GPOS", "GDEF")
 
 
 @dataclass(frozen=True, slots=True)
 class Setting:
-    """How a line is set: its size, how much it's narrowed, how far it's turned, and spaced."""
-
-    size: float  # in points
-    scale_x: float  # 1 is as the font draws it; less narrows each run from its start
-    turn_ccw: QuarterTurn  # on the page unrotated
-    letter_spacing: float  # how far past its width each letter is set apart, in points
+    size: float
+    scale_x: float
+    turn_ccw: QuarterTurn
+    letter_spacing: float
 
 
 @dataclass(slots=True)
 class _PageNames:
-    """The resource name each page gives a font once it's been added there to draw with."""
-
-    # Each copy of a font, by (page, `copy_source`), or why it wasn't added.
     own: dict[tuple[int, str], str | FontUnusable] = field(default_factory=dict)
-    # The faces we ship, by (page, face file).
     faces: dict[tuple[int, str], str] = field(default_factory=dict)
 
     def own_resource(self, key: tuple[int, str], add: Callable[[], str]) -> str:
-        """A copy of a font's resource name on a page, added on first use; raises why not."""
         return recalled(self.own, key, add)
 
     def face_resource(self, key: tuple[int, str], add: Callable[[], str]) -> str:
-        """The resource name of a face we ship on a page, added on first use."""
         return made_once(self.faces, key, add)
 
     def forget(self) -> None:
-        """Forget every page's names, as a fresh record: the pages were renumbered."""
         self.own.clear()
         self.faces.clear()
 
 
 @dataclass(slots=True)
 class _AddedFont:
-    """A font we added to the document whole: a face we ship, or a copy lent from outside.
-
-    Cut down on save to the letters drawn in it.
-    """
-
-    name: str  # what the user reads it as
-    file: bytes = field(repr=False)  # the whole font
-    # Its PDF objects; pages usually share one.
+    name: str
+    file: bytes = field(repr=False)
     font_objects: set[int] = field(default_factory=set)
-    # Every letter drawn in it, over all pages.
     drawn: set[str] = field(default_factory=set, repr=False)
 
     def note_drawn(self, text: str) -> None:
-        """Keep the letters of `text`, drawn in it, for `save` to cut it down to."""
         self.drawn.update(text)
 
     def note_object(self, font_object: int) -> None:
-        """Keep `font_object`, another PDF object it was added as: another page's, usually."""
         self.font_objects.add(font_object)
 
 
 @dataclass(frozen=True, slots=True)
 class _OffsetRun:
-    """A run of a line: letters of one word drawn in one font, and where on it they start."""
-
     text: str
-    offset: float  # from the line's start, in points
-    resource: str  # the resource name of the font they're drawn in
+    offset: float
+    resource: str
 
 
 @dataclass(frozen=True, slots=True)
 class DrawReport:
-    """A line drawn: the face we ship that drew it, None for the file's own font, and its notes.
-
-    `notices` are what came out other than asked.
-    """
-
     face: Face | None
     notices: list[Message]
 
 
 @dataclass(frozen=True, slots=True, eq=False)
 class PageWriter:
-    """Draws lines onto a document's pages, adding each font a page needs once.
-
-    Keeps the fonts added whole, by where each file came from, for `save` to
-    cut down.
-    """
-
     driver: PdfDriver
-    # Measures each line, and names a substitute where a page won't take a font.
     plans: DrawPlanner
     names: _PageNames = field(default_factory=_PageNames)
-    # By the face's file, or Google's source for its copy: one font file each.
     added: dict[str, _AddedFont] = field(default_factory=dict, repr=False)
 
     def draw(self, span: Span, text: str, *, plan: DrawPlan, setting: Setting) -> DrawReport:
-        """Draw `text` at the span's baseline as `plan` says, in a face if the page refuses."""
         by_code = coded_in(plan)
         drawn_in = plan.drawn_in
-        # The whole line, less what even it can't draw.
         if isinstance(drawn_in, Face):
             self._write_in_face(span, drawn_in, text=plan.text, setting=setting)
             return DrawReport(drawn_in, _said_left_out(plan.left_out))
-        # The file's own font, written by code as the original was.
         if isinstance(drawn_in, PooledFont) and by_code is not None:
             self._write_codes(span, by_code, setting=setting)
             return DrawReport(None, _said_left_out(plan.left_out))
-        # The file's own copies of the font, by letter, once the page has them.
         if isinstance(drawn_in, PooledFont):
             return self._draw_by_letter(span, drawn_in, text=text, plan=plan, setting=setting)
         assert_never(drawn_in)
@@ -152,10 +107,9 @@ class PageWriter:
     def _draw_by_letter(
         self, span: Span, own: PooledFont, *, text: str, plan: DrawPlan, setting: Setting
     ) -> DrawReport:
-        """Draw `plan`'s line in `own`, the file's copies, by letter; in a face if refused."""
         try:
             resources = self._resources(span.page, own, plan.text)
-        except FontUnusable as problem:  # the page wouldn't take a copy after all
+        except FontUnusable as problem:
             substitute = self.plans.substitute_for(span, text)
             self._write_in_face(span, substitute.face, text=substitute.text, setting=setting)
             notices = [problem.reason, *_said_left_out(substitute.left_out)]
@@ -165,15 +119,9 @@ class PageWriter:
         return DrawReport(None, _said_left_out(plan.left_out))
 
     def forget_pages(self) -> None:
-        """Forget each page's resource names: the pages were just renumbered."""
         self.names.forget()
 
     def save(self, path: str) -> list[Message]:
-        """Write the document to `path`, the fonts we added cut to the letters drawn in them.
-
-        Call it last: afterwards they can't draw any new letter. Returns
-        anything that came out other than asked, for the edge to put into words.
-        """
         notices: list[Message] = []
         for added in self.added.values():
             try:
@@ -191,7 +139,6 @@ class PageWriter:
         return notices
 
     def _write_in_face(self, span: Span, face: Face, *, text: str, setting: Setting) -> None:
-        """Write `text` at the span's baseline in a face we ship."""
         resource = self._face_resource(span.page, face)
         self.added[face.file].note_drawn(text)
         font = self.driver.face_font(face)
@@ -207,15 +154,9 @@ class PageWriter:
         resources: Mapping[str, str],
         setting: Setting,
     ) -> None:
-        """Write `text` at the span's baseline, placed by `font`'s widths.
-
-        `resources` is the resource name of the font each letter is drawn in. A
-        run per font change, each where one font would have put it, in reading
-        order, so the text reads back as written.
-        """
+        """A run per font change, in reading order, so the text reads back as written."""
         x, y = span.origin
         cos, sin = QUARTER_TURNS[setting.turn_ccw]
-        # A point's move along the line, narrowed; the page's y grows downward.
         step_x, step_y = cos * setting.scale_x, -sin * setting.scale_x
         size, spacing = setting.size, setting.letter_spacing
         words, _width = self.plans.words_of(span, text, font=font, size=size, spacing=spacing)
@@ -236,11 +177,6 @@ class PageWriter:
         )
 
     def _write_codes(self, span: Span, coded_runs: list[CodedRun], *, setting: Setting) -> None:
-        """Write the line as codes in the file's own copies of its font, on top of the page.
-
-        Each run in its copy, the pen moving on by that copy's widths, which
-        agree with the others'.
-        """
         runs = [
             CodeRun(_codes_for(run.coded, run.text), run.copy.font.font_object)
             for run in coded_runs
@@ -258,32 +194,18 @@ class PageWriter:
         )
 
     def _resources(self, page: int, own: PooledFont, text: str) -> dict[str, str]:
-        """The resource name of the copy each letter of `text` is drawn in.
-
-        Raises FontUnusable when the library won't add one of them.
-        """
         return {ch: self._copy_resource(page, own.copy_for(ch)) for ch in dict.fromkeys(text)}
 
     def _copy_resource(self, page: int, copy: FontCopy) -> str:
-        """The resource name of a copy of a font, added to the page on first use.
-
-        Once per page, not per span: a copy per span piled up and slowed every
-        redraw. Raises FontUnusable when the library won't add it.
-        """
+        """Once per page, not per span: a copy per span piled up and slowed every redraw."""
         key = (page, copy_source(copy))
         return self.names.own_resource(key, partial(self._add_copy, page, copy))
 
     def _add_copy(self, page: int, copy: FontCopy) -> str:
-        """Add a copy of a font to a page, and return its resource name.
-
-        Raises FontUnusable when the page won't take it. A copy lent from outside
-        the file goes in whole, to be cut down on save like a face we ship.
-        """
-        # Named by its source, so copies of one font are told apart.
         resource = _resource_name("F", copy_source(copy))
         try:
             font_resource = self.driver.add_font(page, copy.embedded.file, resource=resource)
-        except DriverError as problem:  # the page won't take it: the substitute draws instead
+        except DriverError as problem:
             raise FontUnusable(problem.reason) from problem
         if copy.lent is not None:
             added_font = _AddedFont(copy.lent.name, copy.embedded.file)
@@ -293,21 +215,15 @@ class PageWriter:
         return font_resource.resource
 
     def _note_lent_letters(self, own: PooledFont, text: str) -> None:
-        """Keep the letters a lent copy draws in `text`, for `save` to cut it down to."""
         for ch in text:
             copy = own.copy_for(ch)
             if copy.lent is not None:
                 self.added[copy.lent.source].note_drawn(ch)
 
     def _face_resource(self, page: int, face: Face) -> str:
-        """The resource name of a face we ship, added to the page on first use.
-
-        Once per page, as `_copy_resource` does for the file's own fonts.
-        """
         return self.names.face_resource((page, face.file), partial(self._add_face, page, face))
 
     def _add_face(self, page: int, face: Face) -> str:
-        """Add a face we ship to a page, whole, and return its resource name."""
         font_file = face_bytes(face)
         font_resource = self.driver.add_font(
             page, font_file, resource=_resource_name("S", face.file)
@@ -318,19 +234,11 @@ class PageWriter:
         return font_resource.resource
 
     def _keep_whole(self, source: str, font: _AddedFont, *, font_object: int) -> None:
-        """Note a font added whole as font `font_object`, for `save` to cut down.
-
-        `source` tells one font file from another: two can share a name.
-        """
-        # The first time a file is added makes its record; later pages add their object.
         self.added.setdefault(source, font).note_object(font_object)
 
 
 def _resource_name(kind: str, source: str) -> str:
-    """A resource name for a font we add, `kind` then a digest of `source`.
-
-    Made from what it names, so it can't clash with a name a file's writer chose.
-    """
+    """Made from what it names, so it can't clash with a name a file's writer chose."""
     digest = hashlib.blake2s(source.encode(), digest_size=_NAME_DIGEST_SIZE)
     return kind + digest.hexdigest()
 
@@ -338,10 +246,6 @@ def _resource_name(kind: str, source: str) -> str:
 def _runs_in(
     words: Iterable[Word], *, resources: Mapping[str, str], font: FontProgram, setting: Setting
 ) -> list[_OffsetRun]:
-    """Each word split where the font its letters are drawn in changes, in order.
-
-    `resources` is the resource name of the font each letter is drawn in.
-    """
     return [
         run
         for word in words
@@ -352,7 +256,6 @@ def _runs_in(
 def _word_runs(
     word: Word, *, resources: Mapping[str, str], font: FontProgram, setting: Setting
 ) -> list[_OffsetRun]:
-    """One word split where its font changes, each run starting where the last ends."""
     runs: list[_OffsetRun] = []
     start = word.offset
     for resource, letters in groupby(word.text, key=lambda ch: resources[ch]):
@@ -363,23 +266,19 @@ def _word_runs(
 
 
 def _codes_for(coded: CodedFont, text: str) -> bytes:
-    """`text` as the font's codes, each as many bytes wide as the font's codes take."""
     return b"".join(coded.letters[ch].value.to_bytes(coded.code_bytes) for ch in text)
 
 
 def _said_left_out(letters: list[str]) -> list[Message]:
-    """The notice a draw gives for letters it left out; none when it left none."""
     return [Message("left_out", {"letters": list(letters)})] if letters else []
 
 
 def _trimmed(font_file: bytes, letters: Iterable[str]) -> bytes:
-    """A font file we added whole, cut down to `letters`."""
     options = Options(
         hinting=True,  # keeps small text crisp on screen, for a few KB
         layout_features=[],  # the PDF places each letter itself: no ligatures or kerning
         retain_gids=True,  # text already on the page points at its glyphs by number
-        # FontForge's timestamps, which fontTools can't cut, and the layout tables, empty with
-        # no features kept: nothing draws with either.
+        # FontForge's timestamps, which fontTools can't cut, and the unused layout tables.
         drop_tables=[*Options().drop_tables, "FFTM", *_LAYOUT_TABLES],
     )
     subsetter = Subsetter(options)

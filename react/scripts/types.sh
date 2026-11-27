@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# The browser's types, written from the API's own OpenAPI: never a hand-made copy.
-# Needs uv and the app's Python environment (`uv sync --all-extras` at the repo root).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 spec="$(mktemp)"

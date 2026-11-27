@@ -5,14 +5,13 @@ import { Sheet } from "./Sheet";
 import styles from "./SheetScreen.module.css";
 
 interface Props {
-  title: ReactNode; // the screen's one heading, in the display size
-  children: ReactNode; // what the sheet holds under its heading
-  foot?: ReactNode; // what sits under the sheet
+  title: ReactNode;
+  children: ReactNode;
+  foot?: ReactNode;
   sheetClassName?: string;
-  home?: boolean; // the wordmark leads to the landing, from a screen the landing led to
+  home?: boolean;
 }
 
-/** A screen with no document on it: the wordmark at the top, and the mascot over one sheet in the middle. */
 export function SheetScreen({ title, children, foot, sheetClassName, home = false }: Props) {
   return (
     <div className={styles.screen}>

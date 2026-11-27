@@ -1,6 +1,4 @@
-/* One control, its choices joined in one box, as a segmented control is: a choice, not a row of buttons. */
 .choices { display: flex; flex-wrap: wrap; }
-/* The shape of a button: a choice is pressed like one. */
 .choice {
   position: relative;
   font: inherit; font-size: var(--fs-sm); font-weight: 500; line-height: 1.5; color: var(--ink);
@@ -14,7 +12,6 @@
 .choice + .choice { border-inline-start-width: 0; }
 .choice:first-child { border-start-start-radius: var(--r-2); border-end-start-radius: var(--r-2); }
 .choice:last-child { border-start-end-radius: var(--r-2); border-end-end-radius: var(--r-2); }
-/* The hit area grows past the button without moving what you see. */
 .choice::before {
   content: ""; position: absolute; left: 50%; top: 50%;
   width: max(100%, var(--hit)); height: max(100%, var(--hit));

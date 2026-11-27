@@ -1,5 +1,3 @@
-"""The server's log: one line per request, by route, linked to its reply, and no document."""
-
 from __future__ import annotations
 
 import hashlib
@@ -33,14 +31,13 @@ from tests.helpers import (
 )
 
 _HEADER = "Squid-Request-Id"
-_UNLISTED = "WescottHouseSans"  # a company's own font: no list of ours names it
-_SANS = "Liberation Sans Regular"  # the face that draws a sans no list of ours names
+_UNLISTED = "WescottHouseSans"
+_SANS = "Liberation Sans Regular"
 
 
 def test_a_request_logs_one_line_by_its_route_naming_the_id_its_reply_carries(
     browser, pdf_bytes, capsys
 ):
-    """The template, not the path, so a document's id never reaches the log."""
     mine = browser()
     doc = upload(mine, pdf_bytes).json()
     capsys.readouterr()
@@ -58,7 +55,6 @@ def test_a_request_logs_one_line_by_its_route_naming_the_id_its_reply_carries(
 def test_a_request_that_runs_pdf_work_tallies_its_wait_and_its_work_on_its_line(
     browser, pdf_bytes, capsys
 ):
-    """What it tallied in the worker comes back with its result, so a slow line says why."""
     mine = browser()
     capsys.readouterr()
 
@@ -71,25 +67,21 @@ def test_a_request_that_runs_pdf_work_tallies_its_wait_and_its_work_on_its_line(
 
 
 def _substitute_lines(lines: list[str]) -> list[dict[str, str]]:
-    """The fields of each line for an edit a similar font drew."""
     return [log_fields(line) for line in lines if " edit_in_substitute " in line]
 
 
 def _replaced(span: dict, text: str) -> dict:
-    """A replace of `span`'s text with `text`."""
     return {"kind": "replace", "span_id": span["id"], "text": text}
 
 
 def test_an_export_counts_its_edits_by_whether_they_kept_their_font_and_names_each_substitute(
     app, browser, pdf_bytes, capsys, monkeypatch
 ):
-    """The share that kept their font is a sum over export lines; each similar one, a line."""
-    monkeypatch.setattr(app.state, "pool", InProcess())  # so the worker's line is captured
+    monkeypatch.setattr(app.state, "pool", InProcess())
     mine = browser()
     doc = upload(mine, pdf_bytes).json()
     delivery, made = span_starting(doc, 1, "Delivery"), span_starting(doc, 0, "Made")
     invoices = span_starting(doc, 1, "Invoices")
-    # The file's own font; Times, which it only names; and a span's own words typed back.
     edits = [
         *(_replaced(span, span["text"].replace("14", "2")) for span in (delivery, made)),
         _replaced(invoices, invoices["text"]),
@@ -114,8 +106,7 @@ def test_an_export_counts_its_edits_by_whether_they_kept_their_font_and_names_ea
 def test_a_replace_the_page_couldnt_take_counts_as_it_was_drawn(
     app, browser, pdf_bytes, form, capsys, monkeypatch
 ):
-    """A field's value isn't drawn, so not counted; a font the page refuses is a substitute."""
-    monkeypatch.setattr(app.state, "pool", InProcess())  # so the worker's line is captured
+    monkeypatch.setattr(app.state, "pool", InProcess())
     mine = browser()
     filled = upload(mine, form).json()
     value = span_starting(filled, 0, "SSN")
@@ -137,7 +128,6 @@ def test_a_replace_the_page_couldnt_take_counts_as_it_was_drawn(
 
 
 def _letters_width(face: str, text: str) -> float:
-    """How wide `text`'s letters are in a face we ship, spaces aside, at a size of 1."""
     program = pymupdf.Font(fontbuffer=face_bytes(FACES[face]))
     return sum(program.text_length(ch, fontsize=1) for ch in text if not ch.isspace())
 
@@ -145,11 +135,7 @@ def _letters_width(face: str, text: str) -> float:
 def test_a_font_none_of_our_lists_name_is_logged_as_unlisted_never_by_its_name(
     app, browser, capsys, monkeypatch, tmp_path
 ):
-    """A font's name can say whose file it is: only a name we list ourselves is logged.
-
-    Its width list is Carlito's, so the face of its kind that draws is measured against it.
-    """
-    monkeypatch.setattr(app.state, "pool", InProcess())  # so the worker's line is captured
+    monkeypatch.setattr(app.state, "pool", InProcess())
     path = named_with_widths(
         str(tmp_path / "named.pdf"), "Carlito Regular", base_font=_UNLISTED
     )
@@ -176,12 +162,10 @@ def test_a_font_none_of_our_lists_name_is_logged_as_unlisted_never_by_its_name(
 
 
 def test_every_fidelity_has_a_tally_on_the_exports_line():
-    """One without would fail the export of the first edit that turned out so."""
     assert_equal(sorted(_TALLY_OF), sorted(get_args(Fidelity)), "the fidelities export counts")
 
 
 def test_the_health_check_logs_nothing(server, capsys):
-    """Docker asks every 30 s; a failing check shows in `docker ps` instead."""
     capsys.readouterr()
     server.get("/api/health")
     assert_equal(log_lines(capsys.readouterr().out), [], "lines for the health check")
@@ -190,11 +174,6 @@ def test_the_health_check_logs_nothing(server, capsys):
 def test_a_bug_logs_its_traceback_once_as_an_error_with_the_id_its_reply_carries(
     browser, capsys
 ):
-    """The 500 says nothing of it; the id in its reply finds its lines in the log.
-
-    A browser that raises what the app raises: a bug raised on past it, to be
-    logged again by the server without its request, fails the test.
-    """
     crashed = browser().get("/api/crash")
     assert_problem(crashed, "server_error", 500)
     assert_not_in("a bug nobody caught", crashed.text, "the body of a crash")
@@ -215,13 +194,11 @@ def test_a_bug_logs_its_traceback_once_as_an_error_with_the_id_its_reply_carries
 def test_nothing_logged_carries_a_document_its_words_or_its_owner(
     app, browser, pdf_bytes, capsys, monkeypatch
 ):
-    """Upload, edit, export: the log says what happened, never what was in it or whose."""
-    monkeypatch.setattr(app.state, "pool", InProcess())  # so the workers' lines are captured
+    monkeypatch.setattr(app.state, "pool", InProcess())
     mine = browser()
     capsys.readouterr()
     doc = upload(mine, pdf_bytes).json()
     delivery, made = span_starting(doc, 1, "Delivery"), span_starting(doc, 0, "Made")
-    # The file's own font, and Times, which it only names: a similar font's line too.
     edits = [_replaced(span, span["text"].replace("14", "2")) for span in (delivery, made)]
     rendered = mine.post(
         f"/api/documents/{doc['id']}/render", json={"edits": edits, "scale": 2, "regions": []}

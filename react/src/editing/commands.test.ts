@@ -69,7 +69,6 @@ describe("a shortcut pressed on a control", () => {
     passShortcut(enter);
     expect(isShortcutPress(enter)).toBe(false);
     expect(enter.continuePropagation).not.toHaveBeenCalled();
-    // A click with Cmd held is the control's own.
     expect(isShortcutPress(pressed({ pointerType: "mouse", metaKey: true }))).toBe(false);
   });
 });

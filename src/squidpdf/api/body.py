@@ -1,5 +1,3 @@
-"""A request's body: the size it states, and how much of one the server will read."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -20,8 +18,7 @@ _MAX_DIGITS = 18
 
 
 def declared_size(request: Request) -> int | None:
-    """The body's size as the request states it, or None; InvalidRequest if not a number."""
-    declared = request.headers.get("content-length")  # absent when the body is chunked
+    declared = request.headers.get("content-length")
     if declared is None:
         return None
     digits = declared.strip()
@@ -35,20 +32,10 @@ def declared_size(request: Request) -> int | None:
 
 @dataclass(frozen=True, slots=True, eq=False)
 class BodyLimit:
-    """Reads a request's body before its route does, and refuses one past MAX_BODY_BYTES.
-
-    A stated size is checked before any is read, and a chunked body, which states
-    none, is counted as it comes: a route that reads it whole would take any size.
-    """
-
-    app: ASGIApp  # guarded, all but the requests `streamed` answers
-    # The routes that read their own body as it streams, with their own limit (an upload, a
-    # font): theirs passes through unread. A route matches its method and path both.
+    app: ASGIApp
     streamed: tuple[BaseRoute, ...]
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        """Answer too large or a bad size; otherwise hand the app the body, read whole."""
-        # Not a request (the server starting, say), or one whose route reads its own body.
         passed_on = scope["type"] != "http" or any(
             route.matches(scope)[0] == Match.FULL for route in self.streamed
         )
@@ -59,7 +46,7 @@ class BodyLimit:
         language = language_of(request)
         try:
             declared = declared_size(request)
-        except InvalidRequest as problem:  # the size it states isn't a whole number
+        except InvalidRequest as problem:
             await response(problem, language)(scope, receive, send)
             return
         # Read as a module attribute, so a test can lower the limit.
@@ -67,7 +54,7 @@ class BodyLimit:
         too_large = declared is not None and declared > limit
         try:
             body = None if too_large else await _body_up_to(receive, limit)
-        except ClientDisconnect:  # the browser left mid-body: nobody to answer
+        except ClientDisconnect:
             return
         if body is None:
             await response(RequestTooLarge(), language)(scope, receive, send)
@@ -76,16 +63,13 @@ class BodyLimit:
 
 
 async def _body_up_to(receive: Receive, limit: int) -> bytes | None:
-    """The whole body, or None as soon as it passes `limit` bytes."""
     chunks: list[bytes] = []
     size = 0
     more = True
     while more:
         message = await receive()
-        # The browser left before sending it all.
         if message["type"] == "http.disconnect":
             raise ClientDisconnect
-        # .get: ASGI may leave out an empty body, and `more_body` once there's no more.
         chunk = message.get("body", b"")
         size += len(chunk)
         if size > limit:
@@ -96,11 +80,9 @@ async def _body_up_to(receive: Receive, limit: int) -> bytes | None:
 
 
 def _replaying(body: bytes, receive: Receive) -> Receive:
-    """A receive that hands the app `body` whole, then whatever comes after it."""
     handed = False
 
     async def replay() -> Message:
-        """The body first, as one message; after that, the browser's own messages."""
         nonlocal handed
         if handed:
             return await receive()

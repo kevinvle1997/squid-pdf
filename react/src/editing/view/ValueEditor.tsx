@@ -1,5 +1,3 @@
-// A date's or an amount's editor in the slip, offered beside the field, never instead of it (Rule 5): what's
-// chosen is written into the field, and before the pick each day the line can't take says why (Rule 1).
 import { CalendarDate, getWeeksInMonth } from "@internationalized/date";
 import {
   type FocusEvent,
@@ -54,7 +52,6 @@ import { ALT } from "./keys";
 import { useLeaveTyping } from "./leaveTyping";
 import styles from "./ValueEditor.module.css";
 
-// The control names the value's kind: the reader's word for it.
 const KIND = { date: "Date", amount: "Amount" } as const;
 
 // The weeks a month's days can span, in any calendar the reader's language starts its week in.
@@ -66,11 +63,9 @@ export function ValueEditor({ value, field }: { value: EditableValue; field: Ref
   const open = useEditorState((state) => spanDraftOf(state)?.valueEditorOpen ?? false);
   const coarse = useSyncExternalStore(onPointerChange, coarsePointer);
   const leave = useLeaveTyping();
-  // Leaving the editor for anywhere but the field ends the typing, as leaving the field does.
   const { focusWithinProps } = useFocusWithin({
     onBlurWithin: (event: FocusEvent) => {
       if (event.relatedTarget === field.current) return;
-      // On its way back to the field, from a choice or Escape.
       if (editor.store.get().focusTo !== null) return;
       leave(event);
     },
@@ -84,8 +79,7 @@ export function ValueEditor({ value, field }: { value: EditableValue; field: Ref
   );
 
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    // Undo and redo are the typing's, as in new text's slip: nothing is undone, the field's words out of sight least
-    // of all. The number field gives up its own undo for it.
+    // Undo and redo are the typing's: the number field gives up its own undo for it.
     if (isUndoOrRedo(event)) {
       event.preventDefault();
       return;
@@ -96,8 +90,6 @@ export function ValueEditor({ value, field }: { value: EditableValue; field: Ref
   }
 
   return (
-    // Undo and redo, from the calendar or the number field, do nothing, and Escape closes it: their other keys are
-    // their own.
     // biome-ignore lint/a11y/noStaticElementInteractions: it hears what its controls don't handle
     <div {...focusWithinProps} className={styles.editor} onKeyDown={onKeyDown}>
       <Disclosure
@@ -105,7 +97,6 @@ export function ValueEditor({ value, field }: { value: EditableValue; field: Ref
         onExpandedChange={(expanded) => (expanded ? openValueEditor(editor, value) : closeValueEditor(editor))}
         className={styles.disclosure}
       >
-        {/* The key is a date's, as a picker's is; a touch screen has none to hint at. */}
         {value.kind === "date" && !coarse ? (
           <Shortcut keys={`${ALT}↓`} placement="end">
             {control}
@@ -121,7 +112,6 @@ export function ValueEditor({ value, field }: { value: EditableValue; field: Ref
   );
 }
 
-/** The editor made for the value's kind, named by its control. */
 function EditorFor({ value, labelledBy }: { value: EditableValue; labelledBy: string }) {
   switch (value.kind) {
     case "date":
@@ -133,7 +123,6 @@ function EditorFor({ value, labelledBy }: { value: EditableValue; labelledBy: st
   }
 }
 
-/** The calendar, on the date's own day: each day whose date the line can't take marked, with why. */
 function DateEditor({ value, labelledBy }: { value: DateValue; labelledBy: string }) {
   const editor = useEditor();
   const text = useEditorState((state) => state.draft?.text ?? "");
@@ -152,19 +141,16 @@ function DateEditor({ value, labelledBy }: { value: DateValue; labelledBy: strin
     [editor, value, text, focused.year],
   );
   const { locale } = useLocale();
-  // The month's weeks fill six rows, as many as a month can take, so its height doesn't change with its weeks.
   const weeksShort = MOST_WEEKS - getWeeksInMonth(focused, locale);
 
   function focusOn(date: CalendarDate) {
     setFocused(date);
     const why = reasonsIn(date).get(date.day);
-    // A key's focus shows the day's reason; a press's leaves it to the press, which comes after.
     if (isFocusVisible) setShown(why === undefined ? null : date.day);
     if (why !== undefined) announce(editor, why);
   }
 
   function choose(date: CalendarDate) {
-    // A finger has no hover: its first tap on a marked day shows why, and a second chooses it.
     if (coarsePointer() && marked.has(date.day) && shown !== date.day) {
       setShown(date.day);
       return;
@@ -209,9 +195,6 @@ function DateEditor({ value, labelledBy }: { value: DateValue; labelledBy: strin
           )}
         </CalendarGridBody>
       </Days>
-      {/* A row of its own under the month: it covers no day and no button of the slip's. Every reason a day can
-          give is laid out in it, one shown, so it's as tall as the longest and nothing moves as one shows or the
-          month changes. Heard as focus reaches the day, so not read again. */}
       <div className={styles.reasons} aria-hidden="true" style={{ "--weeks-short": weeksShort }}>
         {[...new Set([...reserved, ...marked.values()])].map((why) => (
           <p key={why} className={styles.reason} data-shown={why === reason ? "" : undefined}>
@@ -223,10 +206,7 @@ function DateEditor({ value, labelledBy }: { value: DateValue; labelledBy: strin
   );
 }
 
-/**
- * The month's days, taking focus sent back into the open calendar: to its focused day, on the month the user stepped
- * to, which React Aria's calendar focuses once told it has focus.
- */
+/** React Aria's calendar focuses its focused day only once told it has focus. */
 function Days(props: CalendarGridProps) {
   const editor = useEditor();
   const sent = useFocusSent();
@@ -242,12 +222,10 @@ function Days(props: CalendarGridProps) {
   return <CalendarGrid ref={takeFocus} {...props} />;
 }
 
-/** A number field read the reader's way; what it writes keeps the page's. */
 function AmountEditor({ value, labelledBy }: { value: AmountValue; labelledBy: string }) {
   const editor = useEditor();
   const input = useRef<HTMLInputElement>(null);
   const sent = useFocusSent();
-  // Focus sent back into the open editor goes to the number field.
   const takeFocus = useCallback(
     (element: HTMLInputElement | null) => {
       input.current = element;
@@ -265,12 +243,10 @@ function AmountEditor({ value, labelledBy }: { value: AmountValue; labelledBy: s
       autoFocus
       className={styles.amountField}
       onChange={(amount) => {
-        // Emptied: nothing to write, and the page's amount stays.
         if (Number.isNaN(amount)) return;
         chooseAmount(editor, value, { amount, leaving: document.activeElement !== input.current });
       }}
-      // Enter gives the amount as it goes down, if it changed; as it comes up, focus goes back to the field
-      // either way. The number field hands its own handlers the plain event, which goes on as it is.
+      // Enter gives the amount as it goes down and sends focus back as it comes up: the number field hands handlers the plain event.
       onKeyUp={(event) => {
         if (event.key === "Enter") closeValueEditor(editor);
       }}
@@ -280,12 +256,10 @@ function AmountEditor({ value, labelledBy }: { value: AmountValue; labelledBy: s
   );
 }
 
-/** Whether focus is sent back into the open value's editor from its field: opening, it takes focus as it's drawn. */
 function useFocusSent(): boolean {
   return useEditorState((state) => state.focusTo !== null && "valueEditor" in state.focusTo);
 }
 
-/** Which way the control's editor goes: down to open it, up to close it. */
 function Chevron({ open }: { open: boolean }) {
   return (
     <svg className={styles.chevron} width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
@@ -301,7 +275,6 @@ function Chevron({ open }: { open: boolean }) {
   );
 }
 
-/** The calendar's step to the month before or after. */
 function Arrow({ towards }: { towards: "previous" | "next" }) {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">

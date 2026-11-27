@@ -1,10 +1,3 @@
-"""A document font's look-alike: the face we ship we'd use when its own can't be.
-
-A PDF embeds only the letters it used, so whether the original face can draw an edit
-depends on what's typed. Where we can, the look-alike's letters are exactly as wide as the
-original's, so nothing on the page moves.
-"""
-
 from __future__ import annotations
 
 import io
@@ -15,39 +8,28 @@ from squidpdf.core.fonts.catalog import CATALOG, FACES
 from squidpdf.core.fonts.names import bare_name, style_of
 from squidpdf.core.types import Category, Face, FontDescriptor, LookAlike, Style
 
-# Bits of a PDF font description's /Flags.
 _FIXED_WIDTH = 1 << 0
 _SERIF = 1 << 1
 
-# Where the OS/2 table says a font's kind, by byte: sFamilyClass's high byte, then PANOSE, ten
-# bytes from 32, whose digits mean this only for text faces.
+# OS/2 offsets: sFamilyClass's high byte, then PANOSE's ten bytes from 32 (text faces only).
 _FAMILY_CLASS = 30
 _PANOSE_FAMILY_TYPE = 32
 _PANOSE_SERIF_STYLE = 33
 _PANOSE_PROPORTION = 35
 _PANOSE_END = 42
-_PANOSE_TEXT_FACE = 2  # bFamilyType "Latin Text"
-_PANOSE_MONOSPACED = 9  # bProportion
-_PANOSE_SERIFS = range(
-    2, 11
-)  # bSerifStyle: cove, square, thin, triangle, exaggerated and the rest
-_PANOSE_SANS = range(
-    11, 16
-)  # bSerifStyle: normal, obtuse and perpendicular sans, flared, rounded
-# sFamilyClass's high byte, for a file whose PANOSE is left blank.
-_SERIF_CLASSES = range(
-    1, 8
-)  # oldstyle, transitional, modern, clarendon, slab and freeform serifs
+_PANOSE_TEXT_FACE = 2
+_PANOSE_MONOSPACED = 9
+_PANOSE_SERIFS = range(2, 11)
+_PANOSE_SANS = range(11, 16)
+_SERIF_CLASSES = range(1, 8)
 _SANS_CLASS = 8
 
-# A style a family lacks falls back one step at a time.
 _NEAREST_STYLE: dict[Style, Style] = {
     "bold-italic": "bold",
     "italic": "regular",
     "bold": "regular",
 }
 
-# The family that draws a letter a look-alike lacks, by the look-alike's kind of font.
 _BROADEST_FAMILY: dict[Category, str] = {
     "sans": "Noto Sans",
     "serif": "Noto Serif",
@@ -55,7 +37,6 @@ _BROADEST_FAMILY: dict[Category, str] = {
     "handwriting": "Noto Sans",
 }
 
-# A document font we know nothing about gets a family of its kind; letter widths will differ.
 _PLAIN_FAMILY: dict[Category, str] = {
     "sans": "Liberation Sans",
     "serif": "Liberation Serif",
@@ -64,7 +45,6 @@ _PLAIN_FAMILY: dict[Category, str] = {
 
 
 def _by_family() -> dict[str, dict[Style, Face]]:
-    """Each family's faces by style, under its bare name and those of the fonts it matches."""
     families: dict[str, dict[Style, Face]] = {}
     for face in CATALOG:
         for name in (face.family, *face.same_widths_as):
@@ -73,7 +53,6 @@ def _by_family() -> dict[str, dict[Style, Face]]:
 
 
 def _pinned() -> dict[str, Face]:
-    """Document fonts only one face is the look-alike for, like CMBX10, by bare name."""
     faces_by_name: dict[str, list[Face]] = {}
     for face in CATALOG:
         for name in face.same_widths_as:
@@ -88,52 +67,36 @@ _PINNED = _pinned()
 def look_alike(
     font: str, descriptor: FontDescriptor | None = None, *, file_kind: Category | None = None
 ) -> LookAlike:
-    """A document font's look-alike, in its style: the face we ship we'd use for it.
-
-    A face we ship by its exact name is itself, as is one a document font's name pins (CMBX10).
-    A known family gets the face with the same letter widths; anything else a plain face of
-    its kind, by the PDF's `descriptor`, then its file's `file_kind`, never by its name.
-    """
-    # Asked for by name, as an insert does.
     if font in FACES:
         return LookAlike(FACES[font], same_widths=True)
-    # A name that says the cut as well as the family, as TeX's do: that one face.
     pinned_face = _PINNED.get(bare_name(font))
     if pinned_face is not None:
         return LookAlike(pinned_face, same_widths=True)
 
     style, usual_cut = style_of(font, descriptor)
-    family = _BY_FAMILY.get(bare_name(font))  # None: a family we don't ship
-    # A family we know: the same letter widths, if it's a cut we have.
+    family = _BY_FAMILY.get(bare_name(font))
     if family is not None:
         face = _nearest_face(family, style)
         return LookAlike(face, same_widths=usual_cut and face.style == style)
 
-    # Unknown: a plain face of its kind.
     category = _category_of(descriptor, file_kind)
     face = _nearest_face(_BY_FAMILY[bare_name(_PLAIN_FAMILY[category])], style)
     return LookAlike(face, same_widths=False)
 
 
 def broadest(face: Face) -> Face:
-    """The face with the most letters, of the same kind and style as `face`."""
     family = _BY_FAMILY[bare_name(_BROADEST_FAMILY[face.category])]
     return _nearest_face(family, face.style)
 
 
 def _nearest_face(family: dict[Style, Face], style: Style) -> Face:
-    """The family's face in `style`, or the nearest style it has."""
     while style not in family:
         style = _NEAREST_STYLE[style]
     return family[style]
 
 
 def kind_in_file(file: bytes) -> Category | None:
-    """Serif, fixed width or sans, as a font file's own OS/2 table says; None when it doesn't.
-
-    Many PDFs set only /Flags' Nonsymbolic bit, whatever the font looks like, so a
-    serif read as sans. The file's PANOSE and family class are its maker's word.
-    """
+    """Many PDFs set only /Flags' Nonsymbolic bit, so a serif reads as sans: OS/2 is truer."""
     try:
         os2 = TTFont(io.BytesIO(file), lazy=True).getTableData("OS/2")
     except Exception:  # noqa: BLE001 (fontTools can fail in many ways on a font, and CFF has no OS/2)
@@ -143,7 +106,6 @@ def kind_in_file(file: bytes) -> Category | None:
         return None
     text_face = os2[_PANOSE_FAMILY_TYPE] == _PANOSE_TEXT_FACE
     serif_style = os2[_PANOSE_SERIF_STYLE]
-    # Every letter as wide as the next.
     if text_face and os2[_PANOSE_PROPORTION] == _PANOSE_MONOSPACED:
         return "mono"
     if text_face and serif_style in _PANOSE_SERIFS:
@@ -155,20 +117,15 @@ def kind_in_file(file: bytes) -> Category | None:
         return "serif"
     if family_class == _SANS_CLASS:
         return "sans"
-    # PANOSE and class both left blank, as many free fonts leave them.
     return None
 
 
 def _category_of(descriptor: FontDescriptor | None, file_kind: Category | None) -> Category:
-    """Serif, fixed width or sans, as the PDF or the font file describes it; sans otherwise."""
     flags = 0 if descriptor is None else descriptor.flags
-    # Every letter as wide as the next.
     if flags & _FIXED_WIDTH:
         return "mono"
-    # Serif set, fixed width not.
     if flags & _SERIF:
         return "serif"
-    # The PDF says neither, but the font's own file can.
     if file_kind is not None:
         return file_kind
     # Nothing to go on: most document text is sans.

@@ -1,10 +1,3 @@
-"""The fonts we ship: every face, named and filed, and its file.
-
-Data about files in `squidpdf/fonts/`, not tuning: where each came from and its
-version is `fonts/README.md`. Which one is a document font's look-alike is
-`look_alike.py`'s, and which one draws in its place, `substitute.py`'s.
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -13,15 +6,13 @@ from importlib import resources
 
 from squidpdf.core.types import Category, Face, Style
 
-_OFL = "OFL-1.1"  # the SIL Open Font License, which most faces we ship are under
-_GUST = "GUST-Font-License"  # Latin Modern's: the LaTeX Project Public License, plus a request
+_OFL = "OFL-1.1"
+_GUST = "GUST-Font-License"
 # GNU FreeFont's: a document that embeds it stays the user's, under no licence of ours.
 _FREEFONT = "GPL-3.0-or-later WITH Font-exception-2.0"
 
-# Every style: the faces a family has unless it lists fewer.
 _ALL_STYLES: tuple[Style, ...] = ("regular", "bold", "italic", "bold-italic")
 
-# How each style is written in a face's name; its file's name drops the spaces.
 _STYLE_NAMES: dict[Style, str] = {
     "regular": "Regular",
     "bold": "Bold",
@@ -37,7 +28,6 @@ def _family_faces(
     same_widths_as: tuple[str, ...] = (),
     styles: tuple[Style, ...] = _ALL_STYLES,
 ) -> tuple[Face, ...]:
-    """Every face of one family, named and filed the same way."""
     file_stem = family.replace(" ", "")
     return tuple(
         Face(
@@ -55,12 +45,10 @@ def _family_faces(
 
 @dataclass(frozen=True, slots=True)
 class _Cut:
-    """One face of a family whose files aren't named our way, as its own files say."""
-
     style: Style
-    called: str  # the style as the font's own name says it: "Oblique", "10 Bold"
+    called: str
     file: str
-    same_widths_as: tuple[str, ...] = ()  # document fonts that are this cut, like CMBX10
+    same_widths_as: tuple[str, ...] = ()
 
 
 def _cut_faces(
@@ -71,7 +59,6 @@ def _cut_faces(
     cuts: tuple[_Cut, ...],
     same_widths_as: tuple[str, ...] = (),
 ) -> tuple[Face, ...]:
-    """A family's faces, each named and filed as its source ships it."""
     return tuple(
         Face(
             name=f"{family} {cut.called}",
@@ -86,9 +73,7 @@ def _cut_faces(
     )
 
 
-# Every face we ship. Where it came from and its version: `fonts/README.md`.
 CATALOG: tuple[Face, ...] = (
-    # Same letter widths as the fonts documents most often name but don't embed.
     *_family_faces(
         "Liberation Sans",
         "sans",
@@ -122,10 +107,8 @@ CATALOG: tuple[Face, ...] = (
     ),
     *_family_faces("Carlito", "sans", same_widths_as=("Calibri",)),
     *_family_faces("Caladea", "serif", same_widths_as=("Cambria",)),
-    # The broadest: letters a look-alike lacks (Greek, Cyrillic, more accents) draw in these.
     *_family_faces("Noto Sans", "sans"),
     *_family_faces("Noto Serif", "serif"),
-    # The typeface a document names, so its widths match. Offered for new text too.
     *_family_faces("Poppins", "sans"),
     *_family_faces("Open Sans", "sans"),
     *_family_faces("Montserrat", "sans"),
@@ -168,8 +151,7 @@ CATALOG: tuple[Face, ...] = (
             ),
         ),
     ),
-    # LaTeX's Computer Modern, redrawn with the same widths. TeX names a font
-    # by its cut and size (CMBX10: bold, 10 pt design), so each name pins one face.
+    # TeX names a font by cut and size (CMBX10: bold, 10 pt design), so each name pins one face.
     *_cut_faces(
         "Latin Modern Roman 10",
         "serif",
@@ -266,7 +248,6 @@ CATALOG: tuple[Face, ...] = (
             ),
         ),
     ),
-    # More choice for new text.
     *_family_faces("Inter", "sans"),
     *_family_faces("Roboto", "sans"),
     *_family_faces("Lato", "sans"),
@@ -277,16 +258,13 @@ CATALOG: tuple[Face, ...] = (
     *_family_faces("Great Vibes", "handwriting", styles=("regular",)),
 )
 
-# Each face by the name an insert asks for it by.
 FACES: dict[str, Face] = {face.name: face for face in CATALOG}
 
 
 @cache
 def face_bytes(face: Face) -> bytes:
-    """The face's font file, as shipped in the package, read once per process."""
     return face_bytes_anew(face)
 
 
 def face_bytes_anew(face: Face) -> bytes:
-    """The face's font file, read from the package anew, for a reader that keeps nothing."""
     return resources.files("squidpdf").joinpath("fonts", face.file).read_bytes()

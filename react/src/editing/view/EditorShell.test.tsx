@@ -40,7 +40,6 @@ import { EMPTY_HISTORY, historyReducer } from "../history";
 import { fill } from "../words";
 import { EditorShell } from "./EditorShell";
 
-// What's persisted in this browser is the App's to test, in the browser's real storage; here, what's asked of it.
 vi.mock(import("../../documents/localPersistence"), async (original) => ({
   ...(await original()),
   persistFile: vi.fn(async () => undefined),
@@ -62,10 +61,8 @@ vi.mock(import("../../api/client"), async (original) => ({
 const span = aSpan({ id: "s1", text: "was here", size: 20, bbox: { x0: 72, y0: 100, x1: 152, y1: 124 } });
 const DOC = aDoc({ spans: [span], fonts: [aFont("Times-Roman")] });
 
-// Arial only named: a similar font stands in, and its letters are the ones the page lists.
 const LETTERS = halfWideGlyphs("abcdefghijklmnopqrstuvwxyz ");
 const NAMED = aFont("Arial", { substitute: "Liberation Sans Regular", glyphs: LETTERS });
-// Arial is only named in the file: a similar font draws any edit of it.
 const ARIAL_SPAN = aSpan({
   ...span,
   font: "Arial",
@@ -82,7 +79,6 @@ const FONT_FILE = new File(["a font"], "arial.ttf", { type: "font/ttf" });
 const MISMATCH = "This isn't the font the document uses. Its letters are a different width.";
 
 beforeEach(() => {
-  // The server's render never answers unless a test gives it a reply.
   vi.mocked(renderStrips)
     .mockReset()
     .mockReturnValue(new Promise<Render>(() => undefined));
@@ -90,7 +86,6 @@ beforeEach(() => {
   vi.mocked(fontList).mockReset().mockResolvedValue(aFontList());
 });
 
-/** The editor on `doc`, opened from a file named `name`, restoring `persisted` when given. */
 function openEditor({
   doc = DOC,
   name = "contract.pdf",
@@ -107,7 +102,6 @@ function openEditor({
   );
 }
 
-/** Open the field on "was here" and type `text` in it. */
 async function typeInSpan(screen: Awaited<ReturnType<typeof render>>, text: string) {
   const mark = screen.getByRole("button", { name: "was here" });
   await expect.element(mark).toBeInTheDocument();
@@ -116,7 +110,6 @@ async function typeInSpan(screen: Awaited<ReturnType<typeof render>>, text: stri
   await screen.getByRole("textbox").fill(text);
 }
 
-/** Change "was here" to `text`, kept with Enter. */
 async function changeSpan(screen: Awaited<ReturnType<typeof render>>, text: string) {
   await typeInSpan(screen, text);
   await userEvent.keyboard("{Enter}");
@@ -150,7 +143,6 @@ describe("the editor", () => {
 
   test("a signed document says so under the bar as it opens, heard once, and it stays there past the first edit", async () => {
     const said = "This PDF is signed. Any change breaks the signature, and so does downloading it from here.";
-    // Its font has every letter typed, so the signature's sentence is all the field hears.
     const fonts = [aFont("Times-Roman", { glyphs: LETTERS })];
     const signed = aDoc({ spans: [span], fonts, signed: true, notices: [aDocumentNotice(said, "signed_file")] });
     const screen = await openEditor({ doc: signed });
@@ -174,7 +166,6 @@ describe("the editor", () => {
   test("a signed document persisted before it said so, once read again, says so under the bar, heard once", async () => {
     const said = "This PDF is signed. Any change breaks the signature, and so does downloading it from here.";
     const signed = aDoc({ spans: [span], signed: true, notices: [aDocumentNotice(said, "signed_file")] });
-    // Persisted by an earlier build: no word of a signature, and no sentence for one.
     const stale = { ...signed, notices: [], sentences: { ...SENTENCES } };
     Reflect.deleteProperty(stale, "signed");
     Reflect.deleteProperty(stale.sentences, "edit_breaks_signature");
@@ -210,7 +201,6 @@ describe("finding your way", () => {
     await expect.element(bar.getByText("2 of 2")).toBeVisible();
     await bar.getByRole("button", { name: "Previous place" }).click();
     await expect.element(bar.getByText("1 of 2")).toBeVisible();
-    // The place gone to is ringed, apart from the rest found.
     const ringed = [...document.querySelectorAll("[data-found]")].filter(
       (found) => getComputedStyle(found).outlineStyle === "solid",
     );
@@ -327,16 +317,13 @@ describe("the bar", () => {
     const unreachable = "We can't work on files right now. Try again in a few minutes.";
     vi.mocked(stillThere).mockRejectedValueOnce(new ProblemError(aProblem(503, unreachable)));
     const screen = await openEditor();
-    // The page image fails to load here, as it does once the server has lost the document.
     await expect.element(screen.getByRole("banner").getByText(unreachable)).toBeVisible();
     await expect.element(screen.getByRole("status")).toHaveTextContent(unreachable);
-    // Shown once, in the bar: the status only says it.
     const shown = screen
       .getByText(unreachable)
       .elements()
       .filter((element) => !element.closest("[role=status]"));
     expect(shown).toHaveLength(1);
-    // The sentence wraps; the bar's buttons keep their one line.
     const [wide, tall] = [window.innerWidth, window.innerHeight];
     await page.viewport(900, 700);
     const exportButton = screen.getByRole("button", { name: /Export/ }).element();
@@ -351,7 +338,6 @@ describe("the bar", () => {
     expect(bar.getByText("will use a similar font", { exact: false }).element().textContent).toBe(
       "Edits in 1 place will use a similar font",
     );
-    // The bar's own warning colour, which reads on its ink, on the whole sentence, as Find's count marks its own.
     const warn = bar.element().appendChild(document.createElement("span"));
     warn.style.color = "var(--warn)";
     const warned = bar.getByText("Edits in 1 place will use a similar font", { exact: true });
@@ -371,7 +357,6 @@ describe("the bar", () => {
     await screen.getByRole("button", { name: "Delete page 2", exact: true }).click();
     await expect.element(forecast).toBeVisible();
     await changeSpan(screen, "was there");
-    // The delete counts among the changes.
     await expect.element(bar.getByText("2 changes", { exact: false })).toBeVisible();
     await expect.element(forecast).not.toBeInTheDocument();
   });
@@ -388,7 +373,6 @@ describe("the bar", () => {
     await expect.element(list).not.toBeInTheDocument();
     await expect.element(count).toHaveFocus();
 
-    // After a change, the warned part of the count opens the changes' own.
     await changeSpan(screen, "was there");
     await screen.getByRole("button", { name: /in a similar font$/ }).click();
     await expect.element(screen.getByRole("dialog").getByText("Arial", { exact: true })).toBeVisible();
@@ -416,7 +400,6 @@ describe("the bar", () => {
     await eye.click();
     await expect.element(screen.getByRole("dialog")).not.toBeInTheDocument();
     await expect.poll(marked).toBe(1);
-    // The count says its places are shown, and opens the list again to stop showing them.
     const count = screen.getByRole("button", { name: "Edits in 1 place will use a similar font (shown on the page)" });
     await count.click();
     const shown = screen.getByRole("button", { name: "Show the places in Arial on the page" });
@@ -456,10 +439,7 @@ describe("export, started on the way to pressing it", () => {
     vi.mocked(exportPdf).mockReset().mockResolvedValue(PDF);
   });
 
-  /**
-   * The editor, the pointer moved onto the file's name first: a test before may have left it where Export is
-   * drawn now, and Chrome hovers what's drawn under a still pointer when it likes.
-   */
+  /** Moved onto the file's name first: Chrome hovers what's drawn under a still pointer, which may be where Export is now. */
   async function drawn() {
     const screen = await openEditor();
     await screen.getByText("contract.pdf").hover();
@@ -482,12 +462,10 @@ describe("export, started on the way to pressing it", () => {
   test("the pointer passing over Export starts nothing", async () => {
     const screen = await drawn();
     await changeSpan(screen, "is here");
-    // In and out within one task: a test's own pointer moves take longer than passing over does.
     const exportButton = screen.getByRole("button", { name: /^Export/ }).element();
     const pointer = { bubbles: true, pointerType: "mouse" };
     exportButton.dispatchEvent(new PointerEvent("pointerover", { ...pointer, relatedTarget: document.body }));
     exportButton.dispatchEvent(new PointerEvent("pointerout", { ...pointer, relatedTarget: document.body }));
-    // Twice as long as the pointer must rest on Export to start one.
     await new Promise((resolve) => setTimeout(resolve, EXPORT_INTENT_MS * 2));
     expect(exportPdf).not.toHaveBeenCalled();
   });
@@ -528,7 +506,6 @@ describe("an emptied span", () => {
   test("the chip says it can't be left empty, and Enter keeps the field open", async () => {
     const screen = await openEditor();
     await changeSpan(screen, "");
-    // Shown in the chip, the first on the page, and heard through the status.
     await expect.element(screen.getByText(SENTENCES.empty).first()).toBeVisible();
     await expect.element(screen.getByRole("status")).toHaveTextContent(SENTENCES.empty);
     await expect.element(screen.getByRole("textbox")).toHaveFocus();
@@ -566,7 +543,6 @@ describe("redaction", () => {
     const said = "This PDF is signed. Any change breaks the signature, and so does downloading it from here.";
     const signed = aDoc({ spans: [span], signed: true, notices: [aDocumentNotice(said, "signed_file")] });
     const screen = await openEditor({ doc: signed });
-    // The first is the line under the bar; the live region, heard as it opens, comes after.
     const line = screen.getByText(said, { exact: true }).first();
     await expect.element(line).toBeVisible();
     const mark = screen.getByRole("button", { name: "was here" });
@@ -580,11 +556,9 @@ describe("redaction", () => {
     await expect.element(line).toBeVisible();
   });
 
-  // Its font's widths, which say where in the line each run of words sits.
   const MEASURED = aDoc({ spans: [span], fonts: [aFont("Times-Roman", { glyphs: LETTERS })] });
   const HERE_REDACTED = `was here ${fill(SENTENCES.redacted, { text: "here" })}`;
 
-  /** Open the field on "was here" and Ctrl+Backspace over "he" in it: "here" is redacted. */
   async function redactHere(screen: Awaited<ReturnType<typeof render>>) {
     const mark = screen.getByRole("button", { name: "was here" });
     await expect.element(mark).toBeInTheDocument();
@@ -607,11 +581,9 @@ describe("redaction", () => {
 
     await expect.element(screen.getByRole("status")).toHaveTextContent(fill(SENTENCES.redacted, { text: "here" }));
     expect(lastRendered()).toEqual([{ kind: "redact", span_id: "s1", range: [4, 8] }]);
-    // Only the word is boxed: the rest of the line still reads.
     const [words] = document.querySelectorAll("[class*='redactedRun']");
     expect(widthOf(words)).toBeGreaterThan(0);
     expect(widthOf(words)).toBeLessThan(widthOf(redacted.element()));
-    // Its change line stays whole while it has focus, as a redaction's does: no fainter than a mark may be.
     await expect.element(redacted).toHaveAttribute("data-focus-visible");
     expect(getComputedStyle(redacted.element(), "::after").opacity).toBe("1");
   });
@@ -623,7 +595,6 @@ describe("redaction", () => {
     await userEvent.keyboard("{Enter}");
     await expect.element(field).toHaveFocus();
     await expect.element(field).toHaveAccessibleDescription(fill(SENTENCES.redacted, { text: "here" }));
-    // Over the field's own white, as the field is over the page: drawn after it, at its height.
     const [words] = document.querySelectorAll("[class*='redactedRun']");
     const zIndexOf = (element: Element | undefined) => (element === undefined ? "" : getComputedStyle(element).zIndex);
     expect(zIndexOf(words)).toBe(zIndexOf(field.element()));
@@ -664,10 +635,8 @@ describe("redaction", () => {
     const { redacted } = await redactHere(screen);
 
     await expect.element(redacted).toHaveAttribute("data-focus-visible");
-    // The boxes take the warning's wash once the server says the words are still there.
     await expect.poll(() => document.querySelector("[data-unredacted]")).not.toBeNull();
     expect(getComputedStyle(redacted.element(), "::after").backgroundColor).toBe(colorOf("--mark-warn"));
-    // The run's box too: no blue edge on it, focused or not.
     const run = document.querySelector("[data-unredacted]") as Element;
     expect(getComputedStyle(run).boxShadow).toContain(colorOf("--mark-warn"));
     expect(getComputedStyle(run).boxShadow).not.toContain(colorOf("--mark-change"));
@@ -682,7 +651,6 @@ describe("redaction", () => {
     const { redacted } = await redactHere(screen);
 
     const run = () => document.querySelector("[class*='redactedRun']")?.getBoundingClientRect();
-    // Taller than wide, under the line: where the server put it, not across the line.
     await expect.poll(() => (run()?.top ?? 0) > redacted.element().getBoundingClientRect().bottom).toBe(true);
     expect((run()?.height ?? 0) > (run()?.width ?? 0)).toBe(true);
   });
@@ -727,7 +695,6 @@ describe("redaction", () => {
   });
 
   test("what the erase did to the rest of the line shows under the bar as soon as it's drawn, and is heard", async () => {
-    // In the server's words: it says where, so two on two pages are two lines.
     const moved = "Redacting “here” on page 1 moved the rest of its line, so it won't look quite as it did.";
     vi.mocked(renderStrips).mockResolvedValue(
       aReply({
@@ -771,7 +738,6 @@ describe("redaction", () => {
     const first = screen.getByRole("status").element().firstElementChild;
     selectIn(field.element(), 5, 8);
     await userEvent.keyboard("{Control>}{Backspace}{/Control}");
-    // Said again: a new announcement, which a screen reader hears though its words are the same.
     await expect.poll(() => screen.getByRole("status").element().firstElementChild).not.toBe(first);
     await expect.element(field).toHaveValue("was here");
   });
@@ -876,7 +842,6 @@ describe("leaving the page", () => {
 
 describe("undo and redo", () => {
   test("are heard, the same words again too, and bring their span into view while focus stays", async () => {
-    // The span is on the third page, well below the first screen.
     const far = aSpan({ ...span, page: 2 });
     const doc = aDoc({ spans: [far], fonts: [aFont("Times-Roman")], pages: [A4, A4, A4] });
     const screen = await openEditor({ doc });
@@ -914,7 +879,6 @@ describe("undo and redo", () => {
   test("on a change's margin note, Cmd+Shift+Z sends focus to its span as the note goes", async () => {
     const screen = await openEditor();
     await changeSpan(screen, "is here");
-    // Typed back to the original, the span has no note; undone, it has again.
     await userEvent.keyboard("{Enter}");
     await screen.getByRole("textbox").fill("was here");
     await userEvent.keyboard("{Enter}");
@@ -948,7 +912,6 @@ describe("undo and redo", () => {
     const [wide, tall] = [window.innerWidth, window.innerHeight];
     await page.viewport(390, 844);
     try {
-      // A similar font draws it, so the bar counts it, a row of its own here.
       const screen = await openEditor({ doc: { ...ARIAL_DOC, pages: [A4, A4] } });
       await expect.element(screen.getByRole("button", { name: "was here" })).toBeInTheDocument();
       for (let times = 0; times < 4; times++) await screen.getByRole("button", { name: "Zoom in" }).click();
@@ -961,7 +924,6 @@ describe("undo and redo", () => {
 
       const mark = screen.getByRole("button", { name: "was here" });
       await expect.element(mark).toHaveFocus();
-      // What's held at the top over the pages: the bar, its rows wrapped, and the page list under it.
       const foot = screen.getByRole("banner").element().parentElement?.getBoundingClientRect().bottom ?? Infinity;
       await expect.poll(() => mark.element().getBoundingClientRect().top).toBeGreaterThanOrEqual(foot);
     } finally {
@@ -996,7 +958,6 @@ describe("the change list under the page, on a phone", () => {
 async function attachThroughFonts(screen: Awaited<ReturnType<typeof render>>, file = FONT_FILE) {
   await screen.getByRole("button", { name: "Fonts" }).click();
   await expect.element(screen.getByRole("button", { name: "Use your copy of Arial" })).toBeVisible();
-  // FileTrigger's input sits beside its button, unlabelled: the row's one file input.
   const chooser = screen.getByRole("dialog").element().querySelector("input[type=file]");
   if (!(chooser instanceof HTMLInputElement)) throw new Error("no file input in the fonts list");
   await userEvent.upload(chooser, file);
@@ -1013,7 +974,6 @@ describe("the user's own copy of a font", () => {
   });
 
   test("shares the chip with why an edit won't match, side by side, neither over the other", async () => {
-    // The file's own Times draws it, turned on the page, and has no Y: typed, a similar font draws the line.
     const turned = aSpan({ ...span, fidelity: "approximate", why: { code: "turned_text", params: {} } });
     const own = aDoc({ spans: [turned], fonts: [aFont("Times-Roman", { glyphs: LETTERS })] });
     const screen = await openEditor({ doc: own, name: "letter.pdf" });
@@ -1028,7 +988,6 @@ describe("the user's own copy of a font", () => {
     const pressed = offer.element().getBoundingClientRect();
     const apart = pressed.left >= sentence.right || pressed.top >= sentence.bottom;
     expect(apart).toBe(true);
-    // On the page, not past its edge: the offer stays where a pointer can reach it.
     const sheet = screen.getByRole("region", { name: "Page 1" }).element().getBoundingClientRect();
     expect(pressed.right).toBeLessThanOrEqual(sheet.right);
   });
@@ -1044,7 +1003,7 @@ describe("the user's own copy of a font", () => {
     entry.mockReturnValue({ isFile: true } as FileSystemEntry);
     const dropped = new DataTransfer();
     dropped.items.add(FONT_FILE);
-    dropped.effectAllowed = "copy"; // as a file dragged from the desktop allows
+    dropped.effectAllowed = "copy";
     for (const type of ["dragenter", "dragover", "drop"]) {
       field.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: dropped }));
     }
@@ -1060,7 +1019,7 @@ describe("the user's own copy of a font", () => {
     const field = screen.getByRole("textbox").element();
     const dragged = new DataTransfer();
     dragged.setData("text/plain", "there");
-    dragged.effectAllowed = "copyMove"; // as text dragged from a page allows
+    dragged.effectAllowed = "copyMove";
     const events = ["dragenter", "dragover", "drop"].map(
       (type) => new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: dragged }),
     );
@@ -1092,14 +1051,12 @@ describe("the user's own copy of a font", () => {
 
     expect(putFont).toHaveBeenCalledWith(ARIAL_DOC.id, "Arial", FONT_FILE);
     await expect.element(screen.getByRole("button", { name: "Remove your copy of Arial" })).toBeVisible();
-    // The button pressed is gone: focus goes to the one in its place, never to the page's body.
     await expect.element(screen.getByRole("button", { name: "Remove your copy of Arial" })).toHaveFocus();
     await expect.element(screen.getByRole("alert")).not.toBeInTheDocument();
   });
 
   test("attached, the field draws in it at once, until a letter it lacks is typed", async () => {
     vi.mocked(putFont).mockResolvedValue(USERS_COPY);
-    // A real font file, so the browser can read it: one of ours, standing in for the user's Arial.
     const bytes = await (await fetch(SOME_FONT)).arrayBuffer();
     const screen = await openEditor({ doc: ARIAL_DOC, name: "letter.pdf" });
     await attachThroughFonts(screen, new File([bytes], "arial.ttf", { type: "font/ttf" }));
@@ -1109,7 +1066,6 @@ describe("the user's own copy of a font", () => {
     await typeInSpan(screen, "was Yes");
     const field = screen.getByRole("textbox").element();
     expect(getComputedStyle(field).fontFamily).toContain("preview own Arial");
-    // Your copy has no é: the server draws the line in the look-alike, so the preview does too.
     await screen.getByRole("textbox").fill("was Yesé");
     expect(getComputedStyle(field).fontFamily).toContain("preview Liberation Serif Regular");
   });
@@ -1158,7 +1114,6 @@ describe("a date's control in the field's slip", () => {
     }
     entry.mockRestore();
 
-    // Judged again, the user's copy draws it: the field is still open, and its date still has its control.
     await expect.element(screen.getByText("Arial", { exact: true })).toBeVisible();
     await expect.element(screen.getByRole("textbox")).toHaveFocus();
     await expect.element(control).toBeVisible();
@@ -1184,8 +1139,6 @@ describe("a date's control in the field's slip", () => {
     await expect.element(mark).toBeInTheDocument();
     mark.element().focus();
     await userEvent.keyboard("{Enter}");
-    // Typed before the editor opens, so the browser has the field's own typing to undo: emptied, then the line put
-    // in at once, as a paste does, so one undo of the browser's would take the value away and close its editor.
     const field = screen.getByRole("textbox", { name: `Change “${words}”` });
     await userEvent.keyboard("{Backspace}");
     await expect.element(field).toHaveValue("");
@@ -1209,7 +1162,6 @@ describe("a date's control in the field's slip", () => {
   });
 });
 
-/** The slip over or under the field, settled once it's placed and its arrival has run. */
 async function settledSlip() {
   await new Promise(requestAnimationFrame);
   await new Promise(requestAnimationFrame);
@@ -1217,21 +1169,18 @@ async function settledSlip() {
   return document.querySelector("[data-slip]")?.getBoundingClientRect() ?? new DOMRect();
 }
 
-/** Where what's held at the top over the pages ends: the bar, its rows wrapped, the page list, and the lines under it. */
 function stickyFootOf(screen: Awaited<ReturnType<typeof render>>) {
   const top = screen.getByRole("banner").element().parentElement;
   if (top === null) return Infinity;
   return Math.max(...[top, ...top.children].map((box) => box.getBoundingClientRect().bottom));
 }
 
-/** Where the window ends under `slip`: at the zoom control's top where it lies under it, else at its foot. */
 function windowFootUnder(slip: DOMRect, screen: Awaited<ReturnType<typeof render>>) {
   const foot = window.visualViewport?.height ?? window.innerHeight;
   const zoom = screen.getByRole("group", { name: "Zoom" }).element().getBoundingClientRect();
   return slip.left < zoom.right && slip.right > zoom.left ? Math.min(foot, zoom.top) : foot;
 }
 
-/** Runs `run` in a window `width` by `height`, then gives the window back its size. */
 async function inWindow(width: number, height: number, run: () => Promise<void>) {
   const [wide, tall] = [window.innerWidth, window.innerHeight];
   await page.viewport(width, height);
@@ -1242,12 +1191,10 @@ async function inWindow(width: number, height: number, run: () => Promise<void>)
   }
 }
 
-/** Scrolls the window so `element`'s foot is `y` down it. */
 function scrollFootTo(element: Element, y: number) {
   window.scrollBy(0, element.getBoundingClientRect().bottom - y);
 }
 
-/** Opens the field on `mark` from the keyboard. */
 async function openFieldOn(screen: Awaited<ReturnType<typeof render>>, mark: Element) {
   if (!(mark instanceof HTMLElement)) throw new Error("no mark");
   mark.focus();
@@ -1269,16 +1216,13 @@ describe("a slip near the window's foot", () => {
     expect(reported).toEqual([]);
   });
 
-  // A line low on the first of two pages, in a font with no é.
   const low = aSpan({ id: "low", text: "was low", size: 20, bbox: { x0: 72, y0: 640, x1: 152, y1: 664 } });
   const LOW = { ...aDoc({ spans: [low], fonts: [aFont("Times-Roman", { glyphs: LETTERS })] }), pages: [A4, A4] };
-  // A date on the first of two pages, which opens a calendar.
   const DUE_WORDS = "Due 14 March 2026";
   const due = aSpan({ id: "due", text: DUE_WORDS, size: 12, bbox: { x0: 72, y0: 640, x1: 200, y1: 655 } });
   const DUE_FONT = aFont("Times-Roman", { glyphs: halfWideGlyphs(`${DUE_WORDS}0123456789`) });
   const DUE = { ...aDoc({ spans: [due], fonts: [DUE_FONT] }), pages: [A4, A4] };
 
-  /** Opens the calendar of the date's field, open already. */
   async function openCalendar(screen: Awaited<ReturnType<typeof render>>) {
     const control = screen.getByRole("button", { name: "Date" });
     await expect.element(control).toBeVisible();
@@ -1318,7 +1262,6 @@ describe("a slip near the window's foot", () => {
         const screen = await openEditor({ doc: LOW });
         const mark = screen.getByRole("button", { name: "was low" });
         await expect.element(mark).toBeInTheDocument();
-        // Clear of the zoom control, but under it the slip would pass the window's foot.
         scrollFootTo(mark.element(), height - 60);
         const scrolled = window.scrollY;
         await openFieldOn(screen, mark.element());
@@ -1348,18 +1291,15 @@ describe("a slip near the window's foot", () => {
       expect(slip.bottom).toBeLessThanOrEqual(screen.getByRole("textbox").element().getBoundingClientRect().top);
       expect(slip.top).toBeGreaterThanOrEqual(stickyFootOf(screen));
       expect(window.scrollY).toBe(scrolled);
-      // Drawn over the page before, not under it.
       const inside = document.elementFromPoint((slip.left + slip.right) / 2, slip.top + 20);
       expect(inside?.closest("[data-slip]")).not.toBeNull();
     });
   });
 
-  /** Opens "was low" on a phone with room on neither side of it. */
   async function openWithRoomOnNeitherSide() {
     const screen = await openEditor({ doc: LOW });
     const mark = screen.getByRole("button", { name: "was low" });
     await expect.element(mark).toBeInTheDocument();
-    // Halfway between the bar's foot and the zoom control's top: neither has room for the slip.
     scrollFootTo(mark.element(), 190);
     await openFieldOn(screen, mark.element());
     return screen;
@@ -1381,11 +1321,9 @@ describe("a slip near the window's foot", () => {
     await inWindow(390, 320, async () => {
       const screen = await openWithRoomOnNeitherSide();
       const opened = await settledSlip();
-      // A letter the font lacks adds a line saying so.
       await userEvent.keyboard("é");
       await expect.poll(async () => (await settledSlip()).height).toBeGreaterThan(opened.height);
 
-      // Taller now than the window has room for: brought in as far as its top, which holds the verdict.
       const slip = await settledSlip();
       expect(slip.height).toBeGreaterThan(windowFootUnder(slip, screen) - stickyFootOf(screen));
       expect(slip.top - stickyFootOf(screen)).toBeGreaterThanOrEqual(0);
@@ -1401,7 +1339,6 @@ describe("a slip near the window's foot", () => {
       scrollFootTo(mark.element(), 300);
       await openFieldOn(screen, mark.element());
       const opened = await settledSlip();
-      // Its foot just over the zoom control: a line more and it passes it, with room over its line.
       window.scrollBy(0, opened.bottom - windowFootUnder(opened, screen) + 4);
       await userEvent.keyboard("é");
       await expect.poll(async () => (await settledSlip()).height).toBeGreaterThan(opened.height);
@@ -1417,7 +1354,6 @@ describe("a slip near the window's foot", () => {
       const screen = await openEditor({ doc: DUE });
       const mark = screen.getByRole("button", { name: DUE_WORDS });
       await expect.element(mark).toBeInTheDocument();
-      // Just under the bar.
       scrollFootTo(mark.element(), stickyFootOf(screen) + 20);
       await openFieldOn(screen, mark.element());
       await openCalendar(screen);
@@ -1500,13 +1436,11 @@ describe("splitting the document", () => {
     expect(screen.getByRole("button", { name: /^Split after/ }).elements()).toHaveLength(2);
     await screen.getByRole("button", { name: "Split after page 1" }).click();
     expect(exportPdf).toHaveBeenCalledWith("doc", [], { pages: [0] });
-    // The second file waits for the first; meanwhile neither split asks again.
     await expect.element(screen.getByRole("button", { name: "Split after page 2" })).toBeDisabled();
   });
 });
 
 describe("deleting a page", () => {
-  // Four pages; the third has two lines, and "here" is on the first and the third.
   const at = (y: number) => ({ x0: 72, y0: y, x1: 200, y1: y + 24 });
   const FOUR = aDoc({
     spans: [
@@ -1514,17 +1448,14 @@ describe("deleting a page", () => {
       aSpan({ id: "three", text: "here on three", size: 20, page: 2, bbox: at(100) }),
       aSpan({ id: "also", text: "also on three", size: 20, page: 2, bbox: at(140) }),
     ],
-    // Stored in the file, with every letter these tests type.
     fonts: [aFont("Times-Roman", { glyphs: LETTERS })],
     pages: [A4, A4, A4, A4],
   });
   const deleteButton = (screen: Awaited<ReturnType<typeof render>>, shownNumber: number) =>
     screen.getByRole("button", { name: `Delete page ${shownNumber}`, exact: true });
-  // The slip in the third page's place: in the document, as the live region says it too.
   const slip = (screen: Awaited<ReturnType<typeof render>>) =>
     screen.getByRole("main").getByText("This page is left out of the download");
 
-  /** Change the line `name` on page `region`'s sheet to `text`, the page brought near so its marks are drawn. */
   async function changeLine(screen: Awaited<ReturnType<typeof render>>, { region = "Page 3", name = "", text = "" }) {
     screen.getByRole("region", { name: region, exact: true }).element().scrollIntoView();
     const mark = screen.getByRole("button", { name, exact: true });
@@ -1541,12 +1472,9 @@ describe("deleting a page", () => {
     await expect.element(slip(screen)).toBeVisible();
     await expect.element(screen.getByRole("button", { name: "Put back" })).toHaveFocus();
     await expect.element(screen.getByRole("status")).toHaveTextContent("This page is left out of the download");
-    // Read from the top: focus on Put back brought the slip into view.
     window.scrollTo(0, 0);
     await expect.element(screen.getByRole("banner").getByText("Page 1 of 3")).toBeVisible();
-    // A delete changes no words: the bar keeps its forecast, here of nothing, until one changes.
     await expect.element(screen.getByRole("banner").getByText("1 change")).not.toBeInTheDocument();
-    // Labels count the pages as shown: the page after the slip is the third now.
     expect(screen.getByRole("region", { name: /^Page \d$/ }).elements()).toHaveLength(3);
     await expect.element(deleteButton(screen, 3)).toBeInTheDocument();
     await expect.element(deleteButton(screen, 4)).not.toBeInTheDocument();
@@ -1571,7 +1499,6 @@ describe("deleting a page", () => {
     await changeLine(screen, { name: "also on three", text: "now also on three" });
     await expect.element(screen.getByRole("banner").getByText("3 changes")).toBeVisible();
     await deleteButton(screen, 3).click();
-    // The first page's edit and the delete.
     await expect.element(screen.getByRole("banner").getByText("2 changes")).toBeVisible();
 
     await userEvent.keyboard("{Control>}z{/Control}");
@@ -1620,7 +1547,6 @@ describe("deleting a page", () => {
     await expect.element(screen.getByRole("button", { name: "Put back" })).toHaveFocus();
   });
 
-  // Persisted before the server had the sentences a deleted page takes.
   const persistedEarlier = () => {
     const older = { ...SENTENCES };
     Reflect.deleteProperty(older, "page_left_out");
@@ -1688,7 +1614,6 @@ describe("deleting a page", () => {
     screen.getByRole("region", { name: "Page 1", exact: true }).element().scrollIntoView();
     await expect.element(screen.getByRole("button", { name: "there on one", exact: true })).toBeInTheDocument();
 
-    // Put back, the page's line reads as it did.
     await screen.getByRole("button", { name: "Put back" }).click();
     await changeLine(screen, { name: "here on three", text: "here on three, put back" });
   });
@@ -1740,7 +1665,6 @@ describe("deleting a page", () => {
 });
 
 describe("a file dropped on the editor", () => {
-  /** Drop `files` anywhere on the editor, as from the desktop; whether the browser was kept from it. */
   function dropOnPage(files: File[]): boolean {
     const data = new DataTransfer();
     for (const file of files) data.items.add(file);
@@ -1761,7 +1685,6 @@ describe("a file dropped on the editor", () => {
     expect(dropOnPage([PDF])).toBe(true);
     expect(onOpen).toHaveBeenCalledTimes(1);
     const lost = "Export your changes first, or undo them: opening another PDF here would lose them.";
-    // Under the bar, and heard.
     await expect.element(screen.getByText(lost).first()).toBeVisible();
     await expect.element(screen.getByRole("status")).toHaveTextContent(lost);
 
@@ -1827,7 +1750,6 @@ describe("find and replace", () => {
     const bar = screen.getByRole("search");
     const changeTo = bar.getByRole("textbox", { name: "Change to" });
     const changeAll = bar.getByRole("button", { name: "Change all" });
-    // Changed, and "here" still found: it stays on.
     await changeTo.fill("here and there");
     await expect.element(changeAll).toBeEnabled();
     changeAll.element().focus();
@@ -1835,7 +1757,6 @@ describe("find and replace", () => {
     await expect.element(screen.getByRole("button", { name: "was here and there" })).toBeInTheDocument();
     await expect.element(changeAll).toBeEnabled();
     await expect.element(changeTo).toHaveFocus();
-    // Changed, and nothing reads "here" now: it turns off.
     await changeTo.fill("this");
     await expect.element(bar.getByText(/^1 place/)).toBeVisible();
     changeAll.element().focus();
@@ -1864,7 +1785,6 @@ describe("find and replace", () => {
   });
 
   test("a reading persisted before Change all's sentence was sent changes all, with no key hint left alone", async () => {
-    // The server's reading, asked for again, hasn't landed.
     vi.mocked(documentOf)
       .mockReset()
       .mockReturnValue(new Promise<Document>(() => undefined));
@@ -1886,7 +1806,6 @@ describe("find and replace", () => {
     const screen = await openEditor();
     await expect.element(screen.getByRole("button", { name: "was here" })).toBeInTheDocument();
     const [wide, tall] = [window.innerWidth, window.innerHeight];
-    // A phone, the narrow layout's widest, a bar too narrow for the count beside the fields, and a desk.
     for (const [width, height] of [
       [390, 844],
       [820, 900],
@@ -1899,7 +1818,6 @@ describe("find and replace", () => {
       const heights = new Set<number>();
       const watch = new ResizeObserver(() => heights.add(bar.element().getBoundingClientRect().height));
       watch.observe(bar.element());
-      // Found, then typed on (nothing counted while the delay runs), then nothing found, then found again.
       await userEvent.keyboard("her");
       await expect.element(bar.getByText("1 place will look identical")).toBeVisible();
       await userEvent.keyboard("x");
@@ -1920,7 +1838,6 @@ describe("find and replace", () => {
     await userEvent.keyboard("HER");
     const bar = screen.getByRole("search");
     await expect.element(bar.getByText("1 place will look identical")).toBeVisible();
-    // A label, as a pointer presses it: the box itself is hidden from the pointer, never from a screen reader.
     await bar.getByText("Match case").click();
     await expect.element(bar.getByRole("checkbox", { name: "Match case" })).toBeChecked();
     await expect.element(bar.getByText("Nothing matches")).toBeVisible();
@@ -1932,7 +1849,6 @@ describe("find and replace", () => {
   });
 });
 
-/** Double-click the first page's bare paper at `at`, in its own points; where that is on screen. */
 async function doubleClickPaper(screen: Awaited<ReturnType<typeof render>>, [x, y]: [number, number]) {
   const pageOne = screen.getByRole("region", { name: "Page 1" }).element();
   await expect.poll(() => pageOne.querySelector("img")).not.toBeNull();
@@ -1944,26 +1860,22 @@ async function doubleClickPaper(screen: Awaited<ReturnType<typeof render>>, [x, 
   return { x: shown.left + position.x, y: shown.top + position.y };
 }
 
-/** The slip of new text being typed, on the page's layer for slips: the one slip open. */
 function newTextSlip() {
   const slip = document.querySelector("[data-slip]");
   if (slip === null) throw new Error("no slip");
   return page.elementLocator(slip);
 }
 
-/** Select from `start` to `end` in a text field, as a drag over its words would. */
 function selectIn(field: Element, start: number, end: number) {
   if (!(field instanceof HTMLInputElement)) throw new Error("no field");
   field.setSelectionRange(start, end);
 }
 
-/** The edits the last render asked for. */
 function lastRendered() {
   return vi.mocked(renderStrips).mock.lastCall?.[1].edits ?? [];
 }
 
 describe("new text", () => {
-  // Red text: new text near it takes its colour. Its font's own copy draws every letter typed here.
   const red = aSpan({ ...span, color: [0.8, 0, 0] });
   const RED_DOC = aDoc({
     spans: [red],
@@ -1978,14 +1890,11 @@ describe("new text", () => {
     await expect.element(field).toHaveFocus();
     const shown = field.element().getBoundingClientRect();
     expect(Math.abs(shown.left - pressed.x)).toBeLessThan(1);
-    // The line's middle sits at the press.
     expect(Math.abs((shown.top + shown.bottom) / 2 - pressed.y)).toBeLessThan(3);
     expect(getComputedStyle(field.element()).color).toBe("rgb(204, 0, 0)");
-    // The chip says what draws it, and at what size: the span's own font, which draws it as it is.
     const size = screen.getByText("20 pt");
     await expect.element(size).toBeVisible();
     expect(size.element().parentElement?.textContent).toBe("Times Roman20 ptlooks identical");
-    // The faces: the page's own first, then the handwriting ones we ship, each named in its own face.
     const faces = screen.getByRole("listbox", { name: "Font" });
     await expect.element(faces.getByRole("option", { name: "Times Roman", selected: true })).toBeVisible();
     await expect.element(faces.getByRole("option", { name: "Caveat Bold" })).toBeVisible();
@@ -2019,7 +1928,6 @@ describe("new text", () => {
     await doubleClickPaper(screen, [300, 300]);
     const field = screen.getByRole("textbox", { name: "New text" });
     await expect.element(field).toHaveFocus();
-    // Where it sits on its page: a touch screen's bar is taller, so the page is lower.
     const onPage = () => {
       const box = field.element().getBoundingClientRect();
       const sheet = field.element().closest("section")?.querySelector("img")?.getBoundingClientRect();
@@ -2033,11 +1941,9 @@ describe("new text", () => {
     await doubleClickPaper(screen, [300, 300]);
     await expect.element(field).toHaveFocus();
     expect(getComputedStyle(field.element()).fontSize).toBe("16px");
-    // Its letters drawn at the text's size, once the page's is known: 16 px, scaled down.
     const scale = () => new DOMMatrix(getComputedStyle(field.element()).transform).a;
     await expect.poll(scale).toBeLessThan(1);
     expect(16 * scale()).toBeCloseTo(parseFloat(atDesk.fontPx), 1);
-    // As tall as its line, so a press on the line's middle lands on it.
     expect(onPage().height).toBeCloseTo(atDesk.height, 0);
     expect(onPage().top).toBeCloseTo(atDesk.top, 0);
   });
@@ -2048,7 +1954,6 @@ describe("new text", () => {
     const field = screen.getByRole("textbox", { name: "New text" });
     await expect.element(field).toHaveFocus();
     await userEvent.keyboard("Signed by M. Halvorsen");
-    // Live, as it's typed: the field has moved in from the press.
     expect(field.element().getBoundingClientRect().left).toBeLessThan(pressed.x - 1);
     await userEvent.keyboard("{Enter}");
 
@@ -2060,7 +1965,6 @@ describe("new text", () => {
     expect(mark.element().getBoundingClientRect().right).toBeLessThanOrEqual(
       (layer?.getBoundingClientRect().right ?? 0) + 0.5,
     );
-    // Undone and redone, it comes back where it was sent.
     await userEvent.keyboard("{Control>}z{/Control}");
     await expect.element(mark).not.toBeInTheDocument();
     await userEvent.keyboard("{Control>}{Shift>}z{/Shift}{/Control}");
@@ -2101,7 +2005,6 @@ describe("new text", () => {
     const status = screen.getByRole("status");
     await expect.element(status).toHaveTextContent(warning);
     const heard = status.element().firstElementChild;
-    // Typing a letter it draws changes nothing it warns of: nothing is heard again.
     await userEvent.keyboard("a");
     await expect.element(screen.getByRole("textbox", { name: "New text" })).toHaveValue("a");
     expect(status.element().firstElementChild).toBe(heard);
@@ -2134,7 +2037,6 @@ describe("new text", () => {
     await expect.poll(lastRendered).toHaveLength(1);
     const [placed] = lastRendered();
     const [x = 0, y = 0] = placed?.kind === "insert" ? placed.origin : [];
-    // Lined up with the span's left edge, its baseline a line below the span's.
     expect([x, y]).toEqual([red.bbox.x0, (red.origin[1] ?? 0) + red.size * LINE_BELOW_EM]);
 
     await expect.element(screen.getByRole("button", { name: "Signed" })).toHaveFocus();
@@ -2154,10 +2056,8 @@ describe("new text", () => {
     await userEvent.keyboard("{ArrowRight}");
     await expect.poll(() => lastRendered()[0]).toMatchObject({ kind: "insert" });
 
-    // Its move undone, the mark stays where focus is.
     await userEvent.keyboard("{Control>}z{/Control}");
     await expect.element(mark).toHaveFocus();
-    // Its adding undone, the mark goes, and focus goes to the line it was set below.
     await userEvent.keyboard("{Control>}z{/Control}");
     await expect.element(mark).not.toBeInTheDocument();
     await expect.element(screen.getByRole("button", { name: "was here" })).toHaveFocus();
@@ -2180,7 +2080,6 @@ describe("new text", () => {
     const screen = await openEditor({ doc: RED_DOC });
     await doubleClickPaper(screen, [300, 300]);
     await userEvent.keyboard("Signed{Enter}");
-    // Typed into again and emptied, it's taken out; undone, it and its note are back.
     await userEvent.keyboard("{Enter}");
     await screen.getByRole("textbox", { name: "Change “Signed”" }).fill("");
     await userEvent.keyboard("{Enter}");
@@ -2226,7 +2125,6 @@ describe("new text", () => {
     await doubleClickPaper(screen, [300, 300]);
     await userEvent.keyboard("Signed{Enter}");
     await expect.element(screen.getByRole("button", { name: "Undo: take out “Signed”" })).toBeInTheDocument();
-    // The new text, the last thing done, undone from the far change's note, which stays.
     screen.getByRole("region", { name: "Page 8" }).element().scrollIntoView();
     const note = screen.getByRole("button", { name: "Undo: “far texts” goes back to “far text”" });
     await expect.element(note).toBeInTheDocument();
@@ -2294,7 +2192,6 @@ describe("new text", () => {
     await note.hover();
     await screen.getByRole("region", { name: "Page 1" }).hover({ position: { x: 4, y: 4 } });
     const leftAt = performance.now();
-    // Past the delay a note closes after: still there, focus still on its mark.
     await expect
       .poll(() => performance.now() - leftAt, { timeout: NOTE_CLOSE_DELAY_MS * 4 })
       .toBeGreaterThan(NOTE_CLOSE_DELAY_MS * 2);
@@ -2315,7 +2212,6 @@ describe("new text", () => {
     await animationsDone();
     await note.hover();
     const movedAt = performance.now();
-    // Past the delay a note closes after, and its fade: still there, under the pointer.
     await expect
       .poll(() => performance.now() - movedAt, { timeout: NOTE_CLOSE_DELAY_MS * 4 })
       .toBeGreaterThan(NOTE_CLOSE_DELAY_MS * 2);
@@ -2323,7 +2219,6 @@ describe("new text", () => {
     expect(note.element()).not.toHaveAttribute("data-exiting");
 
     await screen.getByRole("region", { name: "Page 1" }).hover({ position: { x: 4, y: 4 } });
-    // Not at once: after the delay.
     expect(note.element()).not.toHaveAttribute("data-exiting");
     await expect.element(note, { timeout: NOTE_CLOSE_DELAY_MS * 4 }).not.toBeInTheDocument();
   });
@@ -2364,7 +2259,6 @@ describe("new text", () => {
     await expect.element(screen.getByRole("textbox", { name: "Change “Signed”" })).toHaveFocus();
   });
 
-  // Each way a drag is cut short: the browser taking the pointer back, the mark losing it, the window losing focus.
   const CANCELS: [string, (mark: Element, at: PointerEventInit) => void][] = [
     ["the browser cancels", (mark, at) => mark.dispatchEvent(new PointerEvent("pointercancel", at))],
     ["whose mark loses the pointer", (mark, at) => mark.dispatchEvent(new PointerEvent("lostpointercapture", at))],
@@ -2394,19 +2288,16 @@ describe("new text", () => {
     cancel(mark.element(), at(40));
     await expect.poll(() => mark.element().getBoundingClientRect().left).toBe(from.left);
     expect(vi.mocked(renderStrips).mock.calls.length).toBe(rendered);
-    // The next press is a press, not a drag's end.
     await mark.click();
     await expect.element(screen.getByRole("textbox", { name: "Change “Signed”" })).toHaveFocus();
     await userEvent.keyboard("{Escape}");
     await expect.element(mark).toHaveFocus();
-    // The next drag moves it, from where it was.
     mark.element().dispatchEvent(new PointerEvent("pointerdown", at(0)));
     mark.element().dispatchEvent(new PointerEvent("pointermove", at(30)));
     mark.element().dispatchEvent(new PointerEvent("pointerup", at(30)));
     await expect.poll(sentX).toBeGreaterThan(x);
   });
 
-  /** New text set just above "was here", grabbed at its left end and dragged onto that line, which is drawn over it. */
   async function dragOntoTheLine(screen: Awaited<ReturnType<typeof render>>, pointerType: string) {
     await doubleClickPaper(screen, [80, 60]);
     await userEvent.keyboard("Signed M. Halvorsen{Enter}");
@@ -2421,13 +2312,11 @@ describe("new text", () => {
     mark.element().dispatchEvent(new PointerEvent("pointerdown", grab));
     mark.element().dispatchEvent(new PointerEvent("pointermove", over));
     await expect.poll(() => mark.element().getBoundingClientRect().top).toBeGreaterThan(from.top + 20);
-    // What the browser aims the pointer's events at: the line, drawn after the new text above it.
     const under = document.elementFromPoint(over.clientX, over.clientY);
     expect(under?.textContent).toBe("was here");
     return { mark, from, under, over };
   }
 
-  // The next press after a drop the mark never heard: a click on it, or Enter.
   const PRESSES: [string, (mark: HTMLElement | SVGElement) => Promise<void>][] = [
     ["a click", (mark) => userEvent.click(mark)],
     [
@@ -2447,7 +2336,6 @@ describe("new text", () => {
       return sent?.kind === "insert" ? sent.origin[1] : undefined;
     };
     const y = sentY() ?? 0;
-    // Let go over the line, as outside the window: no press on the mark ends the drag.
     under?.dispatchEvent(new PointerEvent("pointerup", over));
     await expect.poll(sentY).toBeGreaterThan(y + 20);
 
@@ -2459,7 +2347,6 @@ describe("new text", () => {
     const screen = await openEditor({ doc: RED_DOC });
     const { mark, from, under, over } = await dragOntoTheLine(screen, "touch");
     const rendered = vi.mocked(renderStrips).mock.calls.length;
-    // The browser aims its pointercancel at what's under the finger: the line, not the mark.
     under?.dispatchEvent(new PointerEvent("pointercancel", over));
     await expect.poll(() => mark.element().getBoundingClientRect().top).toBe(from.top);
     expect(vi.mocked(renderStrips).mock.calls.length).toBe(rendered);
@@ -2470,7 +2357,6 @@ describe("new text", () => {
     await doubleClickPaper(screen, [300, 300]);
     await userEvent.keyboard("M. Halvorsen");
     await screen.getByRole("option", { name: "Caveat Bold" }).click();
-    // A pointer's choice leaves the typing in the field.
     await expect.element(screen.getByRole("textbox", { name: "New text" })).toHaveFocus();
     await expect.element(screen.getByText("26 pt")).toBeVisible();
     await userEvent.keyboard("{Enter}");
@@ -2484,7 +2370,7 @@ describe("new text", () => {
 
   test("Tab from the fonts goes on to the page's next line, and the typing is kept", async () => {
     const screen = await openEditor({ doc: RED_DOC });
-    await doubleClickPaper(screen, [300, 60]); // above the page's one line
+    await doubleClickPaper(screen, [300, 60]);
     await userEvent.keyboard("Signed{Tab}");
     await expect.element(screen.getByRole("option", { name: "Times Roman" })).toHaveFocus();
     await userEvent.keyboard("{Tab}");
@@ -2494,11 +2380,10 @@ describe("new text", () => {
 
   test("Tab from the fonts with nothing after it on the page goes where Tab from its place would", async () => {
     const screen = await openEditor({ doc: { ...RED_DOC, pages: [A4, A4] } });
-    await doubleClickPaper(screen, [300, 300]); // below the page's one line
+    await doubleClickPaper(screen, [300, 300]);
     await userEvent.keyboard("Signed{Tab}");
     await expect.element(screen.getByRole("option", { name: "Times Roman" })).toHaveFocus();
     await userEvent.keyboard("{Tab}");
-    // Past the page, before the next: as Tab goes on from its last line.
     await expect.element(screen.getByRole("button", { name: "Split after page 1" })).toHaveFocus();
     await expect.element(screen.getByRole("button", { name: "Signed", exact: true })).toBeInTheDocument();
   });
@@ -2527,7 +2412,6 @@ describe("new text on a page with no text", () => {
     const field = screen.getByRole("textbox", { name: "New text" });
     await expect.element(field).toHaveFocus();
 
-    // Put away, focus goes to the page's own control: its delete button, which opens it the same way.
     await userEvent.keyboard("{Escape}");
     await expect.element(screen.getByRole("button", { name: "Delete page 2", exact: true })).toHaveFocus();
     await userEvent.keyboard("{Control>}{Enter}{/Control}");
@@ -2535,7 +2419,6 @@ describe("new text on a page with no text", () => {
     expect(screen.getByRole("main").getByText("This page is left out of the download").query()).toBeNull();
   });
 
-  // The only page left can't be deleted, so its delete button can't take focus: its tick does.
   const BARE = aDoc({ spans: [], fonts: [] });
   const tickOne = (screen: Awaited<ReturnType<typeof render>>) =>
     screen.getByRole("navigation", { name: "Pages" }).getByRole("link", { name: "Page 1" });
@@ -2598,7 +2481,6 @@ describe("new text in a face we ship", () => {
     await doubleClickPaper(screen, [300, 300]);
     await userEvent.keyboard("Ω Smith");
     await screen.getByRole("option", { name: "Caveat Bold" }).click();
-    // Caveat has no Ω: a face that has it draws the whole line.
     await expect.element(newTextSlip().getByText("Noto Sans Bold", { exact: false })).toBeVisible();
     await userEvent.keyboard("{Enter}");
 
@@ -2623,7 +2505,6 @@ describe("new text in a face we ship", () => {
 });
 
 describe("how to start", () => {
-  /** The how-to-start line `words` as shown on screen, of the one beside the first page and the one above it. */
   const shownLine = (words: string) =>
     [...document.querySelectorAll("p > span")].find((line) => line.textContent === words && line.checkVisibility());
   const sheetOne = (screen: Awaited<ReturnType<typeof render>>) =>
@@ -2635,7 +2516,6 @@ describe("how to start", () => {
     try {
       const screen = await openEditor();
       await expect.poll(() => shownLine(SENTENCES.how_to_fix)).toBeDefined();
-      // Beside the page, in its margin, not on it.
       const words = shownLine(SENTENCES.how_to_add)?.getBoundingClientRect();
       expect(words?.right).toBeLessThanOrEqual(sheetOne(screen)?.getBoundingClientRect().left ?? 0);
 

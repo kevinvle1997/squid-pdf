@@ -58,13 +58,12 @@ import { drawingOf } from "./substitutes";
 import { editVerdictOf, shortWarningOf, type Verdict, worstOf } from "./verdicts";
 import { fill, sentenceOrNothing } from "./words";
 
-/** The text being typed into a span, not yet in the history. */
 export interface SpanDraft {
   readonly kind: "span";
   readonly spanId: string;
   readonly page: number;
-  readonly press: Press | null; // the press that opened it, if one did: where the caret goes
-  readonly caret: number | null; // where the caret goes as it opens, in the field's units, if typing put it there
+  readonly press: Press | null;
+  readonly caret: number | null;
   readonly text: string;
   readonly runs: readonly string[] | null; // a line's: each of its spans' words, in order, `text` read as one; else none
   readonly fieldHistory: FieldHistory; // a line field's own undo of its typing; an input keeps its own
@@ -76,18 +75,12 @@ export interface SpanDraft {
   readonly value: HeldValue | null; // the date or amount its editor is offered for, held once it's opened or typed in
 }
 
-/** What's being typed: into a span, or new text. */
 export type Draft = SpanDraft | NewTextDraft;
 
-/** The draft, while it's a span's. */
 export function spanDraftOf(state: Pick<EditorState, "draft">): SpanDraft | null {
   return state.draft?.kind === "span" ? state.draft : null;
 }
 
-/**
- * Start typing into a span, from what it reads now. A redacted span asks first, in place; one with some words redacted
- * opens, for more of its words to be selected, and asks as typing would change it.
- */
 export function edit(editor: Editor, spanId: string, press: Press | null): void {
   const { store } = editor;
   const { layout, reading, doc } = store.get();
@@ -106,10 +99,6 @@ export function edit(editor: Editor, spanId: string, press: Press | null): void 
   store.set({ draft, focusTo: null, unredacting: null });
 }
 
-/**
- * Typing into `span` as it reads in `reading`, opened by `press`. No value is held yet: until the user types or opens
- * its editor, the value offered follows the dates as they're read, so the one pressed on can still be.
- */
 export function draftOf(span: SpanInfo, { reading, press }: { reading: Reading; press: Press | null }): SpanDraft {
   const now = reading.spans.get(span.id);
   const text = now?.text ?? span.text;
@@ -194,7 +183,6 @@ function heldIn(
   return { value: value === undefined ? null : heldOf(value, text), lost };
 }
 
-/** The draft, the span typed into and its font: none while nothing's typed in, or its font is unknown. */
 export function draftSpanOf(state: EditorState): { draft: SpanDraft; span: SpanInfo; font: FontInfo } | undefined {
   const { layout } = state;
   const draft = spanDraftOf(state);
@@ -204,7 +192,6 @@ export function draftSpanOf(state: EditorState): { draft: SpanDraft; span: SpanI
   return { draft, span, font };
 }
 
-/** How the draft's span fits what's typed: nothing while nothing's typed in, or its font is unknown. */
 function draftFitOf(state: EditorState): Fit | undefined {
   const typing = draftSpanOf(state);
   if (typing === undefined) return undefined;
@@ -215,13 +202,11 @@ function draftFitOf(state: EditorState): Fit | undefined {
   return lineFitOf(runs, { roomPt: line.roomPt, rules: rulesFor(line, state.doc.fit) });
 }
 
-/** The way out the draft's line is drawn with: the one chosen while it's offered, else as typed. */
 function wayIn(state: EditorState): Strategy {
   const fit = draftFitOf(state);
   return fit === undefined ? "as-is" : wayDrawn(spanDraftOf(state)?.strategy, fit);
 }
 
-/** The user chose how a long line fits, in the chip or with the arrow keys: drawn in the field at once, and announced. */
 export function chooseWayOut(editor: Editor, way: Strategy): void {
   const { doc } = editor.store.get();
   const draft = spanDraftOf(editor.store.get());
@@ -232,7 +217,6 @@ export function chooseWayOut(editor: Editor, way: Strategy): void {
   });
 }
 
-/** Up or Down in the field: the way out before or after the one drawn, round the list; false with none to choose. */
 export function stepWayOut(editor: Editor, by: 1 | -1): boolean {
   const state = editor.store.get();
   const fit = draftFitOf(state);
@@ -244,20 +228,17 @@ export function stepWayOut(editor: Editor, by: 1 | -1): boolean {
   return true;
 }
 
-/** A fit's troubles less their numbers: announced again when this changes, not as the numbers tick by with each letter. */
 function troubleKindOf(fit: Fit, rules: FitRules): string {
   return `${fit.missing.join("")} ${runsPast(fit.deltaPt, fit.roomPt, rules)}`;
 }
 
-/** What the field says of the ways out as they're first offered: the keys that choose one are the field's own. */
 const WAYS_KEYS = "Up or Down chooses how it fits";
 
-/** What reading `text` comes to in the draft's span: what won't come out as typed, and the edit's verdict. */
 interface Troubles {
-  readonly sentences: string[]; // in the server's words, a trouble each; none when it fits
-  readonly kind: string; // the troubles and the verdict's kind, less their numbers: heard again when this changes
-  readonly offers: boolean; // there's a way out of a long line to choose, past leaving it long
-  readonly verdict: Verdict | null; // none while nothing's typed in, or its font is unknown
+  readonly sentences: string[];
+  readonly kind: string;
+  readonly offers: boolean;
+  readonly verdict: Verdict | null;
 }
 
 /** What the draft's span would get wrong reading `typed`, a line's as its runs, the ways out it offers, and what it comes to. */
@@ -269,18 +250,15 @@ export function troublesIn(state: EditorState, typed: string | readonly string[]
   if (typing === undefined) return { sentences: [], kind: "", offers: false, verdict: null };
   const { draft, span, font } = typing;
   const { fit: rules, sentences } = state.doc;
-  // Neither is an edit: what the span's own words come to holds.
   const unedited = { offers: false, verdict: span };
   // A form field draws it, not the page: whatever is typed, the edit is left out.
   if (span.form_field) return { sentences: [sentences.form_field_not_edited], kind: "form field", ...unedited };
-  // Taking text out isn't a change: told while the field is empty.
   if (isEmpty(text)) return { sentences: [sentences.empty], kind: "empty", ...unedited };
   const verdict = editVerdictOf(state.drawn, { span, font, text, strategy: draft.strategy });
   const fit = fitOf(span, { font, text, rules });
   const drawing = drawingOf(span, { font, text, missing: fit.missing });
   const way = wayDrawn(draft.strategy, fit);
   const email = emailBroken(textIn(state.reading, span), text) ? [sentenceOrNothing(sentences.email_broken)] : [];
-  // That an edit here won't match is announced in full once, as typing starts (`editNote`), not with each letter.
   return {
     sentences: [...troublesOf(fit, { rules, sentences, drawing, way }), ...email],
     kind: `${troubleKindOf(fit, rules)} ${way} ${shortWarningOf(verdict) ?? ""} ${email.length}`,
@@ -321,7 +299,6 @@ function lineTroublesIn(state: EditorState, typed: readonly string[]): Troubles 
 /** What new text being typed would get wrong reading `text`, and what it comes to: only letters, as it has no width to fit. */
 function newTextTroublesIn(state: EditorState, draft: NewTextDraft, text: string): Troubles {
   const insert = insertOf({ ...draft, text });
-  // Typed into again and not changed: its render's verdict holds.
   const fit =
     draft.of !== null && sameInsert(draft.of.edit, insert) ? landedNewTextFitOf(state.drawn, draft.of) : undefined;
   const verdict = newTextVerdictOf(state.layout, { insert, fit });
@@ -330,7 +307,6 @@ function newTextTroublesIn(state: EditorState, draft: NewTextDraft, text: string
   return { sentences: letterTroublesOf(drawing, state.doc.sentences), kind, offers: false, verdict };
 }
 
-/** Whether `typed` reads as other than the emails `before` held: one broken, or run into another. */
 function emailBroken(before: string, typed: string): boolean {
   const emails = emailCountIn(before);
   return emails > 0 && emailCountIn(typed) !== emails;
@@ -342,22 +318,16 @@ const SPACING_CONTROL = /[\t\n\v\f\r\u0085\u2028\u2029]/g;
 // The rest of what check_text (editing/edits.py) refuses draws nothing, so it's dropped.
 const NOT_ON_A_LINE = /[\p{Cc}\p{Zl}\p{Zp}\p{Cs}\u202A-\u202E\u2066-\u2069]/gu;
 
-/**
- * Type into the field, so it reads `text`, the caret left at `caret`: what it warns of is heard as it changes. In a
- * span with some words redacted, it asks first, and what's typed waits for the answer.
- */
 export function typeInto(editor: Editor, text: string, { caret = null }: { caret?: number | null } = {}): void {
   const state = editor.store.get();
   const { draft } = state;
   if (draft === null) return;
   if (draft.kind === "span") {
-    // Typing in a span with words redacted would undo that: it asks first, the field shut, as a redacted one does.
     const undoesRedaction = state.reading.spans.get(draft.spanId)?.redacted != null && text !== draft.text;
     if (undoesRedaction) {
       const { sentences } = state.doc;
       const unredacting = { spanId: draft.spanId, press: null, typed: { text: asOneLine(text), runs: null, caret } };
       finish(editor, false, {
-        // A reading persisted by an earlier build lacks the question: the whole line's asks it too.
         also: { unredacting, announcement: announcing(sentences.undo_redacted_words ?? sentences.undo_redaction) },
       });
       return;
@@ -473,7 +443,6 @@ export function typedState(
   return { ...withValueHeld(state, { text, runs: null }), announcement };
 }
 
-/** Type `typed` into new text: grown past the room to its right, its start moves left, so its end stays on its page. */
 export function typeIntoNewText(
   editor: Editor,
   typed: string,
@@ -494,7 +463,6 @@ export function asOneLine(typed: string): string {
   return typed.replace(SPACING_CONTROL, " ").replace(NOT_ON_A_LINE, "");
 }
 
-/** What typing `text` makes heard: a trouble as it appears or changes, the chip's short warning as it changes kind. */
 function heardAsTyped(state: EditorState & { draft: Draft }, text: string): EditorState["announcement"] {
   return heardOfTroubles(state, { was: troublesIn(state, state.draft.text), now: troublesIn(state, text) });
 }
@@ -510,19 +478,16 @@ function heardOfTroubles(
   const warnedBefore = was.verdict === null ? null : shortWarningOf(was.verdict);
   const warningHeard = warning === warnedBefore || now.verdict === null ? [] : [heardOf(state, now.verdict)];
   const changedKind = now.kind !== was.kind && (now.sentences.length > 0 || warningHeard.length > 0);
-  // A sentence a reading persisted by an earlier build lacks is nothing, and leaves no joiner behind.
   const parts = [...now.sentences, ...warningHeard, ...offered].filter((part) => part !== "");
   // Such a reading lacks the joiner too: a space, since join's own default is a comma.
   const heard = parts.join(state.doc.sentences.join_parts ?? " ");
   return changedKind ? announcing(heard) : state.announcement;
 }
 
-/** The draft's full warning on `verdict`, shown in the chip: none when its words keep their look, or it's muted. */
 export function draftNoteOf(state: EditorState, verdict: Verdict): Note | null {
   const { draft, layout, doc, mutedFonts } = state;
   if (draft?.kind === "newText") {
     const insert = insertOf(draft);
-    // A face we ship draws it as asked: there's nothing to warn of but a letter it lacks.
     if (inShippedFace(insert)) return null;
     const span = newTextSpanOf(layout, insert);
     const muted = mutedFonts.has(shownNameIn(layout.fonts, span));
@@ -570,21 +535,17 @@ const VERDICT_SENTENCES: Record<Verdict["fidelity"], "typed_identical" | "typed_
   substitute: "typed_similar",
 };
 
-/** What's heard as the words typed come to `verdict`: its full warning as the chip shows it, else its short words. */
 function heardOf(state: EditorState, verdict: Verdict): string {
   const note = draftNoteOf(state, verdict);
   if (note !== null) return [note.sentence, note.why].filter(Boolean).join(" ");
   return sentenceOrNothing(state.doc.sentences[VERDICT_SENTENCES[verdict.fidelity]]);
 }
 
-/** What a signed document's first edit says in full as it starts, in the server's words: nothing once an edit is in. */
 export function signatureWarningOf({ doc, reading }: Pick<EditorState, "doc" | "reading">): string | null {
-  // The signature is broken from the first edit on, and the line under the bar says so.
   if (!doc.signed || reading.edits.length > 0) return null;
   return doc.sentences.edit_breaks_signature;
 }
 
-/** The field took focus as typing starts: what an edit here warns of, and what's wrong already, is heard once. */
 export function fieldFocused(editor: Editor): void {
   const state = editor.store.get();
   const { draft, layout } = state;
@@ -601,10 +562,8 @@ export function fieldFocused(editor: Editor): void {
   if (heard !== "") announce(editor, heard);
 }
 
-/** Enter: what was typed goes in and focus goes back to the span, unless the field is empty, which stays open. */
 export function enter(editor: Editor): void {
   const { draft, doc } = editor.store.get();
-  // New text with nothing typed is put away, as Escape does; typed into again and emptied, it's taken out.
   if (draft?.kind === "newText") {
     finish(editor, true, { returnFocus: true });
     return;
@@ -649,15 +608,10 @@ export function keptEditOf(state: EditorState): Replace | ReplaceRuns | null {
   const way = wayIn(state);
   const strategy = way === "as-is" ? undefined : way;
   const unchanged = draft.text === was && strategy === now?.strategy;
-  // Emptying a span isn't a replacement: taking text out is redaction's job.
   if (unchanged || isEmpty(draft.text)) return null;
   return { kind: "replace", span_id: draft.spanId, text: draft.text, ...(strategy && { strategy }) };
 }
 
-/**
- * What ending the typing makes, for an action to make in its own update: the step it adds, with no
- * edit unless `keep` and the words changed, and the rest it sets. `returnFocus` and `inPlace` are `finish`'s.
- */
 export function typingEnd(
   state: EditorState,
   keep: boolean,
@@ -690,7 +644,6 @@ function sentBack(target: FocusTo | null, inPlace: boolean): FocusTo | null {
   return { ...target, inPlace };
 }
 
-/** What ending new text's typing makes: the text, its next version, nothing, or, emptied, its taking out. */
 function newTextTypingEnd(
   state: EditorState,
   draft: NewTextDraft,
@@ -714,7 +667,6 @@ function newTextTypingEnd(
     return { typed: { kind: "add", edits: [edit] }, ended: { ...back, ...added } };
   }
   const typed: HistoryAction = { kind: "revise", replaces: draft.of.id, edit, folds: false };
-  // Its words all taken out, it's gone, and its mark with it.
   if (isEmpty(draft.text)) {
     const out = {
       ...(returnFocus && { focusTo: sentBack(draft.back, inPlace) }),
@@ -726,11 +678,6 @@ function newTextTypingEnd(
   return { typed, ended: { ...back, announcement: changed } };
 }
 
-/**
- * End the typing: `keep` puts what was typed in the history. `returnFocus` sends focus back to
- * the span, as Enter and Escape do; leaving the field for somewhere has put it there already.
- * `inPlace`, it's taken where the view is. `also` is the rest of the action that ends it, made in the same update.
- */
 export function finish(
   editor: Editor,
   keep: boolean,

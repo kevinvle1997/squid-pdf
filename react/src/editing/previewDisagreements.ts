@@ -1,4 +1,3 @@
-// In the settle, the spans whose render disagrees with their preview pulse (decisions/frontend.md, Motion).
 // Verdicts are compared, not pixels: the preview draws in a face we ship.
 
 import type { FitInfo, FitRules, FontInfo, Strategy } from "../api/types";
@@ -12,11 +11,10 @@ import type { Drawn } from "./render";
 import { type FontsByObject, fontOf } from "./spanFonts";
 import { liveVerdictOf, type Verdict } from "./verdicts";
 
-/** The spans on one page whose render disagreed with their preview, as one render landed. */
 export interface PreviewDisagreement {
   readonly spanIds: ReadonlySet<string>;
-  readonly newTextIds: ReadonlySet<number>; // the new text, by its first version's id
-  readonly count: number; // which landing it pulses for, so a span that disagrees again pulses again
+  readonly newTextIds: ReadonlySet<number>;
+  readonly count: number;
 }
 
 export const NO_DISAGREEMENTS: ReadonlyMap<number, PreviewDisagreement> = new Map();
@@ -24,10 +22,9 @@ export const NO_DISAGREEMENTS: ReadonlyMap<number, PreviewDisagreement> = new Ma
 interface Judged {
   layout: Pick<Layout, "fonts" | "spans" | "lines">;
   rules: FitRules;
-  disagreements: ReadonlyMap<number, PreviewDisagreement>; // what pulsed before, kept for the pages this landing didn't draw
+  disagreements: ReadonlyMap<number, PreviewDisagreement>;
 }
 
-/** What pulses once `after` lands over `before`: on each page it drew, the previewed spans its render disagrees with. */
 export function disagreementsAfter(
   before: Drawn,
   after: Drawn,
@@ -36,7 +33,6 @@ export function disagreementsAfter(
   let next: Map<number, PreviewDisagreement> | null = null;
   for (const [page, reading] of after.from) {
     const was = before.from.get(page);
-    // Not drawn by this landing: whatever it showed stays.
     if (was === reading) continue;
     const previewed = differing(reading.pages.get(page), was?.pages.get(page));
     const landed = { reading, page, after, fonts: layout.fonts, lines: layout.lines, rules };
@@ -52,9 +48,8 @@ export function disagreementsAfter(
   return next ?? disagreements;
 }
 
-/** One page of a landing: what it drew, and what the live check needs to judge it. */
 interface PageLanded {
-  readonly reading: Reading; // what the landing drew
+  readonly reading: Reading;
   readonly page: number;
   readonly after: Drawn;
   readonly fonts: FontsByObject;
@@ -77,7 +72,6 @@ function disagrees(each: Differing, landed: PageLanded): boolean {
   if (noticed || skipped) return true;
   const fit = after.fits.get(page)?.[span.id];
   const font = fontOf(fonts, span);
-  // Put back, or a font the browser can't measure: nothing was foreseen.
   if (fit === undefined || font === undefined) return false;
   return !sameVerdict(fit, {
     live: liveFitOf(each, { ...landed, font }),
@@ -108,7 +102,6 @@ function newTextDisagrees(
   { reading, page, after, layout }: PageLanded & { layout: Pick<Layout, "fonts" | "spans" | "lines"> },
 ): boolean {
   const sentAt = reading.edits.indexOf(text.edit);
-  // The browser never foresees a notice or a skip.
   const noticed = after.notices.get(page)?.some((notice) => notice.kind === "insert" && notice.edit === sentAt);
   const skipped = after.skipped.some(({ edit }) => edit === sentAt);
   if (noticed || skipped) return true;
@@ -121,10 +114,6 @@ function newTextDisagrees(
   return !sameLetters || fit.fidelity !== newTextVerdictOf(layout, { insert: text.edit, fit: undefined }).fidelity;
 }
 
-/**
- * Whether the server's fit says what the live check did: the same letters lacking, as long, the way out
- * asked, and the same kind of verdict, as the chip said it.
- */
 function sameVerdict(
   fit: FitInfo,
   {

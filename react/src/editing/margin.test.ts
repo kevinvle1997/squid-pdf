@@ -14,7 +14,6 @@ const changeAt = (id: string, y0: number): SpanReading => ({
 });
 
 test("a note sits level with its line, and one that would overlap the note above moves down", () => {
-  // Given out of order: the places come back in the order given.
   const changes = [changeAt("low", 300), changeAt("top", 100), changeAt("close", 104)];
   expect(
     notePlaces(
@@ -145,7 +144,6 @@ describe("what a note says", () => {
     expect(noteOf(change)).toMatchObject({ struck: ["AGREEMENT"], inserted: "✓" });
     expect(insertedWordsIn("was here", "now was here")).toBe("now");
     expect(insertedWordsIn("was here", "was very much here")).toBe("very much");
-    // A word changed or taken out: nothing was only added.
     expect(insertedWordsIn("was here", "is here now")).toBeNull();
     expect(insertedWordsIn("was here", "was")).toBeNull();
   });

@@ -5,7 +5,6 @@ import { accountOncePaid, isBackFromPaying, mayManageBilling, mayPay, paymentSai
 
 const PAID_UNTIL = Date.UTC(2026, 11, 18) / 1000;
 
-/** The account as the server reads it, signed in, paid or not. */
 function read(fields: Parameters<typeof aSignedIn>[0] = {}, takes_payment = true): AccountAnswered {
   return { kind: "read", state: anAccount({ takes_payment, signed_in: aSignedIn(fields) }) };
 }

@@ -39,7 +39,6 @@ describe("what a page draws", () => {
   });
 
   test("an edit on another page leaves this one's parts as they were, so it doesn't redraw", () => {
-    // The first edit takes the how-to-start note off the first page: past it, nothing there changes.
     const changeSecond = (text: string) => {
       edit(editor, "second", null);
       typeInto(editor, text);

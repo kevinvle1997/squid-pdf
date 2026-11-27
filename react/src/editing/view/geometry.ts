@@ -1,5 +1,3 @@
-// Where things sit on a page, as CSS, and how wide text draws there. Everything inside the page's layer
-// is in the page's own points, turned into shares of its size, so it scales with the page however wide it's shown.
 import type { CSSProperties } from "react";
 import type { FitInfo, Insert, PageInfo, SpanInfo } from "../../api/types";
 import {
@@ -17,17 +15,14 @@ import { familyOf } from "../faces";
 import { type LineScale, letterSpacingPt, lineWidthPt, widthPt } from "../fit";
 import { type Box, fontOfNewText, newTextFaceOf, newTextLineOf } from "../newText";
 
-/** Where a span's mark sits: over its line as drawn, so a replacement left long is pressed along its length. */
 export function markBoxOf(
   span: Pick<SpanInfo, "bbox">,
   { replaced, fit }: { replaced: boolean; fit: FitInfo | undefined },
 ): SpanInfo["bbox"] {
-  // A way out ends the line where the original did, and a shorter one keeps its place to press.
   const runsLonger = replaced && fit !== undefined && fit.strategy === "as-is" && fit.delta_pt > 0;
   return runsLonger ? { ...span.bbox, x1: span.bbox.x1 + fit.delta_pt } : span.bbox;
 }
 
-/** A box on the page as percentages of it, so it scales with the page. */
 export function boxOf(
   bbox: { x0: number; y0: number; x1: number; y1: number },
   page: { width: number; height: number },
@@ -42,15 +37,10 @@ export function boxOf(
   };
 }
 
-/** How far down the page `yPt` is, as a share of its height. */
 export function topOf(yPt: number, page: { height: number }): { top: string } {
   return { top: `${(yPt / page.height) * 100}%` };
 }
 
-/**
- * Where something set under a box sits: just below it, pinned at the box's left edge, or, for a box in
- * the page's right half, at its right edge, so what's set there stays on the page however wide it is.
- */
 export function pinnedUnder(
   bbox: { x0: number; x1: number; y1: number },
   page: { width: number },
@@ -60,26 +50,18 @@ export function pinnedUnder(
 
 type PinnedSide = { left: string; right?: undefined } | { right: string; left?: undefined };
 
-/** The edge of a box something set beside it keeps: its left, or for a box in the page's right half, its right. */
 function pinnedSideOf(bbox: { x0: number; x1: number }, page: { width: number }): PinnedSide {
   if (bbox.x0 > page.width / 2) return { right: `${((page.width - bbox.x1) / page.width) * 100}%` };
   return { left: `${(bbox.x0 / page.width) * 100}%` };
 }
 
-/** A slip's width and height, in the page's points as it's shown. */
 export interface SlipSize {
   readonly width: number;
   readonly height: number;
 }
 
-/** Which side of its line, as it's shown, a slip sits on. */
 export type Side = "below" | "above" | "left" | "right";
 
-/**
- * How far the window reaches past the shown page's edges, in the page's points: past its left and right less its
- * gutter, past its top and foot as it's scrolled now, from what's held over the pages to the window's foot, and to
- * where the pages start and end, which clip: no scroll shows a slip past them.
- */
 export interface WindowRoom {
   readonly left: number;
   readonly right: number;
@@ -87,11 +69,9 @@ export interface WindowRoom {
   readonly bottom: number;
   readonly pagesStart: number;
   readonly pagesEnd: number;
-  // The zoom control over the window's foot: from `left` across to the window's edge, the window ends at its top.
   readonly zoomControl: { readonly left: number; readonly bottom: number } | null;
 }
 
-// The window not measured yet: none past the page's sides, the pages starting at its top, and no end under it.
 const UNMEASURED: WindowRoom = {
   left: 0,
   right: 0,
@@ -102,10 +82,6 @@ const UNMEASURED: WindowRoom = {
   zoomControl: null,
 };
 
-/**
- * Where a slip may sit about its line as the page is turned, the side under the line first: then the line's
- * other side, then before its start and past its end, which the field grows towards.
- */
 const SIDES_BY_TURN: Record<PageInfo["turn_cw"], readonly Side[]> = {
   0: ["below", "above"],
   90: ["left", "right", "above", "below"],
@@ -113,12 +89,6 @@ const SIDES_BY_TURN: Record<PageInfo["turn_cw"], readonly Side[]> = {
   270: ["right", "left", "below"],
 };
 
-/**
- * Where a slip about `line` sits on its page's upright layer (`uprightOf`): under the line, at its start, as the
- * page is turned, and never turned itself, so its words read across. Once its `size` is known, it sits on `side`
- * of the line, else the side `slipSideOf` chooses, never over the line as drawn, which runs to `endPt` across the
- * page, as a field typed long does.
- */
 export function slipPlaceOf(
   line: SpanInfo["bbox"],
   page: PageInfo,
@@ -133,8 +103,6 @@ export function slipPlaceOf(
   const shown = uprightOf(page);
   const sideTaken = side ?? slipSideOf(line, page, { size, endPt, room });
   const { left, top } = placedOn(boxesOf(line, { page, endPt }), { side: sideTaken, size, page, room });
-  // Moved from the layer's corner, so it's laid out in the same room wherever it sits, and keeps its size: the
-  // corner on the side facing its line, so as it grows, it grows away from the line.
   const across = points(left, shown);
   const down = points(top, shown);
   if (sideTaken === "above") {
@@ -146,12 +114,6 @@ export function slipPlaceOf(
   return { left: 0, top: 0, translate: `${across} ${down}` };
 }
 
-/**
- * The side of its line a slip `size` big sits on: the first as the page is turned (`SIDES_BY_TURN`) that the window
- * shows it whole on, else the first a scroll can, else below.
- *
- * A side `held` is kept while a scroll can show it whole there, though another side would need no scroll.
- */
 export function slipSideOf(
   line: SpanInfo["bbox"],
   page: PageInfo,
@@ -177,15 +139,10 @@ export function slipSideOf(
   return onPage.find(inWindow) ?? onPage.find(withinPages) ?? onPage[0] ?? "below";
 }
 
-/** The line's own box as it's shown, and as it's drawn, running to `endPt`. */
 function boxesOf(line: SpanInfo["bbox"], { page, endPt }: { page: PageInfo; endPt: number }) {
   return { own: shownBoxOf(line, page), drawn: shownBoxOf({ ...line, x1: Math.max(line.x1, endPt) }, page) };
 }
 
-/**
- * Where a slip hangs before its size is known: from the point under the line's start, by the corner that keeps
- * it off the line as the page is turned. A line running down the screen has its slip to the left.
- */
 function hungFrom(line: SpanInfo["bbox"], page: PageInfo): CSSProperties {
   if (page.turn_cw === 0) return pinnedUnder(line, page);
   const shown = uprightOf(page);
@@ -205,7 +162,6 @@ function hungFrom(line: SpanInfo["bbox"], page: PageInfo): CSSProperties {
   }
 }
 
-/** A box on the upright page, in its points. */
 interface ShownBox {
   readonly left: number;
   readonly top: number;
@@ -213,17 +169,12 @@ interface ShownBox {
   readonly bottom: number;
 }
 
-/** Where `line` shows once the page is turned, on the upright page. */
 function shownBoxOf(line: SpanInfo["bbox"], page: PageInfo): ShownBox {
   const [x0, y0] = shownPointOf([line.x0, line.y0], page);
   const [x1, y1] = shownPointOf([line.x1, line.y1], page);
   return { left: Math.min(x0, x1), top: Math.min(y0, y1), right: Math.max(x0, x1), bottom: Math.max(y0, y1) };
 }
 
-/**
- * Where a slip `size` big sits on `side` of a line, its `own` box and as `drawn`, shown on the upright page: lined
- * up with the line's start, as it hangs before its size is known, then moved along the line to stay on the page.
- */
 function placeBeside(
   { own, drawn }: { own: ShownBox; drawn: ShownBox },
   { side, size, page }: { side: Side; size: SlipSize; page: PageInfo },
@@ -238,7 +189,6 @@ function placeBeside(
     case "left":
     case "right": {
       const left = side === "left" ? drawn.left - SLIP_GAP_PT - size.width : drawn.right + SLIP_GAP_PT;
-      // Lined up with the line's start: its top turned a quarter clockwise, its foot turned the other way.
       const top = page.turn_cw === 270 ? own.bottom - size.height : own.top;
       return { left, top: Math.max(0, top) };
     }
@@ -247,39 +197,27 @@ function placeBeside(
   }
 }
 
-/**
- * Where a slip `size` big sits on `side` of a line, as `placeBeside` puts it, but for one over or under its line
- * that the page hasn't room across for, which keeps to the window instead.
- */
 function placedOn(
   boxes: { own: ShownBox; drawn: ShownBox },
   { side, size, page, room }: { side: Side; size: SlipSize; page: PageInfo; room: WindowRoom },
 ): { left: number; top: number } {
   const place = placeBeside(boxes, { side, size, page });
   const shown = uprightOf(page);
-  // Wider than the page, it would run past the screen's edge. One beside its line keeps its place, off the line.
   const keptToWindow = overOrUnder(side) && !fitsAcross(place, { size, pageWidth: shown.width });
   if (!keptToWindow) return place;
   return { ...place, left: clamp(place.left, { least: -room.left, most: shown.width + room.right - size.width }) };
 }
 
-/** Where a slip over or under its line starts across the page: at the line's start, as the page is turned. */
 function leftAlongOf(box: ShownBox, { size, page }: { size: SlipSize; page: PageInfo }): number {
-  // Unturned, it's pinned as what's set under a box is (`pinnedSideOf`).
   if (page.turn_cw === 0) return box.left > page.width / 2 ? box.right - size.width : box.left;
   if (page.turn_cw === 270) return box.left;
   return box.right - size.width;
 }
 
-/** Whether a slip `size` big at `place` is whole on the page's width. */
 function fitsAcross(place: { left: number }, { size, pageWidth }: { size: SlipSize; pageWidth: number }) {
   return place.left >= 0 && place.left + size.width <= pageWidth;
 }
 
-/**
- * Whether a slip on `side` of its line fits the page, as `fitsAcross` says, but for one over or under its line: that
- * one keeps to the window across, and may hang past the page's top or foot, over the page before or the next.
- */
 function fitsPage(
   place: { left: number },
   { side, size, pageWidth }: { side: Side; size: SlipSize; pageWidth: number },
@@ -287,12 +225,10 @@ function fitsPage(
   return overOrUnder(side) || fitsAcross(place, { size, pageWidth });
 }
 
-/** Whether `side` is over or under its line, as against before its start or past its end. */
 function overOrUnder(side: Side): boolean {
   return side === "above" || side === "below";
 }
 
-/** Whether a slip `size` big at `place` is whole in the window's height (`WindowRoom`), clear of the zoom control. */
 function fitsWindow(
   place: { left: number; top: number },
   { size, shown, room }: { size: SlipSize; shown: { height: number }; room: WindowRoom },
@@ -307,7 +243,6 @@ function clamp(value: number, { least, most }: { least: number; most: number }):
   return Math.max(least, Math.min(value, most));
 }
 
-/** Where a point on the page, in its own points, shows once the page is turned: in the upright page's points. */
 function shownPointOf([x, y]: [number, number], page: PageInfo): [number, number] {
   switch (page.turn_cw) {
     case 0:
@@ -323,10 +258,6 @@ function shownPointOf([x, y]: [number, number], page: PageInfo): [number, number
   }
 }
 
-/**
- * The whole page's image, set inside a box on it so the box shows its own pixels: as wide as the page
- * is to the box, and moved up and left by where the box starts. Percentages of the box, as it scales.
- */
 export function cropOf(
   box: { x0: number; y0: number; x1: number; y1: number },
   page: { width: number },
@@ -340,41 +271,34 @@ export function cropOf(
   };
 }
 
-/** A length in points as CSS, against the page's width: the page layer is a size container. */
 export function points(value: number, page: { width: number }): string {
   return `${(value / page.width) * 100}cqw`;
 }
 
-/** The page's width and height as shown, in points: the file's /Rotate turns a page on its side. */
 function shownSize(page: PageInfo): [wide: number, tall: number] {
   const turned = page.turn_cw % 180 !== 0;
   return turned ? [page.height, page.width] : [page.width, page.height];
 }
 
-/** How wide the page is printed, in CSS pixels: as it shows at 100%. */
 export function printedPxOf(page: PageInfo): number {
   const [wide] = shownSize(page);
   return wide * PX_PER_PT;
 }
 
-/** The page's printed width, which its column and its most width are built from, zoomed (`--zoom`). */
 export function sheetWidthOf(page: PageInfo): { "--sheet-width": string } {
   return { "--sheet-width": `${printedPxOf(page)}px` };
 }
 
-/** The sheet's shape as the page is shown, so its box is held before the image comes. */
 export function sheetShapeOf(page: PageInfo): CSSProperties {
   const [wide, tall] = shownSize(page);
   return { aspectRatio: `${wide} / ${tall}` };
 }
 
-/** The page as it's shown, upright: its width and height swapped where it's turned a quarter, and no turn. */
 export function uprightOf(page: PageInfo): PageInfo {
   const [wide, tall] = shownSize(page);
   return { width: wide, height: tall, turn_cw: 0 };
 }
 
-/** The page's own layer in its sheet: the page's size in unrotated points, turned as the file says. */
 export function layerOf(page: PageInfo): CSSProperties {
   const [wide, tall] = shownSize(page);
   return {
@@ -384,10 +308,6 @@ export function layerOf(page: PageInfo): CSSProperties {
   };
 }
 
-/**
- * How far a field set at `fontPx` scales down to show a span's `sizePt` on a page `pageWidthPt`
- * wide, shown `shownPx` wide: what a touch screen's field is drawn at.
- */
 export function fieldScaleOf(
   sizePt: number,
   { pageWidthPt, shownPx, fontPx }: { pageWidthPt: number; shownPx: number; fontPx: number },
@@ -397,13 +317,11 @@ export function fieldScaleOf(
   return ((sizePt / pageWidthPt) * shownPx) / fontPx;
 }
 
-/** A PDF colour, each part from 0 to 1, as CSS. */
 function rgbOf(color: readonly number[]): string {
   const [red = 0, green = 0, blue = 0] = color;
   return `rgb(${red * 255} ${green * 255} ${blue * 255})`;
 }
 
-/** Text drawn where a span is, as the page has it: its place, its size and colour, in `face`. */
 export function spanTextStyle(span: SpanInfo, page: PageInfo, face: string): CSSProperties {
   const box = boxOf(span.bbox, page);
   return {
@@ -418,14 +336,11 @@ export function spanTextStyle(span: SpanInfo, page: PageInfo, face: string): CSS
   };
 }
 
-/** Text in a span's place set at `size` and `scaleX`, shares of its own (a way out of a long line), as the page will draw it. */
 function setAsStyle(span: SpanInfo, page: PageInfo, { size, scaleX }: LineScale): CSSProperties {
-  // Narrowed from its start, as the server narrows the line.
   const narrowed = scaleX === 1 ? {} : { transform: `scaleX(${scaleX})`, transformOrigin: "0 0" };
   return { fontSize: points(span.size * size, page), ...narrowed };
 }
 
-/** The browser's drawing of a span's words, in its place as the page will draw them: in `face`, set at `scale`. */
 export function previewStyleOf(
   span: SpanInfo,
   page: PageInfo,
@@ -468,16 +383,13 @@ export function runTextStyle(
 // One canvas measures every field's text: it draws nothing, so it never joins the page.
 let ruler: CanvasRenderingContext2D | null | undefined;
 
-/** How wide `text` draws in `face` at `sizePt`, in points, as the browser sets it: a letter `face` lacks in its fallback. */
 function shownWidthPt(text: string, face: string, sizePt: number): number {
   if (ruler === undefined) ruler = document.createElement("canvas").getContext("2d");
   if (ruler == null) return 0;
-  // Width grows with size, so text set at `sizePt` px measures in points.
   ruler.font = `${sizePt}px ${familyOf(face)}`;
   return ruler.measureText(text).width;
 }
 
-/** How wide the field typing `text` over a span is, in points: never narrower than the span, with room past what's typed. */
 export function fieldWidthPt(
   span: SpanInfo,
   { text, face, glyphs }: { text: string; face: string; glyphs: Record<string, number> },
@@ -488,7 +400,6 @@ export function fieldWidthPt(
   return Math.max(span.bbox.x1 - span.bbox.x0, typedPt + span.size * FIELD_SPARE_EM);
 }
 
-/** Where `start` to `end` of the field's `text` sits on the page, as the field sets the text: in `face`, at `scale`. */
 export function fieldPartOf(
   span: SpanInfo,
   { text, start, end, face, scale }: { text: string; start: number; end: number; face: string; scale: LineScale },
@@ -501,12 +412,10 @@ export function fieldPartOf(
   return { ...span.bbox, x0: span.bbox.x0 + widthTo(start), x1: span.bbox.x0 + widthTo(end) };
 }
 
-/** How wide new text's field is, in points: as wide as it draws, never narrower than a couple of letters, and room for the caret. */
 export function newTextFieldWidthPt({ size }: Pick<Insert, "size">, widthPt: number): number {
   return Math.max(widthPt, size * NEW_TEXT_FIELD_MIN_EM) + size * FIELD_SPARE_EM;
 }
 
-/** As far past `box`'s edges as a strip reaches, inside the page: what the server redraws round new text. */
 export function paddedBoxOf(box: Box, info: PageInfo): Box {
   return {
     x0: Math.max(0, box.x0 - STRIP_PAD_PT),
@@ -516,10 +425,6 @@ export function paddedBoxOf(box: Box, info: PageInfo): Box {
   };
 }
 
-/**
- * The line the slip of new text being typed hangs under, `fieldWidthPt` across: as tall as a handwriting face sets
- * it, the larger, so choosing a face never moves the slip from under the pointer.
- */
 export function newTextSlipLineOf(
   insert: Pick<Insert, "origin" | "size">,
   { nearSize, fieldWidthPt }: { nearSize: number; fieldWidthPt: number },
@@ -527,30 +432,25 @@ export function newTextSlipLineOf(
   return newTextBoxOf({ ...insert, size: Math.max(insert.size, nearSize * HANDWRITING_STEP) }, fieldWidthPt);
 }
 
-/** New text's words as they're set, wherever the box they're drawn in is: dragged, they go with the pointer. */
 export function newTextWordsStyleOf(insert: Pick<Insert, "origin" | "size" | "color">, page: PageInfo, face: string) {
   const { left: _left, top: _top, height: _height, ...words } = newTextStyleOf(insert, page, face);
   return words;
 }
 
-/** The box new text is drawn in, from its baseline's start: `widthPt` across, an em above its baseline and a little below. */
 export function newTextBoxOf(insert: Pick<Insert, "origin" | "size">, widthPt: number): Box {
   const line = newTextLineOf(insert);
   return { ...line, x1: line.x0 + widthPt };
 }
 
-/** The box new text is drawn in on its page, as wide as the face that previews it sets it. */
 export function newTextBoxIn(layout: Pick<Layout, "fonts" | "spans">, insert: Insert): Box {
   return newTextBoxOf(insert, newTextWidthIn(layout, insert));
 }
 
-/** How wide new text draws on its page, in points: in the face that previews it, by its page font's widths if it has one. */
 export function newTextWidthIn(layout: Pick<Layout, "fonts" | "spans">, insert: Insert): number {
   const glyphs = fontOfNewText(layout, insert)?.glyphs ?? {};
   return newTextWidthPt(insert, { face: newTextFaceOf(layout, insert), glyphs });
 }
 
-/** How wide new text draws, in points: by its font's widths where the browser has them, else as `face` sets it here. */
 export function newTextWidthPt(
   { text, size }: Pick<Insert, "text" | "size">,
   { face, glyphs }: { face: string; glyphs: Record<string, number> },
@@ -558,7 +458,6 @@ export function newTextWidthPt(
   return Math.max(widthPt(text, glyphs, size), shownWidthPt(text, face, size));
 }
 
-/** New text where it's drawn, as the page will draw it: from its baseline's start, at its size and colour, in `face`. */
 export function newTextStyleOf(
   insert: Pick<Insert, "origin" | "size" | "color">,
   page: PageInfo,

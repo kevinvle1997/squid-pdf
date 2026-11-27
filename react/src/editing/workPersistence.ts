@@ -1,6 +1,3 @@
-// The work on the open document, persisted in this browser as it changes (documents/localPersistence.ts),
-// so a reload or a closed tab loses none of it; and the editor restored from work persisted before.
-
 import { sentenceOf } from "../bugs";
 import {
   forgetPersisted,
@@ -16,23 +13,20 @@ import type { History } from "./history";
 import { newlyHeard, noticeLines, openingNoticesOf, warn } from "./notices";
 import { UNEDITED } from "./project";
 
-/** A font copy as it's stored: its bytes, and their type, which goes with them to the server. */
 interface PersistedFont {
   readonly bytes: ArrayBuffer;
   readonly type: string;
 }
 
-/** What's persisted of the work on a document: its history, the user's copies of its fonts, and the fonts muted. */
 export interface Work {
   readonly history: History;
   readonly fonts: readonly (readonly [string, PersistedFont])[];
-  readonly quietFonts: readonly string[]; // the muted fonts, under the name saved work is stored with
+  readonly quietFonts: readonly string[];
 }
 
 // Each font copy's bytes, read once however often the work is persisted.
 const bytesOf = new WeakMap<Blob, Promise<ArrayBuffer>>();
 
-/** The user's copies of the document's fonts, as they're stored. */
 async function persistedFonts(attached: ReadonlyMap<string, Blob>): Promise<Work["fonts"]> {
   const fonts = [...attached].map(async ([fontName, file]) => {
     const reading = bytesOf.get(file) ?? file.arrayBuffer();
@@ -42,15 +36,13 @@ async function persistedFonts(attached: ReadonlyMap<string, Blob>): Promise<Work
   return Promise.all(fonts);
 }
 
-/** What's been persisted of the open document: whether its file is, the history last written, and until when. */
 export interface Persistence {
   file: boolean;
   history: History | null;
-  until: number; // when the server forgets the document, in ms since the epoch: persisted here as long
-  forgetting: ReturnType<typeof setTimeout> | null; // forgets what's persisted here at `until`, while the page is open
+  until: number;
+  forgetting: ReturnType<typeof setTimeout> | null;
 }
 
-/** Whether what was persisted is work this editor can start from. */
 export function isWork(persisted: unknown): persisted is Work {
   return (
     typeof persisted === "object" &&
@@ -61,7 +53,6 @@ export function isWork(persisted: unknown): persisted is Work {
   );
 }
 
-/** Persist the work as it is now, the file too the first time: once written, leaving loses none of it. */
 export async function persistWork(editor: Editor): Promise<void> {
   const { history, doc, mutedFonts } = editor.store.get();
   const { persistence } = editor;
@@ -79,16 +70,11 @@ export async function persistWork(editor: Editor): Promise<void> {
   }
 }
 
-/** The server's hour moved, as each of its replies says: what's persisted here lasts as long. */
 export function persistUntil(editor: Editor, expiresAt: string): void {
   editor.persistence.until = Date.parse(expiresAt);
   if (editor.persistence.file) void persistWork(editor);
 }
 
-/**
- * Forget what's persisted here as the server's hour runs out while the page is open, so the copy lasts as long as
- * the landing says. The next change persists afresh, file and all; until then, leaving asks first.
- */
 export function forgetAtUntil(persistence: Persistence): void {
   if (persistence.forgetting !== null) clearTimeout(persistence.forgetting);
   persistence.forgetting = setTimeout(
@@ -101,19 +87,16 @@ export function forgetAtUntil(persistence: Persistence): void {
   );
 }
 
-/** The editor is closing: what's persisted here stays for the landing to offer, so nothing forgets it now. */
 export function stopForgetting(persistence: Persistence): void {
   if (persistence.forgetting !== null) clearTimeout(persistence.forgetting);
   persistence.forgetting = null;
 }
 
-/** Whether leaving now would lose work: changes no export took, not yet persisted here, or words still being typed. */
 export function wouldLoseWork(editor: Editor): boolean {
   const state = editor.store.get();
   return unexported(state) && (state.draft !== null || editor.persistence.history !== state.history);
 }
 
-/** A new editor restores work persisted here before, before it's drawn: persisted already, file and all. */
 export function restorePersisted(editor: Editor, { work, until }: PersistedWork<Work>): void {
   const { doc, layout } = editor.store.get();
   editor.store.set({
@@ -126,7 +109,6 @@ export function restorePersisted(editor: Editor, { work, until }: PersistedWork<
   forgetAtUntil(editor.persistence);
 }
 
-/** The editor restored from persisted work: what it reads is drawn, the user's copies of its fonts preview, and a stale reading is read again. */
 export function resumeWork(editor: Editor): void {
   const { reading } = editor.store.get();
   readStoredAgain(editor);
@@ -134,24 +116,15 @@ export function resumeWork(editor: Editor): void {
   for (const [fontName, file] of editor.attached) void addOwnFace(fontName, file);
 }
 
-/**
- * A reading of the document persisted by an earlier build lacks a sentence this one reads: the server's is asked
- * for, as the editor opens and again as the connection comes back, until it lands.
- */
 export function readStoredAgain(editor: Editor): void {
   if (lacksSentences(editor.store.get().doc)) void readAgain(editor);
 }
 
-/**
- * The server's reading of the document asked for again, in place of the one persisted, with what opening it finds:
- * a line that's new under the bar is heard. Why not, in the bar if it fails.
- */
 async function readAgain(editor: Editor): Promise<void> {
   const { store, reopener } = editor;
   try {
     const doc = await reopener.readAgain();
     const { notices: before, drawn, reading } = store.get();
-    // A failure said before, this one's or opening again's, is over: the document is there.
     const reopen = before.reopen?.tone === "warn" ? null : before.reopen;
     const notices = { ...before, document: openingNoticesOf(doc), reopen };
     const heard = newlyHeard(noticeLines(before, drawn, reading), noticeLines(notices, drawn, reading));

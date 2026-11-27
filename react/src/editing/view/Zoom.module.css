@@ -1,4 +1,3 @@
-/* A slip at the window's foot, at its end: what floats is rounded, a step above the mat, as a list from the bar is. */
 .zoom {
   composes: masthead from "../../ui/Masthead.module.css";
   position: fixed; z-index: var(--z-bar);
@@ -11,7 +10,6 @@
 }
 .zoom button { min-width: var(--hit); padding-inline: var(--s2); }
 .zoom svg { display: block; }
-/* The share shown: tabular, so the slip keeps its width as it changes. */
 .share { font-variant-numeric: tabular-nums; min-width: 6ch; }
 @media (forced-colors: active) {
   .zoom { outline: 1px solid CanvasText; }

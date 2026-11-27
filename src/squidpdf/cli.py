@@ -13,8 +13,6 @@ squidpdf remove  email                 take someone's account off, and sign them
 squidpdf billing email [--resync]      what Stripe said of an account; --resync asks again
 """
 
-# Speaks English only: everything it tells a person goes through core/app/words/.
-
 from __future__ import annotations
 
 import argparse
@@ -80,51 +78,43 @@ from squidpdf.editing import (
 )
 from squidpdf.terms.terms_file import TermsUnreadable, named_terms_file, terms_in
 
-# A terminal's colours: dim, red, green, yellow, and back to plain.
 _COLORS = ("\033[2m", "\033[31m", "\033[32m", "\033[33m", "\033[0m")
 
 
 def _colors_of(stream: TextIO) -> tuple[str, ...]:
-    """`_COLORS` when `stream` is a terminal and NO_COLOR isn't set; blanks otherwise."""
     colored = stream.isatty() and "NO_COLOR" not in os.environ
     return _COLORS if colored else ("",) * len(_COLORS)
 
 
-# Colours for stdout; a failure, on stderr, gets its own in `_fail`.
 _DIM, _RED, _GREEN, _YELLOW, _OFF = _colors_of(sys.stdout)
 
-# How each judgement is marked in `spans`, padded to one width.
 _MARKS: dict[Fidelity, str] = {
     "exact": f"{_GREEN}exact{_OFF}      ",
     "approximate": f"{_YELLOW}approximate{_OFF}",
     "substitute": f"{_YELLOW}substitute{_OFF} ",
 }
 
-_TEXT_PREVIEW_LEN = 43  # characters of span text shown before truncating with "..."
-_NAME_COL_WIDTH = 38  # characters of a file path/name shown before truncating
-_NAME_COL_PAD = 40  # column width the (possibly truncated) name is padded to
+_TEXT_PREVIEW_LEN = 43
+_NAME_COL_WIDTH = 38
+_NAME_COL_PAD = 40
 # The committed sample: the browser's end-to-end test and deploy/check.sh read it.
 _SAMPLE = "fixtures/sample.pdf"
 
 
 def _opened(pdf: str) -> Engine:
-    """`pdf`, open for editing, with Google's copies of its fonts to lend, downloaded."""
     return open_pdf(pdf, sources=FontSources(google=google_fonts()))
 
 
 def _spans_arguments(command: argparse.ArgumentParser) -> None:
-    """`spans`: the PDF, and a page to list alone."""
     command.add_argument("pdf", type=_existing_file)
     command.add_argument("-p", "--page", type=int, default=None, help="only this page, from 1")
 
 
 def _cmd_spans(args: argparse.Namespace) -> int:
-    """List every editable span and whether it would keep its own font."""
     with _opened(args.pdf) as engine:
         index = engine.index()
         reports = {report.span_id: report for report in engine.assess(index)}
 
-        # `--page` counts from 1, as the listing prints it.
         shown = [s for s in index if args.page is None or s.page == args.page - 1]
         for span in shown:
             print(_listing_of(span, reports[span.id]))
@@ -133,7 +123,6 @@ def _cmd_spans(args: argparse.Namespace) -> int:
 
 
 def _listing_of(span: Span, report: FidelityReport) -> str:
-    """A span's lines in `spans`: its id, mark and font, its text, and how it differs."""
     note = f" -> {report.substitute}" if report.substitute else ""
     fragments = f" {_DIM}({len(span.fragments)} fragments){_OFF}" if span.merged else ""
     fits = len(span.text) <= _TEXT_PREVIEW_LEN + len("...")
@@ -143,14 +132,12 @@ def _listing_of(span: Span, report: FidelityReport) -> str:
         f"{_DIM}{span.font}{note} {span.size}pt{_OFF}{fragments}",
         f"           {preview}",
     ]
-    # Its own font draws it, but not as it looks: say how.
     if report.state == "approximate" and report.why is not None:
         lines.append(f"           {_DIM}{words.render(report.why)}{_OFF}")
     return "\n".join(lines)
 
 
 def _summary(reports: list[FidelityReport]) -> None:
-    """Print the counts and green rate for one document."""
     rate = green_rate(reports)
     counts = Counter(report.state for report in reports)
     summary_line = (
@@ -158,7 +145,6 @@ def _summary(reports: list[FidelityReport]) -> None:
         f" · {counts['approximate']} approximate"
         f" · {counts['substitute']} substitute"
     )
-    # No text, so no green rate.
     if rate is None:
         print(f"{summary_line} · no text")
         return
@@ -166,19 +152,13 @@ def _summary(reports: list[FidelityReport]) -> None:
 
 
 class _UnknownSpan(Exception):
-    """The PDF has no span by the id typed."""
-
     def __init__(self, span_id: str) -> None:
-        """Name the id typed."""
         super().__init__(span_id)
         self.span_id = span_id
 
 
 class _NotSaved(Exception):
-    """The file was made, but couldn't be put where the command was told to save it."""
-
     def __init__(self, path: str, why: str) -> None:
-        """Name the path, and why, as the system says it."""
         super().__init__(path)
         self.path = path
         self.why = why
@@ -186,23 +166,16 @@ class _NotSaved(Exception):
 
 @dataclass(frozen=True, slots=True, eq=False)
 class _Opened:
-    """A PDF open in the engine, its spans, the one a command was given, and its room."""
-
     engine: Engine
     index: SpanIndex
     span: Span
-    rooms: dict[str, float]  # the span's room, by its id, as the app works it out
+    rooms: dict[str, float]
 
 
 @contextmanager
 def _opened_at(pdf: str, span_id: str) -> Iterator[_Opened]:
-    """The PDF open for as long as the `with` lasts, at the span `span_id` names.
-
-    Raises _UnknownSpan, which `main` says as a hint, if it has no such span.
-    """
     with _opened(pdf) as engine:
         index = engine.index()
-        # .get: the id is typed on the command line, so the file may have no such span.
         span = index.by_id.get(span_id)
         if span is None:
             raise _UnknownSpan(span_id)
@@ -210,21 +183,16 @@ def _opened_at(pdf: str, span_id: str) -> Iterator[_Opened]:
 
 
 def _signature_notices(engine: Engine) -> list[Message]:
-    """What the browser says as a signed file opens: any file written breaks its signature."""
     return [Message("signed_file")] if engine.holds_signature() else []
 
 
 def _plain_xmp_notices(dropped: bool) -> list[Message]:
-    """What the upload says when the XMP a protected file keeps plain was taken out."""
     return [Message("plain_xmp_dropped")] if dropped else []
 
 
 @contextmanager
 def _saved_apart(out: str) -> Iterator[str]:
-    """A path to save to apart from `out`, its file put at `out` once the save and checks pass.
-
-    So a failed save or check leaves `out` as it was. Raises _NotSaved if `out` can't be had.
-    """
+    """So a failed save or check leaves `out` as it was."""
     with tempfile.TemporaryDirectory() as scratch:
         saved = Path(scratch) / "saved.pdf"
         yield str(saved)
@@ -232,28 +200,24 @@ def _saved_apart(out: str) -> Iterator[str]:
 
 
 def _put_at(saved: Path, out: str) -> None:
-    """Put the file at `saved` at `out` whole: copied beside it, then moved in at once."""
     try:
-        # A folder left behind isn't worth calling a saved file unsaved.
         with tempfile.TemporaryDirectory(
             dir=Path(out).parent, ignore_cleanup_errors=True
         ) as beside:
             staged = Path(beside) / "saved.pdf"
             shutil.copyfile(saved, staged)
             staged.replace(out)
-    except OSError as failed:  # no permission, no room, a read-only disk: the system says which
+    except OSError as failed:
         raise _NotSaved(out, failed.strerror or str(failed)) from None
 
 
 def _check_arguments(command: argparse.ArgumentParser) -> None:
-    """`check`: the PDF, the span, and the text it would become."""
     command.add_argument("pdf", type=_existing_file)
     command.add_argument("span_id")
     command.add_argument("text", type=_one_line)
 
 
 def _cmd_check(args: argparse.Namespace) -> int:
-    """Show what would happen if this span became this text, without saving."""
     with _opened_at(args.pdf, args.span_id) as opened:
         span = opened.span
         fit = replace_fit(opened.engine, span, args.text, room_pt=opened.rooms[span.id]).report
@@ -264,11 +228,9 @@ def _cmd_check(args: argparse.Namespace) -> int:
             print(f"  {_YELLOW}{words.render(said)}{_OFF}")
 
         described = words.render_all(fit.describe())
-        # It fits: nothing to choose between.
         if not described:
             print(f"  {_GREEN}fits in place{_OFF}\n")
             return 0
-        # It doesn't: say why and list the ways out.
         print(f"  {_RED}{described}{_OFF}")
         for option in fit.options:
             label, detail = words.render(option.label), words.render(option.detail)
@@ -278,7 +240,6 @@ def _cmd_check(args: argparse.Namespace) -> int:
 
 
 def _edit_arguments(command: argparse.ArgumentParser) -> None:
-    """`edit`: what `check` takes, where to save, and a way out to take."""
     _check_arguments(command)
     command.add_argument("-o", "--out", default="out.pdf", type=_new_file)
     command.add_argument("--force", action="store_true", help="edit even if it will not fit")
@@ -291,7 +252,6 @@ def _edit_arguments(command: argparse.ArgumentParser) -> None:
 
 
 def _overwrite_refusal(args: argparse.Namespace) -> str | None:
-    """`edit` and `redact`: why `-o` can't be the PDF read; None when it isn't."""
     # Saving over the PDF being read would lose the original if anything went wrong.
     if _same_file(args.pdf, args.out):
         return f"-o {args.out} is the PDF being read; save to a new file"
@@ -299,15 +259,10 @@ def _overwrite_refusal(args: argparse.Namespace) -> str | None:
 
 
 def _same_file(pdf: str, out: str) -> bool:
-    """Whether `out` is `pdf` itself, under this name or another."""
     return Path(out).exists() and Path(out).samefile(pdf)
 
 
 def _cmd_edit(args: argparse.Namespace) -> int:
-    """Replace a span's text and save. Refuses if it will not fit, unless --force.
-
-    `--strategy` takes a way out `check` offered: shrink or condense, to fit.
-    """
     with _opened_at(args.pdf, args.span_id) as opened:
         span = opened.span
         replace = Replace(span.id, args.text, strategy=args.strategy)
@@ -329,12 +284,10 @@ def _cmd_edit(args: argparse.Namespace) -> int:
         # As the upload does: MuPDF would write that XMP garbled.
         plain_xmp_dropped = opened.engine.drop_plain_xmp()
         file_notices = _plain_xmp_notices(plain_xmp_dropped) + _signature_notices(opened.engine)
-        # The same save a download gets.
         with _saved_apart(args.out) as to:
             saved = save_edited(
                 opened.engine,
                 opened.index,
-                # One span alone: the CLI edits no line.
                 free_space=FreeSpace(opened.rooms, lines=[]),
                 edits=[replace],
                 to=to,
@@ -350,22 +303,17 @@ def _cmd_edit(args: argparse.Namespace) -> int:
 
 
 def _redact_arguments(command: argparse.ArgumentParser) -> None:
-    """`redact`: the PDF, the span, and where to save."""
     command.add_argument("pdf", type=_existing_file)
     command.add_argument("span_id")
     command.add_argument("-o", "--out", default="out.pdf", type=_new_file)
 
 
 def _cmd_redact(args: argparse.Namespace) -> int:
-    """Remove a span, save, and verify by re-reading the output that it is gone."""
     with _opened_at(args.pdf, args.span_id) as opened:
         span = opened.span
-        # Before the hidden copies are read, which would read that XMP garbled.
         plain_xmp_dropped = opened.engine.drop_plain_xmp()
-        # Asked before the save takes the signatures out, as render asks.
         hidden = opened.engine.redaction.hidden_places([whole_run(span)])[span.id]
         removal_notices = [Message("signatures_removed")] if "signatures" in hidden else []
-        # The same save and check a download gets.
         try:
             with _saved_apart(args.out) as to:
                 saved = save_edited(
@@ -376,8 +324,6 @@ def _cmd_redact(args: argparse.Namespace) -> int:
                     to=to,
                     driver_factory=DEFAULT_DRIVER_FACTORY,
                 )
-        # The text was still in the file, or the erase moved other text, or that couldn't be
-        # checked: none was kept.
         except (RedactionFailed, RedactionMoved, RedactionUnchecked) as failed:
             return _fail(failed.detail)
     print(f"\n  removed {span.text!r}")
@@ -394,26 +340,21 @@ def _cmd_redact(args: argparse.Namespace) -> int:
 
 @dataclass(frozen=True, slots=True)
 class _Row:
-    """One file's line in `report`."""
-
     path: str
-    read: bool  # whether it opened and was assessed
-    reports: list[FidelityReport] = field(repr=False)  # each span's; none if it wasn't read
-    note: str  # how many spans it has, or why it couldn't be read
+    read: bool
+    reports: list[FidelityReport] = field(repr=False)
+    note: str
 
     @property
     def rate(self) -> float | None:
-        """Its green rate; None if it has no text or wasn't read."""
         return green_rate(self.reports)
 
 
 def _report_arguments(command: argparse.ArgumentParser) -> None:
-    """`report`: the PDFs, unchecked: one that won't open is a row, not the end of the run."""
     command.add_argument("pdfs", nargs="+")
 
 
 def _cmd_report(args: argparse.Namespace) -> int:
-    """Green rate across a corpus; exits 1 when it measured no file."""
     rows = [_row_of(path) for path in args.pdfs]
     print()
     for row in rows:
@@ -429,11 +370,9 @@ def _cmd_report(args: argparse.Namespace) -> int:
 
 
 def _row_of(path: str) -> _Row:
-    """One file's line in `report`: its spans assessed, or why it couldn't be read."""
     try:
-        # As `_run` runs a command: a failure inside MuPDF comes back as the Problem it means.
         reports = result_of(partial(_assessed, path))
-    except Problem as exc:  # damaged, password-protected, or the library failed: says which
+    except Problem as exc:
         return _Row(path, read=False, reports=[], note=exc.detail)
     except Exception as exc:  # noqa: BLE001 (one bad file must not stop the run)
         return _Row(path, read=False, reports=[], note=str(exc)[:_NAME_COL_WIDTH])
@@ -441,26 +380,21 @@ def _row_of(path: str) -> _Row:
 
 
 def _assessed(path: str) -> list[FidelityReport]:
-    """Each span's report, for the PDF at `path`."""
     with _opened(path) as engine:
         return engine.assess(engine.index())
 
 
 def _line_of(row: _Row) -> str:
-    """A file's line in `report`: its green rate, its name, and a note."""
     name = posixpath.basename(row.path)[:_NAME_COL_WIDTH]
     name_and_note = f"{name:<{_NAME_COL_PAD}}{_DIM}{row.note}{_OFF}"
-    # `note` says why.
     if not row.read:
         return f"  {_RED}failed{_OFF}   {name_and_note}"
-    # No text, so no green rate.
     if row.rate is None:
         return f"  no text  {name_and_note}"
     return f"  {_rate_color(row.rate)}{row.rate:>5.0%}{_OFF}    {name_and_note}"
 
 
 def _rate_color(rate: float) -> str:
-    """Green at the target, yellow down to the warning line, red below it."""
     if rate >= GREEN_RATE_TARGET:
         return _GREEN
     if rate >= GREEN_RATE_WARN:
@@ -469,13 +403,11 @@ def _rate_color(rate: float) -> str:
 
 
 def _fixture_arguments(command: argparse.ArgumentParser) -> None:
-    """`fixture`: where to write, and a page count for a long contract."""
     command.add_argument("out", nargs="?", default=_SAMPLE, type=_new_file)
     command.add_argument("--pages", type=int, help="a long contract of this many pages")
 
 
 def _fixture_refusal(args: argparse.Namespace) -> str | None:
-    """Why `--pages` can't write where it was told; None when it can."""
     # Others read `_SAMPLE`, so a long contract never replaces it.
     if args.pages is not None and args.out == _SAMPLE:
         return f"--pages would replace {_SAMPLE}; name another file"
@@ -483,10 +415,6 @@ def _fixture_refusal(args: argparse.Namespace) -> str | None:
 
 
 def _cmd_fixture(args: argparse.Namespace) -> int:
-    """Two pages: one whose fonts are only referenced, one where they are embedded.
-
-    With `--pages`, a long contract of made-up clauses instead, every page full.
-    """
     if args.pages is not None:
         write_dense(args.out, pages=args.pages)
         print(f"  wrote {args.out} {_DIM}· {args.pages} full pages, fonts not embedded{_OFF}")
@@ -497,17 +425,15 @@ def _cmd_fixture(args: argparse.Namespace) -> int:
 
 
 def _terms_arguments(command: argparse.ArgumentParser) -> None:
-    """`terms`: the file to check, else the one SQUIDPDF_TERMS names, as the server reads."""
     command.add_argument("file", nargs="?", type=Path, default=named_terms_file())
 
 
 def _cmd_terms(args: argparse.Namespace) -> int:
-    """Read a terms file as the server will as it starts, and list what the page shows."""
     if args.file is None:
         return _fail(words.render(Message("terms_none_named")))
     try:
         terms = terms_in(args.file)
-    except TermsUnreadable as refused:  # terms_in: the page can't show the file, and why
+    except TermsUnreadable as refused:
         return _fail(str(refused), hint="(the app won't start on it)")
     print(f"  {terms['title']}")
     if terms["last_changed"] is not None:
@@ -519,7 +445,6 @@ def _cmd_terms(args: argparse.Namespace) -> int:
 
 
 def _invite_arguments(command: argparse.ArgumentParser) -> None:
-    """`invite`: the address, and whether they use as many documents as they like."""
     command.add_argument("email")
     command.add_argument(
         "--unlimited",
@@ -529,14 +454,13 @@ def _invite_arguments(command: argparse.ArgumentParser) -> None:
 
 
 def _cmd_invite(args: argparse.Namespace) -> int:
-    """Invite `email` to the accounts SQUIDPDF_DATABASE names, unlimited or not."""
     users = named_users()
     if users is None:
         return _fail(words.render(Message("no_database")))
     email = checked_email(args.email)
     try:
         secret = named_secret()
-    except AccountsUnset as unset:  # raised by named_secret: none set, or one too short
+    except AccountsUnset as unset:
         return _fail(words.render(Message("no_secret", {"email": email})), hint=f"({unset})")
     user = users.invite(email, now=int(time.time()), is_unlimited=args.unlimited, secret=secret)
     said = "invited_unlimited" if user.is_unlimited else "invited"
@@ -545,25 +469,23 @@ def _cmd_invite(args: argparse.Namespace) -> int:
 
 
 def _remove_arguments(command: argparse.ArgumentParser) -> None:
-    """`remove`: the address whose account goes."""
     command.add_argument("email")
 
 
 def _cmd_remove(args: argparse.Namespace) -> int:
-    """Take the account under `email` off the table SQUIDPDF_DATABASE names."""
     users = named_users()
     if users is None:
         return _fail(words.render(Message("no_database")))
     email = checked_email(args.email)
     try:
         secret = named_secret()
-    except AccountsUnset as unset:  # raised by named_secret: none set, or one too short
+    except AccountsUnset as unset:
         return _fail(words.render(Message("no_secret", {"email": email})), hint=f"({unset})")
     try:
         removal = remove_account(users, email, secret=secret, billing_here=_billing_here)
-    except PaymentsUnavailable as unasked:  # raised by Stripe's client: nothing was removed
+    except PaymentsUnavailable as unasked:
         return _fail(unasked.detail)
-    except AccountsUnset as unset:  # raised by _billing_here: set up in part, Stripe unasked
+    except AccountsUnset as unset:
         said = words.render(Message("billing_unchecked", {"email": email}))
         return _fail(said, hint=f"({unset})")
     # A typo leaves the person still in: said, so it's caught.
@@ -581,7 +503,6 @@ def _cmd_remove(args: argparse.Namespace) -> int:
 
 
 def _billing_arguments(command: argparse.ArgumentParser) -> None:
-    """`billing`: the address whose ledger to show, and whether to ask Stripe again first."""
     command.add_argument("email")
     command.add_argument(
         "--resync",
@@ -591,7 +512,6 @@ def _billing_arguments(command: argparse.ArgumentParser) -> None:
 
 
 def _cmd_billing(args: argparse.Namespace) -> int:
-    """Show whether the account under `email` is paid, and each event that set it, in order."""
     users = named_users()
     if users is None:
         return _fail(words.render(Message("no_database")))
@@ -619,46 +539,38 @@ def _cmd_billing(args: argparse.Namespace) -> int:
 
 
 def _resynced(users: UserStore, user: User) -> str | None:
-    """Ask Stripe again for `user`'s paid time, kept in the ledger; why it couldn't, if not."""
     if user.stripe_customer is None:
         return words.render(Message("billing_no_customer", {"email": user.email}))
     unchecked = words.render(Message("billing_unchecked", {"email": user.email}))
     try:
         billing = _billing_here()
-    except AccountsUnset as unset:  # raised by _billing_here: set up in part, Stripe unasked
+    except AccountsUnset as unset:
         return f"{unchecked} ({unset})"
     if billing is None:
         return unchecked
     try:
         resync(users, billing, user, customer=user.stripe_customer)
-    except PaymentsUnavailable as unasked:  # raised by Stripe's client: nothing was kept
+    except PaymentsUnavailable as unasked:
         return unasked.detail
     return None
 
 
 def _billing_here() -> Billing | None:
-    """How this server takes payment, as its environment sets it; None where it takes none.
-
-    Raises AccountsUnset where it's set up in part, saying what's missing.
-    """
     accounts = deployed_accounts()
     return None if accounts is None else accounts.billing
 
 
 def _ledger_row(event: BillingEvent) -> str:
-    """One line of the ledger: when Stripe made the event, what it was, what it set."""
     set_to = "-" if event.paid_until is None else _when(event.paid_until)
     made = _when(event.created)
     return f"{made}  {event.type:<34} {event.outcome:<10} {set_to}  {event.id}"
 
 
 def _when(seconds: int) -> str:
-    """A time in Unix seconds, as the ledger's lines write it, in UTC."""
     return datetime.fromtimestamp(seconds, UTC).strftime("%Y-%m-%d %H:%M UTC")
 
 
 def _fail(said: str, *, hint: str = "") -> int:
-    """Show a failure on stderr, coloured only if stderr is a terminal; return the exit code."""
     dim, red, _green, _yellow, off = _colors_of(sys.stderr)
     shown_hint = f" {dim}{hint}{off}" if hint else ""
     print(f"  {red}{said}{off}{shown_hint}", file=sys.stderr)
@@ -666,29 +578,25 @@ def _fail(said: str, *, hint: str = "") -> int:
 
 
 def _no_span(span_id: str) -> int:
-    """Print the standard error for an unknown span id and return the exit code."""
     hint = f"({span_id}: run `squidpdf spans` to list them)"
     return _fail(words.sentence("no_span"), hint=hint)
 
 
 def _existing_file(path: str) -> str:
-    """A path to a file that's there; otherwise a usage error that names it."""
     if not Path(path).is_file():
         raise argparse.ArgumentTypeError(f"there's no file at {path}")
     return path
 
 
 def _one_line(text: str) -> str:
-    """New text, as one line of letters; otherwise a usage error that says why."""
     try:
         check_text(text)
-    except ValueError as exc:  # check_text: a character that can't stand in one line
+    except ValueError as exc:
         raise argparse.ArgumentTypeError(str(exc)) from None
     return text
 
 
 def _new_file(path: str) -> str:
-    """A path to save to: in a folder that's there, and not a folder itself."""
     target = Path(path)
     if target.is_dir():
         raise argparse.ArgumentTypeError(f"{path} is a folder, not a file")
@@ -699,22 +607,18 @@ def _new_file(path: str) -> str:
 
 
 def _no_refusal(_args: argparse.Namespace) -> None:
-    """No refusal, for a command whose arguments always run together."""
+    pass
 
 
 @dataclass(frozen=True, slots=True)
 class _Command:
-    """A subcommand: its name, its summary, the arguments it takes, and what runs it."""
-
     name: str
-    summary: str  # its line in `--help`
+    summary: str
     arguments: Callable[[argparse.ArgumentParser], None]
     run: Callable[[argparse.Namespace], int]
-    # Why its arguments can't run together, which argparse says; None when they can.
     refusal: Callable[[argparse.Namespace], str | None] = _no_refusal
 
 
-# In the order `--help` lists them.
 _COMMANDS = (
     _Command("spans", "list editable text and how it would edit", _spans_arguments, _cmd_spans),
     _Command("check", "what would happen if you typed this", _check_arguments, _cmd_check),
@@ -750,7 +654,6 @@ _COMMANDS = (
 
 
 def _parser() -> argparse.ArgumentParser:
-    """The command line's parser, a subparser per command."""
     parser = argparse.ArgumentParser(
         prog="squidpdf",
         description=__doc__,
@@ -765,26 +668,23 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def _run(args: argparse.Namespace) -> int:
-    """Run the chosen command, saying any failure in words; its exit code."""
     try:
         # As a worker runs it: a failure inside MuPDF comes back as the Problem it means.
         return result_of(partial(args.fn, args))
-    except _UnknownSpan as unknown:  # the span id typed isn't in the PDF
+    except _UnknownSpan as unknown:
         return _no_span(unknown.span_id)
-    except _NotSaved as failed:  # the file was made, but its path can't be written
+    except _NotSaved as failed:
         return _fail(
             words.render(Message("not_saved", {"path": failed.path, "why": failed.why}))
         )
-    except Problem as exc:  # e.g. the one PDF a command was given won't open
+    except Problem as exc:
         return _fail(exc.detail)
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Parse arguments and run the chosen subcommand."""
     parser = _parser()
     args = parser.parse_args(argv)
     refusal = args.refusal(args)
-    # Arguments that can't run together: argparse says why, and exits.
     if refusal is not None:
         parser.error(refusal)
     return _run(args)

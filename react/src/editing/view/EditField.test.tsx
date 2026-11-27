@@ -16,7 +16,6 @@ import { EditorContext } from "./context";
 import { ALT } from "./keys";
 import { Page } from "./Page";
 
-// Learning as an editor does, unless a test holds it back.
 vi.mock(import("../dateNames"), async (original) => {
   const learnt = await original();
   return { ...learnt, learnDateLanguages: vi.fn(learnt.learnDateLanguages) };
@@ -36,17 +35,14 @@ vi.mock(import("../../api/client"), async (original) => ({
   pageImage: vi.fn(async () => undefined),
 }));
 
-// Every language a date is read in, learnt in the background as an editor would: the dates here need them.
 beforeAll(() => learnDateLanguages());
 
 const WORDS = "Due 14 March 2026";
-// A subset that drew only these words: it has no 7, so the 17th can't be written in it.
 const due = aSpan({ id: "due", text: WORDS, size: 20, bbox: { x0: 72, y0: 100, x1: 242, y1: 124 }, room_pt: 200 });
 const DOC = aDoc({ spans: [due], fonts: [aFont("Times-Roman", { glyphs: halfWideGlyphs(WORDS) })] });
 const WHITE_PIXEL =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVR42mP4DwABAQEAHLCMmQAAAABJRU5ErkJggg==";
 const NO_SEVEN = fill(SENTENCES.missing, { chars: ["7"], font: "Liberation Serif Regular" });
-// What a day the font can't write says, as the mockup draws it: the full verdict is the slip's.
 const DAY_NO_SEVEN = fill(SENTENCES.not_in_font, { chars: ["7"] });
 
 let editor: Editor;
@@ -60,7 +56,6 @@ beforeEach(async () => {
   await page.viewport(1400, 900);
 });
 
-/** The page, the field on its span reading `words` open from the keyboard, its words selected. */
 async function openField(words = WORDS) {
   const screen = await render(
     <EditorContext.Provider value={editor}>
@@ -76,7 +71,6 @@ async function openField(words = WORDS) {
   return { screen, field };
 }
 
-/** The marked day's reason shown, on its row under the month: none while it shows none. */
 function reasonIn(screen: Awaited<ReturnType<typeof render>>): HTMLElement | null {
   const under = screen.getByRole("grid").element().nextElementSibling;
   return under?.querySelector<HTMLElement>("[data-shown]") ?? null;
@@ -92,7 +86,6 @@ describe("a date in the field", () => {
     const fourteenth = screen.getByRole("button", { name: /March 14, 2026/ });
     await expect.element(fourteenth).toHaveFocus();
     await expect.element(screen.getByRole("heading", { name: "March 2026" })).toBeVisible();
-    // Inside the slip, under the verdict: the field is still where it was, and still says the line looks identical.
     await expect.element(screen.getByText("looks identical")).toBeVisible();
   });
 
@@ -111,7 +104,6 @@ describe("a date in the field", () => {
     await expect.element(seventeenth).toBeVisible();
     await userEvent.hover(seventeenth);
     await expect.poll(() => reasonIn(screen)?.textContent).toBe(DAY_NO_SEVEN);
-    // Heard on the keyboard as focus reaches it, in the server's words.
     await userEvent.keyboard("{ArrowRight}{ArrowRight}{ArrowRight}");
     expect(editor.store.get().announcement.text).toBe(DAY_NO_SEVEN);
   });
@@ -122,11 +114,9 @@ describe("a date in the field", () => {
       await page.viewport(width, 900);
       await emulateTouchScreen();
       const { screen, field } = await openField();
-      // A letter the font lacks typed already: the slip offers the user's copy, and Redact sits along from it.
       await field.fill("Due 17 March 2026");
       const control = screen.getByRole("button", { name: "Date" });
       await expect.element(control).toBeVisible();
-      // Tapped where it comes to rest: the slip arrives moving.
       await animationsDone();
       await tapAt(middleOf(control.element().getBoundingClientRect()));
       const marked = screen.getByRole("button", { name: /March 27, 2026/ });
@@ -135,7 +125,6 @@ describe("a date in the field", () => {
       const height = slip?.getBoundingClientRect().height;
       await tapAt(middleOf(marked.element().getBoundingClientRect()));
       await expect.poll(() => reasonIn(screen)).not.toBeNull();
-      // Its line was kept for it: the slip doesn't grow as it shows.
       expect(slip?.getBoundingClientRect().height).toBe(height);
       const reason = reasonIn(screen)?.getBoundingClientRect() ?? new DOMRect();
       for (const button of document.querySelectorAll('button, [role="button"]')) {
@@ -180,7 +169,6 @@ describe("a date in the field", () => {
     const { screen, field } = await openField();
     await userEvent.keyboard("{Alt>}{ArrowDown}{/Alt}");
     await expect.element(screen.getByRole("button", { name: /March 14, 2026/ })).toHaveFocus();
-    // As the browser's own undo of the field would type it, out of sight of it.
     typeInto(editor, "Due ");
     await expect.element(screen.getByRole("grid")).not.toBeInTheDocument();
     await expect.element(field).toHaveFocus();
@@ -195,7 +183,6 @@ describe("a date in the field", () => {
     // The step drawn in the month's header: React Aria keeps a second for screen readers, after the days.
     await screen.getByRole("button", { name: "Next" }).first().click();
     await expect.element(screen.getByRole("heading", { name: "April 2026" })).toBeVisible();
-    // Back in the field, the calendar left open beside it, as a click leaves it.
     await field.click();
     await expect.element(field).toHaveFocus();
     await userEvent.keyboard("{Home}x");
@@ -209,13 +196,11 @@ describe("a date in the field", () => {
   });
 
   test("keeps the slip's height as the months are stepped through, into another year and back", async () => {
-    // The 15th and 17th can't be written, nor any month named with a letter "Due 14 March 2026" hasn't, nor 2027.
     const { screen } = await openField();
     const control = screen.getByRole("button", { name: "Date" });
     await userEvent.keyboard("{Alt>}{ArrowDown}{/Alt}");
     await expect.element(screen.getByRole("button", { name: /March 14, 2026/ })).toHaveFocus();
     const slip = control.element().closest("[data-slip]");
-    // Measured at rest: the slip arrives moving.
     await animationsDone();
     const heightNow = () => slip?.getBoundingClientRect().height;
     const height = heightNow();
@@ -252,7 +237,6 @@ describe("the control's key", () => {
     expect(screen.getByRole("tooltip").query()).toBeNull();
     await userEvent.keyboard("{Escape}");
     await screen.getByRole("button", { name: WORDS }).click();
-    // The pointer moves onto Date, which is drawn where Amount was.
     await screen.getByRole("button", { name: "Redact" }).hover();
     await screen.getByRole("button", { name: "Date" }).hover();
     await expect.element(screen.getByText(`${ALT}↓`)).toBeVisible();
@@ -260,13 +244,10 @@ describe("the control's key", () => {
 });
 
 describe("an amount in the field", () => {
-  // A date and an amount on one line, each letter 6 points wide.
   const BOTH = "Due 14 March 2026, total 1.250,00 €";
 
-  // What a paste puts before the line: longer than the amount, so the amount moves past where it lay.
   const PASTED = "INVOICE NUMBER ABCDEFGHIJKLMNOP: ";
 
-  /** The editor on a line of `words`, its date languages held back until what's returned is called. */
   function holdBackDates(words = BOTH): () => void {
     let learnt: () => void = () => undefined;
     vi.mocked(learnDateLanguages).mockReturnValueOnce(new Promise<void>((done) => (learnt = done)));
@@ -280,7 +261,6 @@ describe("an amount in the field", () => {
     return () => learnt();
   }
 
-  /** The field on `BOTH` opened by a click on its date, as a mouse does. */
   async function clickDate() {
     const screen = await render(
       <EditorContext.Provider value={editor}>
@@ -333,7 +313,6 @@ describe("an amount in the field", () => {
     expect(screen.getByRole("button", { name: "Date" }).query()).toBeNull();
   });
 
-  /** The field on `words`, its Amount editor opened, the dates read, and focus pressed back into the field. */
   async function backInTheField(words = BOTH) {
     const learnt = holdBackDates(words);
     const { screen, field } = await openField(words);
@@ -378,7 +357,6 @@ describe("an amount in the field", () => {
     await expect.element(screen.getByRole("button", { name: "Date" })).toHaveAttribute("aria-expanded", "false");
     expect(screen.getByRole("grid").query()).toBeNull();
     await expect.element(field).toHaveFocus();
-    // Taken where it was: none left waiting to pull focus back once the field is left.
     expect(editor.store.get().focusTo).toBeNull();
   });
 
@@ -437,7 +415,6 @@ describe("an amount in the field", () => {
 
     learnt();
     await expect.poll(() => editor.store.get().dates).not.toBeNull();
-    // The dates are read, and the date is the first value: the Amount the user chose stays all the same.
     expect(editor.store.get().dates).not.toBeNull();
     await expect.element(number).toHaveFocus();
     await expect.element(number).toHaveValue(expect.stringContaining("980"));

@@ -12,7 +12,6 @@ describe("filling the server's sentences", () => {
 
   test("a width is said to one decimal place", () => {
     expect(fill("{delta_pt} pt too long", { delta_pt: 4.36 })).toBe("4.4 pt too long");
-    // A half rounds up, as the server writes it (core/app/words).
     expect(fill("{delta_pt} pt too long", { delta_pt: 2.25 })).toBe("2.3 pt too long");
     expect(fill("{delta_pt} pt too long", { delta_pt: 1.45 })).toBe("1.5 pt too long");
   });
@@ -21,7 +20,6 @@ describe("filling the server's sentences", () => {
     expect(fill("{delta_pt} pt too long", {})).toBe("{delta_pt} pt too long");
   });
 
-  // The server's own cases, test_a_character_that_draws_nothing_is_named (tests/core/test_words.py).
   test.each([
     ["\u202f", "narrow no-break space"],
     ["\u00ad", "optional hyphen"],
@@ -31,12 +29,10 @@ describe("filling the server's sentences", () => {
     expect(shownAs(character, SENTENCES.characters)).toBe(name);
   });
 
-  // The server's own case, test_punctuation_or_a_symbol_is_quoted_so_it_reads_as_a_character_and_a_letter_isnt.
   test("punctuation or a symbol is quoted, so it reads as a character, and a letter isn't", () => {
     expect(["(", "Z", "€"].map((character) => shownAs(character, SENTENCES.characters))).toEqual(["“(”", "Z", "“€”"]);
   });
 
-  // The server's own case, test_a_letter_that_looks_like_another_is_named_so_the_two_read_apart.
   test("a letter that looks like another is named, so the two read apart", () => {
     expect(["I", "l", "O", "0", "1"].map((character) => shownAs(character, SENTENCES.characters))).toEqual([
       "capital I",

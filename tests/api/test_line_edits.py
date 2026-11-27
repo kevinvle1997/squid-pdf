@@ -1,5 +1,3 @@
-"""A line in several styles, edited as one: each run in its own font, the rest moved along."""
-
 from __future__ import annotations
 
 import pymupdf
@@ -19,16 +17,14 @@ from tests.helpers import (
 _SIZE = 10
 _LEFT = 72
 _SENTENCE_AT = (_LEFT, 100)
-# A bill's line, with a rule just after it, so the line has little room.
 _BILL = (("Please pay the full ", "helv"), ("total", "hebo"), (" today.", "helv"))
 _BILL_AT = (_LEFT, 160)
-_RULE_GAP = 6  # between the bill's line and the rule after it: the line's room
-_FAR = (480, 400)  # a word far right, low on the page: the page's rightmost text
+_RULE_GAP = 6
+_FAR = (480, 400)
 _MOVED = 0.05  # a run further than this from where it was has moved: MOVED_PT
 
 
 def _lines_page() -> bytes:
-    """The sentence with a bold word, with room after it; a bill's line, with little."""
     doc = pymupdf.open()
     page = doc.new_page()
     write_runs(page, SENTENCE, origin=_SENTENCE_AT, size=_SIZE)
@@ -41,12 +37,10 @@ def _lines_page() -> bytes:
 
 @pytest.fixture
 def lines_doc(mine) -> dict:
-    """The lines page, uploaded by `mine`."""
     return upload(mine, _lines_page()).json()
 
 
 def _line_of(doc: dict, text: str) -> list[dict]:
-    """The spans of the line one of whose spans starts with `text`, left to right."""
     by_id = {span["id"]: span for span in doc["spans"]}
     line = next(
         line
@@ -57,7 +51,6 @@ def _line_of(doc: dict, text: str) -> list[dict]:
 
 
 def _typed(spans: list[dict], texts: list[str], strategy: str = "as-is") -> dict:
-    """An edit of a line, each of its spans typed as `texts` says."""
     runs = [
         {"span_id": span["id"], "text": text} for span, text in zip(spans, texts, strict=True)
     ]
@@ -65,7 +58,6 @@ def _typed(spans: list[dict], texts: list[str], strategy: str = "as-is") -> dict
 
 
 def _exported(client, doc: dict, edits: list[dict]) -> list[dict]:
-    """The page's spans as the saved file draws them, with `edits` applied."""
     response = client.post(f"/api/documents/{doc['id']}/export", json={"edits": edits})
     assert_equal(response.status_code, 200, "exported")
     page = pymupdf.open(stream=response.content, filetype="pdf")[0]
@@ -73,7 +65,6 @@ def _exported(client, doc: dict, edits: list[dict]) -> list[dict]:
 
 
 def _drawn(spans: list[dict], text: str) -> dict:
-    """The saved span that reads `text`, spaces aside."""
     return next(span for span in spans if span["text"].strip() == text.strip())
 
 
@@ -177,7 +168,6 @@ def test_a_line_edit_beside_a_redaction_on_another_line_downloads_checked(mine, 
 
 
 def test_a_line_edit_over_a_run_redacted_before_it_is_refused(mine, lines_doc):
-    """The browser undoes a redaction by leaving it out, so this is its bug: never a leak."""
     spans = _line_of(lines_doc, "Text")
     redact = {"kind": "redact", "span_id": spans[1]["id"]}
     edit = _typed(spans, ["Text is now grouped into ", "spans", " (one style)."])
@@ -188,7 +178,6 @@ def test_a_line_edit_over_a_run_redacted_before_it_is_refused(mine, lines_doc):
 
 
 def test_a_line_emptied_whole_is_a_bad_request(mine, lines_doc):
-    """Taking text out is a redaction's job: one that checks it's gone."""
     spans = _line_of(lines_doc, "Text")
 
     response = render(mine, lines_doc, [_typed(spans, ["", "", ""])], [around(spans[0])])

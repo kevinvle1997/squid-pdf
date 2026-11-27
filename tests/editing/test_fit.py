@@ -1,5 +1,3 @@
-"""Will a replacement fit, and what to offer when it does not."""
-
 from __future__ import annotations
 
 import json
@@ -45,7 +43,6 @@ def test_check_reports_overflow_with_options(engine):
     missing = {"shrink", "as-is"} - offered
     assert_equal(missing, set(), f"ways out missing from those offered ({offered})")
 
-    # A letter only the substitute has, and one nothing has: both said, each its way.
     fit = replace_fit(engine, span, longer + " é 中", room_pt=0.0).report
     switch = words.sentence("missing").format(chars="é", font="Liberation Serif Regular")
     assert_in(
@@ -83,17 +80,14 @@ def test_past_the_shrink_floor_only_leave_it_long_is_offered(engine):
 
 
 def test_every_way_out_has_its_sentences():
-    """The browser sends a strategy by name, and its label and detail are keyed by it."""
     assert_equal(set(get_args(Strategy.__value__)), set(OPTION_KEYS), "the ways out")
 
 
-# The browser's fit check is tested on these too: react/src/editing/{fit,verdicts}.test.ts.
+# The browser's tests read these cases too.
 _SHARED = json.loads(Path(__file__).with_name("fit_cases.json").read_text())
 
 
 def test_the_shared_cases_use_the_servers_rules():
-    """The browser gets these rules in a document's reply; its tests, from the cases."""
-    # A file with no pages and no fonts: only the reply's rules are read.
     facts: AnalysisFacts = {
         "build": "a-build",
         "active_content_dropped": False,
@@ -110,7 +104,6 @@ def test_the_shared_cases_use_the_servers_rules():
 
 @pytest.mark.parametrize("case", _SHARED["cases"], ids=lambda case: case["what"])
 def test_a_line_is_too_long_only_past_its_room_as_the_browser_says(case):
-    """Its room is the free space after it on its line; the warning says how far past it."""
     report = FitReport(
         delta_pt=case["delta_pt"], room_pt=case["room_pt"], original_pt=case["original_pt"]
     )
@@ -125,7 +118,6 @@ def test_a_line_is_too_long_only_past_its_room_as_the_browser_says(case):
 
 @pytest.mark.parametrize("case", _SHARED["line_cases"], ids=lambda case: case["what"])
 def test_a_line_edited_as_one_is_fitted_by_the_runs_it_changes_as_the_browser_says(case):
-    """The runs after a change move along with it, unless a way out keeps it to its width."""
     runs = [
         RunWidths(
             run["x"],
@@ -154,12 +146,11 @@ def test_a_line_edited_as_one_is_fitted_by_the_runs_it_changes_as_the_browser_sa
         assert_close(start, expected, 0.0001, "where a run starts")
 
 
-_TURNED: QuarterTurn = 90  # a `turned` case's line, turned counterclockwise: up the page
+_TURNED: QuarterTurn = 90
 
 
 @pytest.mark.parametrize("case", _SHARED["verdicts"], ids=lambda case: case["what"])
 def test_an_edits_verdict_is_the_one_the_browser_works_out_as_it_is_typed(case, tmp_path):
-    """Upload judges a span on its own words; an edit is judged on the words typed."""
     path = in_a_copy_lacking(
         str(tmp_path / "case.pdf"),
         text=case["text"],
@@ -172,7 +163,6 @@ def test_an_edits_verdict_is_the_one_the_browser_works_out_as_it_is_typed(case, 
         [report] = engine.assess(engine.index())
         verdict = replace_fit(engine, span, case["typed"], room_pt=0.0).verdict
 
-    # As the browser gets it: a reason only where its own font draws it unlike the page.
     approximate_why = report.why if report.state == "approximate" else None
     why = None if approximate_why is None else reason_of(approximate_why)
     judged = {"fidelity": report.state, "why": why}

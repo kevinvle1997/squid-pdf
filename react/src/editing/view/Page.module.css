@@ -1,55 +1,38 @@
-/* Where a page sits across the pages, for what lines up with it to compose: Split here and the page list.
-   --sheet-width is the page's printed width, set on each page: pages in one file needn't match. */
 .column {
-  /* As wide as printed, zoomed (--zoom, on the pages): with the margin, the most it takes. */
   --shown-width: calc(var(--sheet-width) * var(--zoom, 1));
   --full-width: calc(var(--margin-width) + var(--s4) + var(--shown-width));
   --margin-shift: calc((var(--margin-width) + var(--s4)) / 2);
-  /* Past the pages' padding, the page list's room on the left and the delete button's on the right, each
-     with a gutter to the window's edge: a page squeezed by the window leaves both, so nothing overlaps. */
   --beside-margin: calc(var(--s2) + var(--hit) + var(--s1) - var(--s5));
   --beside-sheet: calc(2 * var(--s6) + var(--s4) - var(--s5));
   --page-width: min(100cqw - var(--beside-margin) - var(--beside-sheet), var(--full-width));
-  /* Where auto margins put it, at the start once it's wider than the pages. */
   --centred: max(0px, (100cqw - var(--page-width)) / 2);
-  /* Where its margin starts: centred on the sheet, not on the sheet and its margin, which hangs in the room
-     beside it as far as there's room; never in either side's room. */
   --page-start: clamp(
     var(--beside-margin),
     var(--centred) - min(var(--margin-shift), var(--centred)),
     100cqw - var(--beside-sheet) - var(--page-width)
   );
 }
-/* Zoomed by the user, a page takes its zoomed width whatever the window: the pages scroll sideways past it. */
 :global([data-zoomed]) .column { --page-width: var(--full-width); }
-/* A page and its margin: the margin sits left of the text, as corrections do on a proof. */
 .page {
   composes: column;
   display: grid;
   grid-template-columns: var(--margin-width) minmax(0, 1fr);
   gap: var(--s4);
   width: var(--page-width);
-  /* The crop marks reach --s4 out from each page, so two pages' never meet. */
   margin: 0 auto var(--s8);
   position: relative; inset-inline-start: calc(var(--page-start) - var(--centred));
 }
-/* The sheet and its crop marks share one cell, so the marks' box is the sheet's. */
 .sheet, .trim, .slips { grid-row: 1; grid-column: 2; max-width: var(--shown-width); }
 .sheet {
   position: relative;
   width: 100%;
   background: var(--sheet);
   box-shadow: var(--sheet-shadow);
-  /* Clipped, not hidden: a hidden overflow still scrolls, and the browser scrolls it to keep a caret
-     typed past the page's edge in view, sliding the page out from under the field. */
+  /* Clipped, not hidden: a hidden overflow still scrolls, and the browser scrolls it to keep a caret past the page's edge in view. */
   overflow: clip;
 }
-/* Over the sheet, the same shape, unclipped: a slip, the chip or the redaction prompt, hangs past the page's
-   foot, over the next page. Only what's on a slip takes a press. */
 .slips { position: relative; z-index: var(--z-chip); width: 100%; pointer-events: none; }
-/* Drawn over the sheet, so a press goes through it to the page. */
 .trim { pointer-events: none; }
-/* The shadow and the crop marks go in high contrast: an outline keeps the sheet's edge. */
 @media (forced-colors: active) {
   .sheet { outline: 1px solid CanvasText; }
 }
@@ -62,9 +45,7 @@
 }
 .image, .strip { position: absolute; left: 0; width: 100%; display: block; user-select: none; }
 .image { top: 0; height: 100%; }
-/* Asked for again, unseen: the browser's broken-image sign says nothing the page doesn't say better. */
 .missing { visibility: hidden; }
-/* Why the page's image didn't come, where it would be. The page never themes, so its warning is the mark's. */
 .failed {
   --warn: var(--mark-warn);
   position: absolute; inset-inline: 0; top: 50%; transform: translateY(-50%);
@@ -72,14 +53,10 @@
   text-align: center;
   font-size: var(--fs-sm);
 }
-/* Where undo or redo brings the page into view: nothing drawn, nothing to press. */
-/* Brought into view clear of the bar and the find bar held over the top, at their tallest one row each. */
 .anchor { position: absolute; pointer-events: none; scroll-margin-block: calc(2 * var(--bar-height) + var(--s4)) var(--s6); }
-/* The list goes under the sheet, past the --s4 its crop marks reach. */
 @media (max-width: 820px) {
   .column { --full-width: var(--shown-width); --margin-shift: 0px; --beside-margin: 0px; --beside-sheet: 0px; }
   .page { grid-template-columns: minmax(0, 1fr); gap: var(--s5); }
   .sheet, .trim, .slips { grid-column: 1; }
-  /* Here the bar wraps to three rows, the file's, the count's and the buttons', over the find bar and the page list. */
   .anchor { scroll-margin-block-start: calc(4 * var(--bar-height) + var(--s4)); }
 }

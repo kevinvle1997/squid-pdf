@@ -1,8 +1,4 @@
-"""Shapes editing shares between the edit list, the fit reports and what render sends back.
-
-TypedDicts for the JSON, as in `documents/types.py`; no framework, so the pool
-can import them. A name ending in Info is JSON the browser gets.
-"""
+"""No framework, so the pool can import them. A name ending in Info is JSON the browser gets."""
 
 from __future__ import annotations
 
@@ -29,17 +25,11 @@ from squidpdf.documents.types import ApproximateInfo, Box
 from squidpdf.editing.edits import Strategy
 from squidpdf.editing.fit import FitReport, Verdict
 
-# Why an edit was left out: what it points at isn't in the document.
 type _SkipReason = Literal["bad_reference"]
 
 
 @dataclass(frozen=True, slots=True)
 class Skipped:
-    """An edit left out because what it points at isn't in the document.
-
-    `position` is its place in the list the browser sent.
-    """
-
     position: int
     type: _SkipReason
     detail: Message
@@ -47,46 +37,32 @@ class Skipped:
 
 @dataclass(frozen=True, slots=True)
 class SpanNotice:
-    """A replace or a redaction that went in, but not quite as asked: its span, and why."""
-
     span_id: str
     detail: Message
 
 
 @dataclass(frozen=True, slots=True)
 class InsertNotice:
-    """An insert that went in, but not quite as asked, and why.
-
-    It has no span, so it's named by its place in the list the browser sent, as Skipped is.
-    """
-
     position: int
     detail: Message
 
 
 @dataclass(frozen=True, slots=True)
 class FileNotice:
-    """What saving did to the whole file other than asked, such as drop its tags, and why."""
-
     detail: Message
 
 
-# What came out other than asked: about a span, an insert, or the whole file.
 Notice = SpanNotice | InsertNotice | FileNotice
 
 
 @dataclass(frozen=True, slots=True)
 class Replaced:
-    """A replace as drawn, and the name of the font it replaced the words of."""
-
     verdict: Verdict
     shown_name: str  # a file's words: logged only through loggable_family
 
 
 @dataclass(frozen=True, slots=True)
 class Applied:
-    """What applying the edits left out, what it drew other than asked, and how replaces did."""
-
     skipped: list[Skipped]
     notices: list[Notice]
     replaced: list[Replaced]
@@ -94,52 +70,33 @@ class Applied:
 
 @dataclass(frozen=True, slots=True)
 class Redacted:
-    """What a span's redactions take: its runs of redacted words, and the letters left.
-
-    Each run is a span of its own: its words, and the box around their letters. All of the
-    span is one run, and its `rest` is empty.
-    """
-
-    span: Span  # as the document has it
+    span: Span
     runs: tuple[RedactedRun, ...]
-    ranges: tuple[range, ...]  # each run's, by code point, as asked
-    # The letters it leaves, where the page drew them, spaces aside; None when the words
-    # weren't among its letters, so the whole line goes with them.
+    ranges: tuple[range, ...]
     rest: tuple[PlacedLetter, ...] | None
 
 
 @dataclass(frozen=True, slots=True)
 class EditedPage:
-    """What the edits on one page erase, by box, and draw, by line: what a check allows for."""
-
     erased: list[Rect]
     drawn: list[DrawnLine]
 
 
 @dataclass(frozen=True, slots=True)
 class Redaction:
-    """A redaction drawn: whether its words are gone, where else they were, and why not.
-
-    And what its erase did to the rest of its line, and where its runs are. `hidden_copies`
-    are the places read from the document as it came, then "signatures" if signed. `words`
-    and `page` say where it is, as what's said of it does.
-    """
-
     verified: bool
     hidden_copies: list[HiddenPlace]
-    covered: bool  # its words are left only in its box, under new text sharing one
-    moved: bool  # its words are gone, but the erase moved other text on its page
-    unchecked: bool  # its words are gone, but where its line's rest landed can't be read
-    rest: RestOfLine  # what its erase did to the letters it left of its line
-    words: str  # the words it takes, as a sentence quotes them: `runs_text`
-    page: int  # its span's page, numbered from 0
-    runs: list[tuple[range, Rect]]  # each run's code points, and the box around its letters
+    covered: bool
+    moved: bool
+    unchecked: bool
+    rest: RestOfLine
+    words: str
+    page: int
+    runs: list[tuple[range, Rect]]
 
 
 @dataclass(frozen=True, slots=True)
 class Region:
-    """What to draw: a full-width strip of a page, from `y0` to `y1` in points, or all of it."""
-
     page: int
     y0: float | None = None
     y1: float | None = None
@@ -147,25 +104,17 @@ class Region:
 
 @dataclass(frozen=True, slots=True)
 class DrawnPage:
-    """A page render draws on, and its pixels per point, its page image's."""
-
     page: Page
     scale: float
 
 
 @dataclass(frozen=True, slots=True)
 class Rendered:
-    """What render worked out, in no one's words yet: the strips, the fits, and the skips.
-
-    `notices` are edits drawn other than asked, such as in a substitute.
-    `redactions` are the redactions drawn, by span id.
-    """
-
-    images: list[ImageInfo] = field(repr=False)  # each a PNG, in base64
-    fits: dict[str, FitReport]  # by the replaced span's id, or each redrawn run's of a line
-    insert_fits: dict[int, FitReport]  # by the insert's place in the list the browser sent
-    verdicts: dict[str, Verdict]  # how each replace came out, by its span's id, as `fits`
-    insert_verdicts: dict[int, Verdict]  # how each insert came out, as `insert_fits`
+    images: list[ImageInfo] = field(repr=False)
+    fits: dict[str, FitReport]
+    insert_fits: dict[int, FitReport]
+    verdicts: dict[str, Verdict]
+    insert_verdicts: dict[int, Verdict]
     skipped: list[Skipped]
     notices: list[Notice]
     redactions: dict[str, Redaction]
@@ -173,78 +122,46 @@ class Rendered:
 
 @dataclass(frozen=True, slots=True)
 class Exported:
-    """What export came out with besides the file: the edits it left out and the file's notices.
-
-    `skipped_edits` are places in the browser's edit list. `file_notices` are
-    about the whole file, so they name no span.
-    """
-
     skipped_edits: list[int]
     file_notices: list[Message]
 
 
 @dataclass(frozen=True, slots=True)
 class Saved:
-    """What saving an edited file came out with.
-
-    `applied` is about the edits; `notices` about the file as a whole, such as dropped tags.
-    """
-
     applied: Applied
     notices: list[Message]
 
 
 class ImageInfo(TypedDict):
-    """A drawn strip, its top `y` in points on the page, as a base64 PNG."""
-
     page: int
     y: float
     image: str
 
 
 class FitInfo(TypedDict):
-    """Whether a replacement fits, the ways out if not, which one was drawn, and its verdict.
-
-    The verdict is the edit's own, as drawn, in the four fields a span's at upload is in
-    (`SpanInfo`): `why` set only when approximate, `substitute` only when substitute.
-    """
-
     delta_pt: float
     missing: list[str]
     left_out: list[str]
     options: list[Strategy]
     strategy: Strategy
-    message: str | None  # every part below in the reader's words, in one line
-    message_parts: list[MessageInfo]  # what's wrong, each for the browser to say itself
+    message: str | None
+    message_parts: list[MessageInfo]
     fidelity: Fidelity
     why: ApproximateInfo | None
-    substitute: str | None  # the face we ship that draws it, when its font can't
-    same_widths: bool  # that face's letters are as wide as the original's
+    substitute: str | None
+    same_widths: bool
 
 
 class InsertFitInfo(FitInfo):
-    """An insert's fit, named by its place in the list the browser sent."""
-
     edit: int
 
 
 class RedactedRunInfo(TypedDict):
-    """A run of words a redaction takes: its code points, and the box its letters take.
-
-    The box is in points on the page, however the line is turned.
-    """
-
-    range: list[int]  # start and end
+    range: list[int]
     box: Box
 
 
 class RedactionInfo(TypedDict):
-    """A redaction drawn: whether its words are gone from the file, and where else they were.
-
-    `hidden_copies` ends with "signatures" in a signed file: any redaction takes them.
-    `message` says it in the reader's words; None when there's nothing to say.
-    """
-
     verified: bool
     hidden_copies: list[HiddenPlace]
     message: str | None
@@ -252,33 +169,22 @@ class RedactionInfo(TypedDict):
 
 
 class SkippedInfo(MessageInfo):
-    """An edit left out, by its place in the list the browser sent, and why.
-
-    `detail` is why in the reader's words; `code` and `params` the same, unsaid.
-    """
-
     edit: int
     type: str
     detail: str
 
 
 class SpanNoticeInfo(SaidInfo):
-    """A replace or a redaction drawn other than asked, by its span, and why."""
-
     kind: Literal["span"]
     span_id: str
 
 
 class InsertNoticeInfo(SaidInfo):
-    """An insert drawn other than asked, by its place in the list the browser sent, and why."""
-
     kind: Literal["insert"]
     edit: int
 
 
 class FileNoticeInfo(SaidInfo):
-    """What saving did to the whole file other than asked, and why."""
-
     kind: Literal["file"]
 
 
@@ -287,11 +193,7 @@ NoticeInfo = SpanNoticeInfo | InsertNoticeInfo | FileNoticeInfo
 
 
 class FaceInfo(TypedDict):
-    """A face new text can be drawn in, and each letter it draws, by width.
-
-    `name` is what an insert's `font` asks for. Widths are in thousandths of the
-    font size, the same the server measures with, so a preview matches the draw.
-    """
+    """Widths in thousandths of the size, as the server measures: a preview matches the draw."""
 
     name: str
     style: Style
@@ -299,29 +201,19 @@ class FaceInfo(TypedDict):
 
 
 class FamilyInfo(TypedDict):
-    """A family of faces we ship, and what kind of font it is."""
-
     family: str
     category: Category
     license: str
-    same_widths_as: list[str]  # document fonts it stands in for without moving anything
+    same_widths_as: list[str]
     faces: list[FaceInfo]
 
 
 class FontList(TypedDict):
-    """Every face we ship, by family, under this build."""
-
     build: str
     families: list[FamilyInfo]
 
 
 class Render(TypedDict):
-    """Render's reply, as the browser gets it: the strips, a fit per edit, and what it skipped.
-
-    `notices` are edits drawn other than asked, such as in a substitute.
-    `redactions` are the redactions drawn, by span id, as `fits` are.
-    """
-
     images: list[ImageInfo]
     fits: dict[str, FitInfo]
     insert_fits: list[InsertFitInfo]

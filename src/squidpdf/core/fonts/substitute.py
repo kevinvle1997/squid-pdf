@@ -1,9 +1,3 @@
-"""The faces we ship, read: which letters each draws, and which one draws a line instead.
-
-No PDF is opened here, and nothing is measured: widths come from the driver,
-so a preview matches what it draws.
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -17,47 +11,33 @@ from squidpdf.core.types import Face
 
 @dataclass(frozen=True, slots=True)
 class Substitute:
-    """A face we ship drawing a line the span's own font can't, less what even it can't draw."""
-
     face: Face
-    text: str  # the line as it's drawn, without the letters left out
-    left_out: list[str]  # each once, in the order typed
+    text: str
+    left_out: list[str]
 
 
 @cache
 def face_coverage(face: Face) -> Coverage:
-    """Which letters a face we ship really draws, read from its file once per process."""
     return coverage_of(face_bytes(face))
 
 
 @cache
 def face_letters(face: Face) -> tuple[str, ...]:
-    """Each letter a face we ship draws within GLYPH_LIST_RANGES, in code point order.
-
-    The letters the browser previews new text with, so the list is kept short;
-    letters past those ranges still draw, and the server's fit says so.
-    """
+    """Kept short for the browser's preview; letters past these ranges still draw."""
     return face_coverage(face).previewed_letters()
 
 
 def substitute_for(look_alike: Face, text: str) -> Substitute:
-    """The face that draws `text` in place of a font whose look-alike is `look_alike`.
-
-    The look-alike when it has every letter; otherwise whichever of it and the
-    broadest face we ship leaves out fewer, the look-alike on a tie. One face
-    for the whole line: two would look like a mistake.
-    """
+    """One face for the whole line: two would look like a mistake."""
     in_look_alike = _drawn_in(look_alike, text)
-    # No face could leave out fewer.
     if not in_look_alike.left_out:
         return in_look_alike
     candidates = [in_look_alike, _drawn_in(broadest(look_alike), text)]
-    # min keeps the first of a tie
+    # min keeps the first of a tie: the look-alike
     return min(candidates, key=lambda candidate: len(candidate.left_out))
 
 
 def _drawn_in(face: Face, text: str) -> Substitute:
-    """`text` drawn in `face`: what it draws, and what it leaves out."""
     left_out = face_coverage(face).missing(text)
     kept = "".join(ch for ch in text if ch not in left_out)
     return Substitute(face, kept, left_out)

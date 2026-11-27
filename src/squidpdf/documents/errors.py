@@ -1,110 +1,76 @@
-"""What can go wrong with a document: the upload, a page, or its expiry."""
-
 from __future__ import annotations
 
 from squidpdf.core import NotFound, Problem
 
 
 class NotAPdf(Problem):
-    """The upload doesn't start like a PDF."""
-
     type = "not_a_pdf"
     status = 415
 
 
 class FontMismatch(Problem):
-    """The user's copy of a font isn't the one the document uses: its letters' widths differ."""
-
     type = "font_mismatch"
     status = 422
 
 
 class NotAFont(Problem):
-    """The user's copy of a font can't be read as a font at all."""
-
     type = "not_a_font"
     status = 422
 
 
 class FontUnchecked(Problem):
-    """A font the file only names with no width list: nothing to check the copy against."""
-
     type = "font_unchecked"
     status = 422
 
 
 class TooManyFonts(Problem):
-    """The document has as many of the user's own font copies as it keeps."""
-
     type = "too_many_fonts"
     status = 422
 
     def __init__(self, count: int) -> None:
-        """Name the limit it reached."""
         super().__init__(count=count)
 
 
 class NoSuchFont(Problem):
-    """A font the document doesn't use: a copy of it would lend nothing."""
-
     type = "no_such_font"
     status = 422
 
 
 class NotSentAsPdf(Problem):
-    """Not sent as application/pdf, whatever the upload holds: refused before it's counted."""
-
     type = "not_sent_as_pdf"
     status = 415
 
 
 class TooLarge(Problem):
-    """The upload is over the size limit."""
-
     type = "too_large"
     status = 413
 
     def __init__(self, mb: int) -> None:
-        """Name the limit it went over."""
         super().__init__(mb=mb)
 
 
 class TooManyPages(Problem):
-    """The PDF has more pages than the server works on; checked before any other work."""
-
     type = "too_many_pages"
     status = 422
 
     def __init__(self, pages: int) -> None:
-        """Name the limit it went over."""
         super().__init__(pages=pages)
 
 
 class ServerFull(Problem):
-    """Too little disk is left to write on, found before an upload or by a write.
-
-    Even a read can raise it, as it writes the analysis under a new build.
-    """
-
     type = "server_full"
     status = 503
 
 
 class NoSuchPage(Problem):
-    """A page the document doesn't have. Not 404, which tells the browser to re-upload."""
+    """Not 404, which tells the browser to re-upload."""
 
     type = "no_such_page"
     status = 422
 
 
 def is_page(page: int, page_count: int) -> bool:
-    """Whether the document has a page numbered `page`, counting from 0.
-
-    Every edit, region and page list that names a page asks this. Where the
-    answer is no, a bad edit is skipped and a request's own pages are refused.
-    """
     return 0 <= page < page_count
 
 
-class Gone(NotFound):
-    """Deleted while a request was using it: it expired mid-way, so the browser re-uploads."""
+class Gone(NotFound): ...

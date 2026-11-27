@@ -29,9 +29,7 @@ import { shortWarningOf } from "./verdicts";
 
 vi.mock(import("../api/client"), async (original) => ({ ...(await original()), renderStrips: vi.fn() }));
 
-// Every letter these tests type, as wide as each other, so "14 June" fits where "14 March" was.
 const glyphs = halfWideGlyphs(" 0123456789MarchJunewsoifdtly");
-// A line set as the span is: no way out taken.
 const AS_SET: LineScale = { size: 1, scaleX: 1 };
 const DATE = "14 March";
 const SPANS = [
@@ -48,7 +46,6 @@ const SPANS = [
   aSpan({ id: "redacted", text: `${DATE} secret`, page: 1 }),
   aSpan({ id: "other", text: "nothing to find", page: 1 }),
 ];
-// Its sentences are the server's, in a language made up for tests, so any the browser writes itself stands out.
 const DOC = aDoc({
   sentences: PSEUDO_SENTENCES,
   spans: SPANS,
@@ -71,7 +68,6 @@ afterEach(() => {
 
 const found = () => [...editor.store.get().find.matches].map(([page, spans]) => [page, [...spans.keys()]]);
 
-/** The chip's short warning on an edit of `spanId` reading `text`: the span's own where none is worked out, as `EditField` shows it. */
 function chipWarningOf(spanId: string, text: string): string | null {
   edit(editor, spanId, null);
   const state = editor.store.get();
@@ -80,7 +76,6 @@ function chipWarningOf(spanId: string, text: string): string | null {
   return shortWarningOf(verdict);
 }
 
-/** Each state `run` sets, as what's drawn would hear of it. */
 function updatesOf(run: () => void): EditorState[] {
   const heard: EditorState[] = [];
   const stop = editor.store.subscribe(() => heard.push(editor.store.get()));
@@ -108,7 +103,6 @@ describe("find", () => {
     typeReplacement(editor, "14 June");
     vi.advanceTimersByTime(FIND_DELAY_MS);
     expect(findCount(editor.store.get())).toEqual({ places: 2, mismatches: 1, leftAsTheyAre: 0 });
-    // A letter the font hasn't got, and a line that runs past its room.
     typeReplacement(editor, "14 Juné");
     vi.advanceTimersByTime(FIND_DELAY_MS);
     expect(findCount(editor.store.get())).toEqual({ places: 2, mismatches: 2, leftAsTheyAre: 0 });
@@ -130,13 +124,11 @@ describe("find", () => {
     expect(stopped.map((state) => [counted(state), state.announcement.text])).toEqual([
       ["2 PLACES WILL LOOK DIFFERENT", "2 PLACES WILL LOOK DIFFERENT"],
     ]);
-    // Not with each letter: echoed, and neither counted nor heard yet.
     expect(typing.map((state) => [state.find.replacement, counted(state), state.announcement])).toEqual([
       ["14 J", searched.text, searched],
       ["14 Juné", searched.text, searched],
     ]);
 
-    // A count typing leaves as it was isn't heard again.
     typeReplacement(editor, "14 Junée");
     vi.advanceTimersByTime(FIND_DELAY_MS);
     expect(editor.store.get().announcement).toBe(stopped[0]?.announcement);
@@ -154,7 +146,6 @@ describe("find", () => {
     typeQuery(editor, DATE);
     vi.advanceTimersByTime(FIND_DELAY_MS);
     expect(editor.store.get().announcement.text).toBe("2 PLACES, 1 OF THEM WILL LOOK DIFFERENT");
-    // Typed past its room on the page: the count shown moves, and typing says why, not the count.
     edit(editor, "first", null);
     typeInto(editor, `was ${DATE} and the whole of the year that follows it`);
     typeReplacement(editor, "14 June");
@@ -174,7 +165,6 @@ describe("find", () => {
     expect(pressed.history).toBe(before);
     expect(countSentence(findCount(pressed), PSEUDO_SENTENCES)).toBe("1 PLACE CAN'T BE LEFT EMPTY");
     expect(pressed.announcement.text).toBe("1 PLACE CAN'T BE LEFT EMPTY");
-    // Nothing left waiting to say it again.
     expect(updatesOf(() => vi.advanceTimersByTime(FIND_DELAY_MS))).toEqual([]);
   });
 
@@ -202,14 +192,12 @@ describe("find", () => {
     vi.advanceTimersByTime(FIND_DELAY_MS);
     typeReplacement(editor, "14 June");
     vi.advanceTimersByTime(FIND_DELAY_MS);
-    // Saved, its words changed fit its room; as typed, they run past it.
     expect(findCount(editor.store.get())).toEqual({ places: 2, mismatches: 2, leftAsTheyAre: 0 });
     changeAll(editor);
     expect(editor.store.get().reading.spans.get("first")?.text).toBe(typed.replace(DATE, "14 June"));
   });
 
   test("counts a place by the verdict its change would get, as the chip says it of that edit", () => {
-    // Its copy of the font lacks "€", so judged on its own words it's a similar font's; the copy draws every other letter.
     const lacking = aSpan({
       id: "total",
       text: "Total 14 €",
@@ -224,7 +212,6 @@ describe("find", () => {
     openFind(editor);
     typeQuery(editor, "14 €");
     vi.advanceTimersByTime(FIND_DELAY_MS);
-    // Nothing to change to yet: judged on the words it reads now, as the chip judges them as an edit starts.
     expect(findCount(editor.store.get())).toEqual({ places: 1, mismatches: 1, leftAsTheyAre: 0 });
 
     typeReplacement(editor, "2");
@@ -237,7 +224,6 @@ describe("find", () => {
   });
 
   test("counts a place in a font it can't measure by the span's own verdict, as the chip says it", () => {
-    // Its font isn't among the document's: the chip has nothing to work an edit out from, though a render landed.
     const unlisted = aSpan({
       id: "total",
       text: "Total 14 €",
@@ -301,7 +287,6 @@ describe("find", () => {
   test("Change all is one step: every place changes together, and one undo puts them all back", () => {
     typeQuery(editor, DATE);
     typeReplacement(editor, "14 June");
-    // Pressed before the find has run: it changes what "Find" shows.
     changeAll(editor);
     const { reading, find, announcement } = editor.store.get();
     expect(reading.spans.get("first")?.text).toBe("was 14 June");
@@ -330,7 +315,6 @@ describe("find", () => {
     const before = editor.store.get().announcement.text;
     changeAll(editor);
     expect(editor.store.get().announcement.text).toBe("CHANGED 2 PLACES.");
-    // Still found, so the bar swaps back to the count, as it was before the change.
     typeReplacement(editor, `${DATE} too`);
     vi.advanceTimersByTime(FIND_DELAY_MS);
     expect(countSentence(findCount(editor.store.get()), PSEUDO_SENTENCES)).toBe(before);
@@ -371,7 +355,6 @@ describe("find", () => {
     change(editor, { kind: "add", edits: [aRedact("other")] });
     expect(editor.store.get().find.changed).toBeNull();
 
-    // Closed meanwhile, the bar doesn't say it again when it opens.
     changeAll(editor);
     closeFind(editor);
     undo(editor);
@@ -386,7 +369,6 @@ describe("find", () => {
     openFind(editor);
     typeQuery(editor, DATE);
     vi.advanceTimersByTime(FIND_DELAY_MS);
-    // Only spaces: "date" would read nothing, which typing's own test calls empty.
     typeReplacement(editor, "  ");
     vi.advanceTimersByTime(FIND_DELAY_MS);
     expect(countSentence(findCount(editor.store.get()), PSEUDO_SENTENCES)).toBe(
@@ -397,7 +379,6 @@ describe("find", () => {
     expect(reading.spans.get("date")).toBeUndefined();
     expect(reading.spans.get("first")?.text).toBe("was   ");
     expect(announcement.text).toBe("CHANGED 1 PLACE.");
-    // Still a match, so still marked: the count said it stays.
     expect(found()).toEqual([[0, ["date"]]]);
   });
 
@@ -454,7 +435,6 @@ describe("find", () => {
   });
 
   test("a match sits across its span by its letters' widths, so only the words found are marked", () => {
-    // Ten 5 pt letters across 50 pt: "cdef" is the third to the sixth.
     const line = aSpan({ id: "line", text: "abcdefghij", size: 10, bbox: { x0: 100, y0: 0, x1: 150, y1: 12 } });
     const glyphs = halfWideGlyphs("abcdefghij");
     const matches = matchesIn(line.text, "cdef", { matchCase: false, wholeWords: false });
@@ -462,7 +442,6 @@ describe("find", () => {
   });
 
   describe("in an edited span, a match sits where the edit draws its words, not where the original's were", () => {
-    // Ten 5 pt letters across 50 pt, edited to other words of the same letters.
     const line = aSpan({ id: "line", text: "abcdefghij", size: 10, bbox: { x0: 100, y0: 0, x1: 150, y1: 12 } });
     const glyphs = halfWideGlyphs("abcdefghijklmnopqrst");
     const across = (text: string, find: string, drawn: { scale?: LineScale; fit?: FitInfo } = {}) => {
@@ -565,7 +544,6 @@ describe("stepping through the places found", () => {
     typeQuery(editor, DATE);
     stepFind(editor, -1);
     expect(current()).toBe("similar");
-    // The search typing would have run is done already: it doesn't come back to undo the step.
     vi.advanceTimersByTime(FIND_DELAY_MS);
     expect(current()).toBe("similar");
     typeQuery(editor, "14 M");
@@ -583,7 +561,6 @@ describe("stepping through the places found", () => {
       stepped.map((state) => [countSentence(findCount(state), PSEUDO_SENTENCES), state.announcement.text]),
     ).toEqual([["2 PLACES WILL LOOK DIFFERENT", "2 PLACES WILL LOOK DIFFERENT / 1 of 2"]]);
     expect(updatesOf(() => vi.advanceTimersByTime(FIND_DELAY_MS))).toEqual([]);
-    // Heard once: the next step says only its place, as does one whose Change to leaves the count as heard.
     stepFind(editor, 1);
     expect(editor.store.get().announcement.text).toBe("2 of 2");
     typeReplacement(editor, "14 Junée");

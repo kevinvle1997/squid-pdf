@@ -26,7 +26,6 @@ vi.mock(import("../api/client"), async (original) => ({
 }));
 
 const NAMED = aFont("Arial", { substitute: "Liberation Sans Regular", glyphs: { H: 722, i: 222 } });
-// Its sentences are the server's, in a language made up for tests, so any the browser writes itself stands out.
 const DOC = aDoc({
   sentences: PSEUDO_SENTENCES,
   spans: [aSpan({ id: "s1", text: "Hi", font: "Arial" })],
@@ -144,7 +143,6 @@ describe("the user's own copy of a font", () => {
 
     expect(editor.store.get().notices.font).toEqual({ tone: "warn", text: MISMATCH, font: "Times" });
     expect(editor.store.get().announcement.text).toBe(`${SENTENCES.reopened} ${MISMATCH}`);
-    // The edited page is drawn again without the refused copy, on the document opened again.
     await vi.waitFor(() =>
       expect(vi.mocked(renderStrips).mock.calls.filter(([docId]) => docId === "again")).toHaveLength(2),
     );
@@ -271,7 +269,6 @@ describe("what draws a row of the Fonts list", () => {
 });
 
 describe("copies of one font, shown under one name", () => {
-  // Two Type3 copies of one font, each named by its object, as the server shows them: one similar font between them.
   const COPIES = [
     aFont("Type3 (5 0 R)", { shown_name: "Drawn-Regular" }),
     aFont("Arial"),

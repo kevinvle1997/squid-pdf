@@ -1,8 +1,3 @@
-"""Changing text, removing it, adding new text, and turning, leaving out or moving pages.
-
-Every edit goes through one list and one machinery, so one package owns them all.
-"""
-
 from __future__ import annotations
 
 from squidpdf.editing.apply import (

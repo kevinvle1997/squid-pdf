@@ -1,9 +1,4 @@
-"""Every sentence the app says, each under a key, in every language we have.
-
-A language is one file here, named by its tag: `en.toml` is English. Placeholders are bare
-`{name}`, so the browser can fill them too, and a key is renamed only with the browser,
-in the same change: the browser can branch on it.
-"""
+"""Placeholders are bare `{name}`, so the browser can fill them too."""
 
 from __future__ import annotations
 
@@ -18,17 +13,14 @@ from squidpdf.core.app.message import Message, Param, SaidInfo
 
 ENGLISH = "en"
 
-_ONE_PLACE = Decimal("0.1")  # how finely a number is written in a sentence
-_NAME_PREFIX = "char_u"  # a character's name is under its code point: U+202F's is char_u202f
-# Unicode's punctuation and symbols, by the first letter of their category: quoted in a list.
+_ONE_PLACE = Decimal("0.1")
+_NAME_PREFIX = "char_u"
 _QUOTED_CATEGORIES = frozenset("PS")
 
-# A sentence, or one said with a count: its forms, by plural category ("one", "other").
 type CatalogEntry = str | Mapping[str, str]
 
 
 def _load_catalogs(folder: Traversable) -> dict[str, Mapping[str, CatalogEntry]]:
-    """Every language file in `folder`, by its lower-case tag: `pt-BR.toml` answers "pt-br"."""
     return {
         file.name.removesuffix(".toml").lower(): tomllib.loads(file.read_text(encoding="utf-8"))
         for file in folder.iterdir()
@@ -36,36 +28,25 @@ def _load_catalogs(folder: Traversable) -> dict[str, Mapping[str, CatalogEntry]]
     }
 
 
-# Every language we can answer in, by its tag; English is the fallback.
 CATALOGS = _load_catalogs(resources.files(__name__))
 _ENGLISH_SENTENCES = CATALOGS[ENGLISH]
 
 
 def sentence(key: str, language: str = ENGLISH, default: str | None = None) -> str:
-    """The sentence under `key` in `language`, placeholders unfilled.
-
-    A key the language lacks is said in English, then as `default`. Raises
-    KeyError when there's none of those: a key no catalog has is a bug.
-    """
     found = _entry_in(key, language, default)
-    # Its forms are the browser's to choose between, by the count it has.
     if not isinstance(found, str):
         raise TypeError(f"{key!r} is said with a count: forms() has it")
     return found
 
 
 def forms(key: str, language: str = ENGLISH) -> Mapping[str, str]:
-    """The forms of the sentence under `key`, said with a count, by plural category."""
     found = _entry_in(key, language, None)
-    # A sentence with no count has one form, and sentence() has it.
     if isinstance(found, str):
         raise TypeError(f"{key!r} is said without a count: sentence() has it")
     return found
 
 
 def _entry_in(key: str, language: str, default: str | None) -> CatalogEntry:
-    """What's under `key` in `language`, else in English, else `default`; KeyError if none."""
-    # .get: a language we have may not say every sentence yet, or not be one we have.
     in_english = _ENGLISH_SENTENCES.get(key, default)
     found = CATALOGS.get(language, _ENGLISH_SENTENCES).get(key, in_english)
     if found is None:
@@ -74,15 +55,10 @@ def _entry_in(key: str, language: str, default: str | None) -> CatalogEntry:
 
 
 def catalog(language: str) -> dict[str, CatalogEntry]:
-    """Every sentence as `language` says it, English where it has none."""
     return {key: _entry_in(key, language, None) for key in _ENGLISH_SENTENCES}
 
 
 def character_names(language: str) -> dict[str, str]:
-    """Each character the catalog names, by itself, as `language` names it.
-
-    How a character that draws nothing alone is said: the browser names one this way too.
-    """
     return {
         chr(int(key.removeprefix(_NAME_PREFIX), 16)): sentence(key, language)
         for key in _ENGLISH_SENTENCES
@@ -91,72 +67,50 @@ def character_names(language: str) -> dict[str, str]:
 
 
 def render(message: Message, language: str = ENGLISH) -> str:
-    """`message` as a person reads it in `language`: its sentence, placeholders filled."""
     return _fill(sentence(message.key, language), message.params, language)
 
 
 def said(message: Message, language: str) -> SaidInfo:
-    """`message` as a reader gets it: said in `language` as `detail`, and unsaid beside it."""
     return {"detail": render(message, language), **message.as_info()}
 
 
 def render_all(messages: Iterable[Message], language: str = ENGLISH) -> str | None:
-    """Several parts of one line, in the order given, as a fit's: None when there are none.
-
-    Joined as parts (join_parts). Whole sentences said at once are `render_sentences`'.
-    """
     joiner = sentence("join_parts", language)
     return joiner.join(render(message, language) for message in messages) or None
 
 
 def render_sentences(messages: Iterable[Message], language: str = ENGLISH) -> str | None:
-    """Several whole sentences said at once, in the order given; None when there are none.
-
-    Joined as sentences (join_sentences), each ending in its own stop: a redaction's.
-    """
     joiner = sentence("join_sentences", language)
     return joiner.join(render(message, language) for message in messages) or None
 
 
 def _fill(template: str, params: Mapping[str, Param], language: str = ENGLISH) -> str:
-    """`template` with each placeholder's fact written out as a person reads it."""
     written = {name: _written_out(name, value, language) for name, value in params.items()}
     return template.format_map(written)
 
 
 def language_headers(language: str) -> dict[str, str]:
-    """The headers a reply in words carries: its language, and `Vary` so no cache mixes them."""
     return {"Content-Language": language, "Vary": "Accept-Language"}
 
 
 def _written_out(name: str, value: Param, language: str) -> str:
-    """One fact as it reads in a sentence: a list joined, a fraction to one decimal place."""
     if isinstance(value, list):
-        # A list's own joiner, or the one every list without one takes.
         joiner = sentence(f"join_{name}", language, default=sentence("join_items", language))
         return joiner.join(_visible(item, language) for item in value)
     if isinstance(value, float):
-        # One place, a half rounded up from its shortest decimal form, as the browser does,
-        # with the language's own mark: "6.8", or "6,8" where a comma is the decimal mark.
+        # A half rounds up from its shortest decimal form, as the browser does.
         one_place = Decimal(str(value)).quantize(_ONE_PLACE, rounding=ROUND_HALF_UP)
         return str(one_place).replace(".", sentence("decimal_separator", language))
     return str(value)
 
 
 def _visible(character: str, language: str = ENGLISH) -> str:
-    """A character as a person sees it: itself, quoted, or its name if it can't be told apart.
-
-    Named by the catalog where it names it ("capital I"); else, if it draws nothing alone,
-    by Unicode's name, or its code point when it has none. An accent alone is named too: in
-    a sentence it would sit on the space before it.
-    """
+    """An accent alone is named: in a sentence it would sit on the space before it."""
     alone = len(character) == 1
-    # A space, or a letter another looks like: the catalog's name for it.
     if alone and _name_key(character) in _ENGLISH_SENTENCES:
         return sentence(_name_key(character), language)
     blank = alone and (not character.isprintable() or character.isspace())
     shows = not blank and not (alone and unicodedata.combining(character))
-    # Punctuation or a symbol: quoted, as "no ( or ) in this font" reads as a sentence's own.
     if shows and alone and unicodedata.category(character)[0] in _QUOTED_CATEGORIES:
         return _fill(sentence("quoted", language), {"char": character}, language)
     if shows:
@@ -165,13 +119,11 @@ def _visible(character: str, language: str = ENGLISH) -> str:
 
 
 def _name_key(character: str) -> str:
-    """The catalog key a character's name is under: U+202F's is `char_u202f`."""
     return f"{_NAME_PREFIX}{ord(character):04x}"
 
 
 def _unicode_name(character: str) -> str:
-    """Unicode's name for a character, lower case; its code point ("U+0001") if it has none."""
     try:
         return unicodedata.name(character).lower()
-    except ValueError:  # control characters and unassigned code points have no name
+    except ValueError:
         return f"U+{ord(character):04X}"

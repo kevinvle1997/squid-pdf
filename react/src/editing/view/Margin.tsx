@@ -42,12 +42,10 @@ export function Margin({ info, changes, newTexts, lines, noteHeightPt, pageNumbe
             changed={note.was.length > 0}
           >
             <UndoNote label={note.label} undo={undo}>
-              {/* Beside the page a note is only the words changed: pointed at or focused, it shows it undoes. */}
               <UndoMark />
               {note.inserted === null ? (
                 <Struck runs={note.struck} />
               ) : (
-                // Words only added: they're marked as a proof marks an insertion, not one kept struck.
                 <span className={styles.added}>
                   <InsertMark />
                   <span className={styles.addedWords}>{note.inserted}</span>
@@ -61,10 +59,6 @@ export function Margin({ info, changes, newTexts, lines, noteHeightPt, pageNumbe
   );
 }
 
-/**
- * Words taken out, struck through: each run on its own, the ellipsis between them or where the line was `cut` not,
- * since it was never there. Beside the page each run shrinks to its share, so a long first run can't hide the next.
- */
 function Struck({ runs, cut = UNCUT }: { runs: readonly string[]; cut?: Cut }) {
   return (
     <span className={styles.old}>
@@ -81,7 +75,6 @@ function Struck({ runs, cut = UNCUT }: { runs: readonly string[]; cut?: Cut }) {
   );
 }
 
-/** The user's own changes in a list under the page, on a narrow screen: a phone's per-change undo. */
 export function ChangeList({
   changes,
   newTexts,
@@ -110,7 +103,6 @@ export function ChangeList({
                 <Struck runs={note.was} cut={note.cut} />
               )}
               <span className={styles.now}>{inLine(note.now, note.cut)}</span>
-              {/* With no Cmd+Z on a phone, each line says it's pressed to undo. */}
               <span className={styles.undo}>Undo</span>
             </UndoNote>
           </li>
@@ -120,11 +112,9 @@ export function ChangeList({
   );
 }
 
-/** One change's note: a button that undoes it, named for what it undoes. */
 function UndoNote({ label, undo, children }: { label: string; undo: (editor: Editor) => void; children: ReactNode }) {
   const editor = useEditor();
   return (
-    // `data-margin-note`: Cmd+Z here may take the note away, so focus goes to what it changed (`isOnMarginNote`).
     <Button className={styles.note} aria-label={label} onPress={() => undo(editor)} data-margin-note="">
       {children}
       <i className={styles.bar} aria-hidden="true" />
@@ -132,7 +122,6 @@ function UndoNote({ label, undo, children }: { label: string; undo: (editor: Edi
   );
 }
 
-/** An insertion, drawn as a proofreader's caret, at the words' own size. The note's name says what it undoes. */
 function InsertMark() {
   return (
     <svg
@@ -152,7 +141,6 @@ function InsertMark() {
   );
 }
 
-/** Undo, drawn: an arrow curling back, at its own size so the stroke stays 1.5px. The note's name says it. */
 function UndoMark() {
   return (
     <span className={styles.undoMark}>

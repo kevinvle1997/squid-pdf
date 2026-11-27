@@ -1,5 +1,3 @@
-// The user's own copies of the document's fonts, attached through the reopener and held beside the PDF.
-// The document comes back judged again, so marks and fits change in place, with no line under the bar (Rule 6).
 import { deleteFont, isGone, putFont } from "../api/client";
 import type { Document, FontInfo, Sentences } from "../api/types";
 import { sentenceOf } from "../bugs";
@@ -12,31 +10,25 @@ import { draftSpanOf } from "./typing";
 import { fill } from "./words";
 import { persistWork } from "./workPersistence";
 
-/** The font files the user's copy can be: TrueType or OpenType, by type or by name. */
 export const FONT_FILES = ["font/ttf", "font/otf", ".ttf", ".otf"];
 
-/** Whether a file dropped or picked is one of FONT_FILES: its type, or else its name's ending. */
 function isFontFile(file: { name: string; type: string }): boolean {
   const name = file.name.toLowerCase();
   return FONT_FILES.some((kind) => (kind.startsWith(".") ? name.endsWith(kind) : file.type === kind));
 }
 
-/** The name the reader knows `fontName` by, as the server says it: copies of one font share it. */
 function shownNameOf(layout: Pick<Layout, "fonts">, fontName: string): string {
   const named = [...layout.fonts.values()].find((font) => font.name === fontName);
-  // A font the document doesn't list goes by its own name.
   return named?.shown_name ?? fontName;
 }
 
-/** The document's fonts shown under one name: the copies of one font, a row of the Fonts list. */
 export interface FontCopies {
   readonly shownName: string;
-  readonly names: readonly string[]; // each copy's own name, as the server lists it
-  readonly font: FontInfo; // the copy the row speaks for: one a similar font draws, if any
-  readonly attached: boolean; // the user's copy is in for every one of them
+  readonly names: readonly string[];
+  readonly font: FontInfo;
+  readonly attached: boolean;
 }
 
-/** The document's fonts, one entry per name shown, in the order each name first comes. */
 export function copiesByName(fonts: readonly FontInfo[]): FontCopies[] {
   const byName = new Map<string, [FontInfo, ...FontInfo[]]>();
   for (const font of fonts) {
@@ -52,7 +44,6 @@ export function copiesByName(fonts: readonly FontInfo[]): FontCopies[] {
   }));
 }
 
-/** What draws a row's font, in the server's words: the user's copy, the file's own, or a similar font, warned. */
 export function drawnByOf({ attached, font }: FontCopies, sentences: Sentences): { sentence: string; warn: boolean } {
   if (attached) return { sentence: sentences.drawn_in_your_copy, warn: false };
   if (font.substitute === null) return { sentence: sentences.drawn_in_own_copy, warn: false };
@@ -60,7 +51,6 @@ export function drawnByOf({ attached, font }: FontCopies, sentences: Sentences):
   return { sentence: fill(substituteSentence, { font: font.substitute }), warn: true };
 }
 
-/** Every font listed under the name `fontName` is shown by: its copies, itself among them, each name once. */
 function copiesOf(layout: Layout, fontName: string): string[] {
   const shown = shownNameOf(layout, fontName);
   // Two fonts can share a name, and a copy goes in by the name: once is for both.
@@ -68,10 +58,6 @@ function copiesOf(layout: Layout, fontName: string): string[] {
   return [...new Set(copies)];
 }
 
-/**
- * Attach `file` as the user's copy of `fontName` and every copy shown under its name, one font at a
- * time; a refusal says why until the next change. Type3 copies are each a font of their own to the server.
- */
 export async function attachFont(editor: Editor, fontName: string, file: Blob): Promise<void> {
   if (editor.store.get().attaching !== null) return;
   editor.store.set({ attaching: fontName });
@@ -90,13 +76,11 @@ export async function attachFont(editor: Editor, fontName: string, file: Blob): 
     judgedAgain(editor, doc, { announcement, focusFont: fontName });
     void persistWork(editor);
   } catch (error) {
-    // A copy put in before the refusal stays, as the server has it; the rest preview no more.
     for (const name of copies) if (editor.attached.get(name) !== file) removeOwnFace(name);
     refused(editor, fontName, error);
   }
 }
 
-/** Attach the font file among what was dropped; anything else goes too, for the server to say what it is. */
 export async function attachDropped(
   editor: Editor,
   fontName: string,
@@ -111,7 +95,6 @@ export async function attachDropped(
   }
 }
 
-/** Remove the user's copy of `fontName` and of every copy shown under its name: the document is judged without it. */
 export async function detachFont(editor: Editor, fontName: string): Promise<void> {
   if (editor.store.get().attaching !== null) return;
   editor.store.set({ attaching: fontName });
@@ -136,10 +119,6 @@ export async function detachFont(editor: Editor, fontName: string): Promise<void
   void persistWork(editor);
 }
 
-/**
- * The document opened again as `doc`, with each copy the user gave attached to it again, and
- * the last refusal, if one wasn't. Gone again meanwhile, that's thrown: it's the reopen's failure.
- */
 export async function reattach(
   editor: Editor,
   doc: Document,
@@ -151,14 +130,12 @@ export async function reattach(
       judged = await putFont(judged.id, fontName, file);
     } catch (error) {
       if (isGone(error)) throw error;
-      // A copy the new document refuses lends nothing there: said with the reopen, and the edits still apply.
       refusal = refusalOf(fontName, error);
     }
   }
   return { judged, refusal };
 }
 
-/** Focus has reached the fonts list's button it was sent to. */
 export function fontFocused(editor: Editor): void {
   editor.store.set({ focusFont: null });
 }
@@ -184,7 +161,6 @@ export function copyOfferedFor(state: EditorState): string | null {
   return lacking?.run.font ?? null;
 }
 
-/** The server judged every span again: its marks and fits take over, and every edited page is drawn again. */
 function judgedAgain(editor: Editor, doc: Document, also: Partial<EditorState>): void {
   const { store, queue } = editor;
   const { draft } = store.get();
@@ -194,7 +170,6 @@ function judgedAgain(editor: Editor, doc: Document, also: Partial<EditorState>):
   queue.redraw(store.get().reading);
 }
 
-/** The server refused what was asked of `fontName`'s copy, or nothing answered: shown and heard until the next change. */
 function refused(editor: Editor, fontName: string, error: unknown): void {
   const refusal = refusalOf(fontName, error);
   const { notices } = editor.store.get();
@@ -205,16 +180,11 @@ function refused(editor: Editor, fontName: string, error: unknown): void {
   });
 }
 
-/** Why `fontName`'s copy was refused, in the server's words, said beside that font too. */
 function refusalOf(fontName: string, error: unknown): FontNotice {
   return { tone: "warn", text: sentenceOf(error), font: fontName };
 }
 
-/**
- * A font's name as a reader writes it, for a label: PostScript's dashes and commas spaced, its words run
- * together set apart, and its PS and MT marks dropped. "TimesNewRomanPS-BoldMT" reads "Times New Roman Bold".
- * Only shown: the name the code knows a font by stays as the server sends it.
- */
+/** Only shown: the name the code knows a font by stays as the server sends it. */
 export function readableName(name: string): string {
   return name
     .replace(/(PS|MT)(?=$|[-,])/g, "")

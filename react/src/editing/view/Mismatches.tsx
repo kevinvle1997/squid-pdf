@@ -1,4 +1,3 @@
-// The bar's warned count, pressed: where an edit won't match, grouped by why (quality.md, Rule 1).
 import { type ReactNode, useMemo } from "react";
 import { Dialog, DialogTrigger, Heading, Popover } from "react-aria-components";
 import { Button } from "../../ui/Button";
@@ -15,12 +14,10 @@ import styles from "./Mismatches.module.css";
 
 const PLACES = { one: "place", other: "places" };
 
-/** The count, as a button that opens its places grouped: the whole document's before any change, else the changes'. */
 export function MismatchCount({ changed, children }: { changed: boolean; children: ReactNode }) {
   const showing = useEditorState((state) => state.shownMismatches.size > 0);
   return (
     <DialogTrigger>
-      {/* One run of words, so the button's gap falls only before its chevron, which says it opens a list. */}
       <Button variant="quiet" className={styles.count}>
         <span>
           {children}
@@ -31,7 +28,6 @@ export function MismatchCount({ changed, children }: { changed: boolean; childre
       </Button>
       <Popover placement="bottom end" offset={BELOW_BAR_PX} className={styles.popover}>
         <Dialog aria-label="Where edits won't match" className={styles.dialog}>
-          {/* Showing a row's places shuts the list, so it doesn't lie over the marks it shows. */}
           {({ close }) => (changed ? <ChangedGroups shown={close} /> : <AtRestGroups shown={close} />)}
         </Dialog>
       </Popover>
@@ -39,7 +35,6 @@ export function MismatchCount({ changed, children }: { changed: boolean; childre
   );
 }
 
-/** A chevron, drawn: the count opens a list, as a menu's button does. */
 function Chevron() {
   return (
     <svg
@@ -59,7 +54,6 @@ function Chevron() {
   );
 }
 
-/** An open eye, drawn small: some of the count's places are marked on the page now. */
 function ShownMark() {
   return (
     <svg
@@ -78,13 +72,11 @@ function ShownMark() {
   );
 }
 
-/** Every place in the document, worked out once as it opened. */
 function AtRestGroups({ shown }: { shown: () => void }) {
   const mismatches = useEditorState((state) => state.layout.mismatchesAtRest);
   return <Groups mismatches={mismatches} shown={shown} />;
 }
 
-/** The changed places, grouped while the list is open. */
 function ChangedGroups({ shown }: { shown: () => void }) {
   const { reading, drawn, layout, sentences } = useEditorState(
     (state) => ({
@@ -102,7 +94,6 @@ function ChangedGroups({ shown }: { shown: () => void }) {
   return <Groups mismatches={mismatches} shown={shown} />;
 }
 
-/** The fonts a similar one draws for, then the reasons the file's own won't match, each row with its places. */
 function Groups({ mismatches, shown }: { mismatches: Mismatches; shown: () => void }) {
   return (
     <>
@@ -143,7 +134,6 @@ function Groups({ mismatches, shown }: { mismatches: Mismatches; shown: () => vo
   );
 }
 
-/** The row's eye: marks its places on the page where they are, until it's pressed again; showing them, it shuts the list. */
 function ShowOnPage({ row, what, shown }: { row: MismatchRow; what: string; shown: () => void }) {
   const editor = useEditor();
   const isShown = useEditorState((state) => state.shownMismatches.has(row.key));

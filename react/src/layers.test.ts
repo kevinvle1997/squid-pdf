@@ -1,5 +1,3 @@
-// The browser's layers, as tests/test_layers.py checks the server's: a feature's logic knows nothing
-// of React, what draws it is in its view/, and imports go one way, editing to documents, never back.
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join, posix, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,9 +8,9 @@ const FRAMEWORK = ["react", "react-dom", "react-dom/client", "react-aria", "reac
 const IMPORTS = /(?:^|\n)\s*(?:import|export)\b[^"';]*?["']([^"']+)["']|\bimport\(\s*["']([^"']+)["']\s*\)/g;
 
 interface Source {
-  path: string; // from src/, with forward slashes
-  imports: string[]; // relative ones resolved from src/, packages as written
-  exports: string[]; // each name exported, as "type Name" for a type
+  path: string;
+  imports: string[];
+  exports: string[];
 }
 
 const EXPORTS = /^export\s+(?:default\s+)?(?:async\s+)?(const|let|function|class|type|interface|enum)\s+(\w+)/gm;
@@ -41,7 +39,6 @@ const drawsWithReact = (path: string) =>
   isView(path) || path.startsWith("ui/") || ["App.tsx", "main.tsx"].includes(path);
 const isFramework = (spec: string) => FRAMEWORK.includes(spec) || spec.endsWith(".module.css");
 const isTest = (path: string) => /\.test\.tsx?$/.test(path);
-// What a view or a base component may hand out: a component, or a hook.
 const isDrawn = (name: string) => /^[A-Z]|^use[A-Z]/.test(name);
 const slice = (path: string) => path.split("/")[0] ?? "";
 

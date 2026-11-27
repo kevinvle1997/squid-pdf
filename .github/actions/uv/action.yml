@@ -1,4 +1,3 @@
-# One copy of the Python setup, so the jobs can't drift into testing different environments.
 name: uv
 description: Install uv and sync the locked environment.
 
@@ -10,8 +9,7 @@ inputs:
 runs:
   using: composite
   steps:
-    # The Dockerfile's uv, so CI runs the one the images do. Without a version, setup-uv
-    # takes the newest that pyproject's `required-version` allows.
+    # The Dockerfile's uv, so CI runs the one the images do.
     - id: uv
       shell: bash
       working-directory: ${{ github.workspace }}

@@ -1,10 +1,4 @@
-"""Rebuild `fonts/google-families.json`: Google's font families at the pinned commit.
-
-    uv run python scripts/google_families.py
-
-Lists each path's blob hash at `GOOGLE_FONTS_COMMIT` by a blobless fetch (no API rate limit),
-then each METADATA.pb and licence, checked against its hash, offline (`--tree`, `--files`) too.
-"""
+"""Rebuild `fonts/google-families.json`: Google's font families at the pinned commit."""
 
 from __future__ import annotations
 
@@ -22,45 +16,37 @@ import httpx
 
 from squidpdf.core import GOOGLE_FONTS_COMMIT, blob_hash, raw_url
 
-_REPO = "https://github.com/google/fonts.git"  # Google's collection, its tree listed at the pin
-# The list this writes, which the engine ships and matches against.
+_REPO = "https://github.com/google/fonts.git"
 _OUT = Path(__file__).parents[1] / "src" / "squidpdf" / "fonts" / "google-families.json"
 
 _PER_FILE_TIMEOUT_S = 20  # a few KB each; far longer means something's wrong
 _PARALLEL = 32  # requests at once: minutes one by one, seconds this way
 
-# The folders families live in, one per licence. Only the OFL's text is read.
 _LICENCE_FOLDERS = ("ofl", "apache", "ufl")
-_FAMILY_DEPTH = 2  # slashes in a family's own file: `ofl/lato/METADATA.pb`, not one below
-_OFL = "OFL.txt"  # an OFL family's licence, beside its METADATA.pb
+_FAMILY_DEPTH = 2
+_OFL = "OFL.txt"
 
-# Families Google renamed: the old name, as a document names the font, to the new family.
 _ALIASES = {
     "sourcesanspro": "sourcesans3",
     "sourceserifpro": "sourceserif4",
 }
 
-# `fonts { ... }` blocks at the top level of METADATA.pb, and the fields read from each.
 _FONT_BLOCK = re.compile(r"^fonts \{\n(.*?)^\}", re.MULTILINE | re.DOTALL)
 _FIELD = re.compile(r'^\s*(\w+): "?([^"\n]*)"?$', re.MULTILINE)
 _FAMILY_NAME = re.compile(r'^name: "([^"]+)"', re.MULTILINE)
 # The OFL's own text says "Reserved Font Name" too; only the copyright lines above it count.
 _OFL_BODY = "This Font Software is licensed"
 
-# One file of a family as the list keeps it, small: name, weight, italic, variable, blob.
 type _FileRow = tuple[str, int, bool, bool, str]
 
 
 class _FamilyEntry(TypedDict):
-    """One family, as the engine reads it from the list."""
-
     folder: str
     reserved_name: bool
     files: list[_FileRow]
 
 
 def _tree_listing(commit: str) -> str:
-    """`git ls-tree -r` at `commit`, from a blobless fetch of that commit alone."""
     with tempfile.TemporaryDirectory() as scratch:
         git = ["git", "-C", scratch]
         subprocess.run([*git, "init", "-q"], check=True)
@@ -72,7 +58,6 @@ def _tree_listing(commit: str) -> str:
 
 
 def _blobs_in(listing: str) -> dict[str, str]:
-    """Each path in a `git ls-tree -r` listing, and its blob hash."""
     blobs: dict[str, str] = {}
     for line in listing.splitlines():
         mode_kind_blob, path = line.split("\t", 1)
@@ -85,10 +70,7 @@ def _blobs_in(listing: str) -> dict[str, str]:
 def _fetched(
     paths: list[str], *, blobs: dict[str, str], saved: Path | None
 ) -> dict[str, bytes]:
-    """Each path's bytes, from `saved` or fetched, every one checked against its blob hash."""
-
     def one(client: httpx.Client, path: str) -> bytes:
-        """One file's bytes, from disk if it's there and right, else from GitHub."""
         on_disk = None if saved is None else saved / path
         kept = b"" if on_disk is None or not on_disk.exists() else on_disk.read_bytes()
         if blob_hash(kept) == blobs[path]:
@@ -108,20 +90,15 @@ def _fetched(
 
 
 def _fonts_in(metadata: str) -> list[dict[str, str]]:
-    """Each font file METADATA.pb lists, as its fields."""
     return [dict(_FIELD.findall(block)) for block in _FONT_BLOCK.findall(metadata)]
 
 
 def _reserves_a_name(folder: str, contents: dict[str, bytes]) -> bool:
-    """Whether a family's licence keeps its name from modified versions, such as a cut instance.
-
-    The OFL says so in its copyright lines; the Ubuntu Font Licence asks every
-    modified version to be renamed; Apache doesn't.
-    """
+    """The OFL reserves it in its copyright lines; the UFL has every modified copy renamed."""
     licence_folder = folder.split("/")[0]
     if licence_folder == "apache":
         return False
-    licence = contents.get(f"{folder}/{_OFL}")  # .get: a UFL family, or an OFL one missing it
+    licence = contents.get(f"{folder}/{_OFL}")
     if licence is None:
         return True  # no copyright lines to read: assume it reserves one
     header = licence.decode(errors="replace").split(_OFL_BODY, 1)[0]
@@ -129,12 +106,10 @@ def _reserves_a_name(folder: str, contents: dict[str, bytes]) -> bool:
 
 
 def _is_variable(font: dict[str, str]) -> bool:
-    """Whether a file METADATA.pb lists is variable: its axes are in its name, "[wdth,wght]"."""
     return "[" in font["filename"]
 
 
 def _row_of(font: dict[str, str], *, folder: str, blobs: dict[str, str]) -> _FileRow:
-    """A file METADATA.pb lists, as the list's compact row."""
     name = font["filename"]
     italic = font["style"] == "italic"
     return (name, int(font["weight"]), italic, _is_variable(font), blobs[f"{folder}/{name}"])
@@ -143,12 +118,7 @@ def _row_of(font: dict[str, str], *, folder: str, blobs: dict[str, str]) -> _Fil
 def _family_entry(
     folder: str, *, contents: dict[str, bytes], blobs: dict[str, str]
 ) -> _FamilyEntry:
-    """One family, as the engine reads it: only the files it would draw with.
-
-    Its fixed-weight files if it has any, else its variable ones.
-    """
     metadata = contents[f"{folder}/METADATA.pb"].decode()
-    # Listed, but not in the commit: skipped.
     listed = [font for font in _fonts_in(metadata) if f"{folder}/{font['filename']}" in blobs]
     static = [font for font in listed if not _is_variable(font)]
     return {
@@ -159,13 +129,11 @@ def _family_entry(
 
 
 def _key_of(metadata: bytes) -> str:
-    """A family's name as a document's font name gives it: no spaces, lowercased."""
     [name] = _FAMILY_NAME.findall(metadata.decode())
     return name.replace(" ", "").lower()
 
 
 def _family_folders(blobs: dict[str, str]) -> list[str]:
-    """Each family's folder in the commit, in order: one with a METADATA.pb of its own."""
     return sorted(
         path.rsplit("/", 1)[0]
         for path in blobs
@@ -176,7 +144,6 @@ def _family_folders(blobs: dict[str, str]) -> list[str]:
 
 
 def _files_wanted(folders: list[str], blobs: dict[str, str]) -> list[str]:
-    """The path of each family's METADATA.pb and licence that the commit has."""
     every = [f"{folder}/{name}" for folder in folders for name in ("METADATA.pb", _OFL)]
     return [path for path in every if path in blobs]
 
@@ -184,18 +151,17 @@ def _files_wanted(folders: list[str], blobs: dict[str, str]) -> list[str]:
 def _families_in(
     folders: list[str], *, contents: dict[str, bytes], blobs: dict[str, str]
 ) -> dict[str, _FamilyEntry]:
-    """Each family with a file to draw with, by its key."""
     families: dict[str, _FamilyEntry] = {}
     for folder in folders:
         entry = _family_entry(folder, contents=contents, blobs=blobs)
         key = _key_of(contents[f"{folder}/METADATA.pb"])
         if entry["files"]:
-            families.setdefault(key, entry)  # in folder order: a name used twice keeps one
+            families.setdefault(key, entry)
     return families
 
 
 def _list_text(families: dict[str, _FamilyEntry]) -> str:
-    """The list as written, one family per line so a new pin diffs by family."""
+    """One family a line, so a new pin diffs by family."""
     lines = [
         f"  {json.dumps(key)}: {json.dumps(entry, separators=(',', ':'))}"
         for key, entry in families.items()
@@ -211,7 +177,6 @@ def _list_text(families: dict[str, _FamilyEntry]) -> str:
 
 
 def main() -> int:
-    """Rebuild the list and write it."""
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--tree", type=Path, help="a saved `git ls-tree -r` listing")
     parser.add_argument("--files", type=Path, help="a folder of files already fetched")

@@ -1,5 +1,3 @@
-"""Each address may start so many uploads a minute; past that, it's told to wait."""
-
 from __future__ import annotations
 
 import os
@@ -25,10 +23,7 @@ _MINUTE_S = 60.0
 
 @pytest.fixture
 def one_upload_a_minute(own_app: OwnApp) -> Iterator[TestClient]:
-    """An app of its own, started, taking one upload a minute from each address.
-
-    Its own: every other test uploads from the one test address.
-    """
+    """Its own: every other test uploads from the one test address."""
     with own_app.started(UPLOADS_PER_MINUTE=1) as server:
         yield server
 
@@ -45,21 +40,17 @@ def test_an_address_past_its_uploads_a_minute_is_told_to_wait_and_others_are_not
 
 
 def test_an_upload_not_sent_as_a_pdf_is_refused_before_it_counts(one_upload_a_minute):
-    """Another site's page can send one without asking: counted, it would use up the minute."""
     browser = browser_on(one_upload_a_minute, client=(ONE_ADDRESS, 1))
     sent_as_text = browser.post(
         "/api/documents", content=NOT_A_PDF, headers={"content-type": "text/plain"}
     )
     assert_problem(sent_as_text, "not_sent_as_pdf", 415)
-    # Admitted, and refused only for what it holds.
     assert_problem(upload(browser, NOT_A_PDF), "not_a_pdf", 415)
 
 
 def test_an_ipv6_address_counts_with_the_rest_of_its_64(one_upload_a_minute):
-    """One home or machine gets a whole /64: counted apart, each address could flood."""
     first, neighbour, elsewhere = (
         browser_on(one_upload_a_minute, client=(address, 1))
-        # Addresses kept for documentation, as above: two in one /64, one in the next.
         for address in ("2001:db8:1:2::1", "2001:db8:1:2::ff", "2001:db8:1:3::1")
     )
     assert_problem(upload(first, NOT_A_PDF), "not_a_pdf", 415)
@@ -85,7 +76,6 @@ def test_an_address_may_upload_again_a_minute_after_its_first():
 
 
 def test_a_record_made_with_its_own_window_counts_a_start_that_long():
-    """What an inbox is sent counts as long as a link works, not for a minute."""
     recent = RecentStarts(window_s=15 * _MINUTE_S)
     assert_true(recent.admit(ONE_ADDRESS, now=0.0, limit=1), "the first")
     assert_false(
@@ -97,7 +87,6 @@ def test_a_record_made_with_its_own_window_counts_a_start_that_long():
 
 
 def test_addresses_quiet_for_a_minute_are_forgotten():
-    """A flood from many addresses leaves nothing behind once it stops."""
     recent = RecentStarts()
     for n in range(100):
         recent.admit(f"192.0.2.{n}", now=0.0, limit=1)
@@ -106,7 +95,6 @@ def test_addresses_quiet_for_a_minute_are_forgotten():
 
 
 def test_uploads_that_forget_quiet_addresses_equal_fresh_ones_but_for_the_clock():
-    """A forget notes when it ran, so that alone differs from a fresh record with its window."""
     recent = RecentStarts(window_s=2 * _MINUTE_S)
     recent.admit(ONE_ADDRESS, now=3 * _MINUTE_S, limit=1)
     assert_every_field_filled(recent, RecentStarts(), "the record once one upload is counted")

@@ -35,7 +35,6 @@ test("a note shown on hover stays as the pointer moves onto it, to be read (WCAG
   const box = note.element().getBoundingClientRect();
   const at = middleOf(box);
   await cdp().send("Input.dispatchMouseEvent", { type: "mouseMoved", ...at });
-  // Past the delay a note closes after: still there, under the pointer.
   await new Promise((closed) => setTimeout(closed, 1000));
   await expect.element(note).toBeVisible();
 });
@@ -51,7 +50,6 @@ test("a note of a change draws an arrow down from what was to what is, which a s
   await expect.element(note).toHaveTextContent("Was “14 March”Now “17 March”");
   const arrow = note.element().querySelector("svg");
   expect(arrow?.getAttribute("aria-hidden")).toBe("true");
-  // Between the two, in the order they're read.
   expect(arrow?.previousElementSibling?.textContent).toBe("Was “14 March”");
   expect(arrow?.nextSibling?.textContent).toBe("Now “17 March”");
 });

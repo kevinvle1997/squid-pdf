@@ -1,5 +1,4 @@
-/* A typing caret after the words it follows, in their colour: it blinks five times and then rests, since
-   blinking past five seconds needs a way to stop it. */
+/* Five blinks, then it rests: blinking past five seconds needs a way to stop it. */
 .caret::after {
   content: ""; display: inline-block; width: 3px; height: 0.8em; vertical-align: -0.05em;
   margin-inline-start: var(--s1);

@@ -1,5 +1,3 @@
-"""Redaction on a page: its letters deleted, with the links and comments on them."""
-
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
@@ -25,27 +23,20 @@ from squidpdf.core.types import Rect
 
 @dataclass(frozen=True, slots=True, eq=False)
 class PageRedaction:
-    """What a redaction deletes from a page: its letters, and the links and comments on them."""
-
-    doc: pymupdf.Document  # open already; whoever opened it closes it
+    doc: pymupdf.Document
 
     def redact(self, page: int, boxes: list[Rect]) -> None:
-        """Delete every letter whose box touches one of `boxes`, and any link or comment on it.
-
-        Only a comment that writes its words on the page (a FreeText) goes. A redaction
-        mark the file already holds stays unapplied: applying it is not this edit's call.
-        """
+        """A mark the file holds stays unapplied: applying it isn't this edit's call."""
         mu = pymupdf.mupdf
         # MuPDF applies every mark on the page, so only ours may be there.
         with self._file_marks_aside(page):
-            # Unturned: a box is read unturned, and MuPDF places a mark as it's shown.
             with unturned(self.doc, page) as pdf_page:
                 # MuPDF's own calls, as PyMuPDF's read every mark on the page again per box.
                 for box in boxes:
                     mark = mu.pdf_create_annot(pdf_page, mu.PDF_ANNOT_REDACT)
                     mu.pdf_set_annot_rect(mark, mu.FzRect(box.x0, box.y0, box.x1, box.y1))
             options = mu.PdfRedactOptions()
-            options.black_boxes = 0  # nothing drawn where the letters were
+            options.black_boxes = 0
             options.text = mu.PDF_REDACT_TEXT_REMOVE
             options.image_method = mu.PDF_REDACT_IMAGE_NONE
             options.line_art = mu.PDF_REDACT_LINE_ART_NONE
@@ -53,7 +44,6 @@ class PageRedaction:
 
     @contextmanager
     def _file_marks_aside(self, page: int) -> Iterator[None]:
-        """The page's redaction marks, out of its Annots in the `with`, back in place after."""
         mu = pymupdf.mupdf
         page_obj = mu.pdf_lookup_page_obj(pdf_of(self.doc), page)
         listed = mu.pdf_dict_get(page_obj, mu.PDF_ENUM_NAME_Annots)
@@ -64,11 +54,9 @@ class PageRedaction:
                 mu.pdf_dict_get(annotation, mu.PDF_ENUM_NAME_Subtype), mu.PDF_ENUM_NAME_Redact
             )
         ]
-        # No mark of the file's own: nothing to set aside.
         if not marks:
             yield
             return
-        # The list as it was, a copy that holds on to each mark while it's out.
         before = mu.pdf_copy_array(listed)
         # From the end, so each deletion leaves the places still to read where they were.
         for place in reversed(marks):
@@ -83,20 +71,13 @@ class PageRedaction:
 
     @contextmanager
     def links_kept(self, page: int) -> Iterator[None]:
-        """Each link the page loses inside the `with` comes back, as it was.
-
-        The same object, in its place in the page's list of annotations (its Annots),
-        so a link keeps its look and what it does, even what PyMuPDF can't describe.
-        Any other annotation the page loses stays gone.
-        """
+        """The same object, so a link keeps all it does, even what PyMuPDF can't describe."""
         mu = pymupdf.mupdf
         page_obj = mu.pdf_lookup_page_obj(pdf_of(self.doc), page)
         listed = mu.pdf_dict_get(page_obj, mu.PDF_ENUM_NAME_Annots)
-        # No list of annotations: no link to lose.
         if not mu.pdf_is_array(listed):
             yield
             return
-        # The list as it was, a copy that holds on to each entry while MuPDF drops some.
         before = mu.pdf_copy_array(listed)
         try:
             yield
@@ -108,12 +89,7 @@ class PageRedaction:
     def drop_links(
         self, page: int, boxes: list[Rect], *, holding: Callable[[str], bool] | None = None
     ) -> None:
-        """Delete every link whose area overlaps one of `boxes`, whatever it does.
-
-        With `holding`, only one whose actions hold text it's true of. Read from the page's
-        own list of annotations (its Annots): PyMuPDF's list of links leaves out what MuPDF
-        can't follow, a script or a form reset.
-        """
+        """From Annots: PyMuPDF's links leave out what MuPDF can't follow, as a script."""
         mu = pymupdf.mupdf
         page_obj = mu.pdf_lookup_page_obj(pdf_of(self.doc), page)
         listed = mu.pdf_dict_get(page_obj, mu.PDF_ENUM_NAME_Annots)
@@ -126,31 +102,25 @@ class PageRedaction:
         _sync_links(self.doc, page)
 
     def link_boxes(self, page: int) -> list[Rect]:
-        """The area of each link on the page, as shown, whatever it does."""
         areas = [link.area for link in _links_on(self.doc, page)]
         return [Rect(area.x0, area.y0, area.x1, area.y1) for area in areas]
 
 
 @dataclass(frozen=True, slots=True, eq=False)
 class _Link:
-    """One link in a page's list of annotations: its place there, itself, its area as shown."""
-
     place: int
     annotation: pymupdf.mupdf.PdfObj
     area: pymupdf.Rect
 
 
 def _links_on(doc: pymupdf.Document, page: int) -> Iterator[_Link]:
-    """Each link in the page's own list of annotations (its Annots), the last first."""
     mu = pymupdf.mupdf
     page_obj = mu.pdf_lookup_page_obj(pdf_of(doc), page)
     listed = mu.pdf_dict_get(page_obj, mu.PDF_ENUM_NAME_Annots)
     to_page = ~to_pdf_matrix(doc, page)
-    # From the end, so a link deleted leaves the places still to read where they were.
     for place in reversed(range(mu.pdf_array_len(listed))):
         annotation = mu.pdf_array_get(listed, place)
         subtype = mu.pdf_dict_get(annotation, mu.PDF_ENUM_NAME_Subtype)
-        # Another kind of annotation: a note, a form field.
         if not mu.pdf_name_eq(subtype, mu.PDF_ENUM_NAME_Link):
             continue
         rect = mu.pdf_to_rect(mu.pdf_dict_get(annotation, mu.PDF_ENUM_NAME_Rect))
@@ -160,15 +130,10 @@ def _links_on(doc: pymupdf.Document, page: int) -> Iterator[_Link]:
 
 
 def _texts_of_link(annotation: pymupdf.mupdf.PdfObj) -> list[str]:
-    """The text a link's actions hold: an address, a file's name, a script, each written apart.
-
-    Its action and each that follows (Next), and a file named in one by its own description.
-    """
     mu = pymupdf.mupdf
     texts: list[str] = []
     for action in each_reached(mu.pdf_dict_get(annotation, mu.PDF_ENUM_NAME_A), ("Next",)):
         for value in values_of(action):
-            # A file's description, written in the action: its names are strings in it.
             held = values_of(value) if mu.pdf_is_dict(value) else [value]
             texts += [
                 _text_held(item)
@@ -179,7 +144,6 @@ def _texts_of_link(annotation: pymupdf.mupdf.PdfObj) -> list[str]:
 
 
 def _text_held(item: pymupdf.mupdf.PdfObj) -> str:
-    """A string's text, or a stream's (a script) read as single bytes."""
     if pymupdf.mupdf.pdf_is_string(item):
         return text_of(item)
     return bytes_of(item).decode("latin-1")
@@ -188,19 +152,14 @@ def _text_held(item: pymupdf.mupdf.PdfObj) -> str:
 def _put_back(
     listed: pymupdf.mupdf.PdfObj, before: pymupdf.mupdf.PdfObj, kind: pymupdf.mupdf.PdfObj
 ) -> None:
-    """Put each annotation of `kind` that `before` lists and `listed` lost back in its place.
-
-    Only deletions happened since `before`, so what's left keeps its order.
-    """
+    """Only deletions happened since `before`, so what's left keeps its order."""
     mu = pymupdf.mupdf
-    place = 0  # where the next one goes back
+    place = 0
     for annotation in items_of(before):
-        # Still listed: the next one goes after it.
         if mu.pdf_array_find(listed, annotation) >= 0:
             place += 1
             continue
         subtype = mu.pdf_dict_get(annotation, mu.PDF_ENUM_NAME_Subtype)
-        # Another kind of annotation: it stays gone.
         if not mu.pdf_name_eq(subtype, kind):
             continue
         mu.pdf_array_insert(listed, annotation, place)
@@ -214,6 +173,5 @@ def _sync_links(doc: pymupdf.Document, page: int) -> None:
 
 
 def _sync_annotations(doc: pymupdf.Document, page: int) -> None:
-    """Have MuPDF read the page's annotations again: it keeps its own list, read once."""
     pdf_page = pymupdf.mupdf.pdf_page_from_fz_page(doc[page].this)
     pymupdf.mupdf.pdf_sync_annots(pdf_page)

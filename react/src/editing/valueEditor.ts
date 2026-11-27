@@ -12,10 +12,6 @@ import { rulesFor } from "./lines";
 import { fontOf } from "./spanFonts";
 import { draftSpanOf, type SpanDraft, spanDraftOf, typedRunsState, typedState } from "./typing";
 
-/**
- * Open the editor for `value` in the slip, Alt+Down in the field: it takes focus as it's drawn, and open already, it's
- * sent focus from the field. False while nothing is typed into.
- */
 export function openValueEditor(editor: Editor, value: EditableValue | undefined): boolean {
   const draft = spanDraftOf(editor.store.get());
   if (draft === null || value === undefined) return false;
@@ -26,19 +22,16 @@ export function openValueEditor(editor: Editor, value: EditableValue | undefined
   return true;
 }
 
-/** Close the value's editor, keeping what's typed: focus goes back to the field. */
 export function closeValueEditor(editor: Editor): void {
   const draft = spanDraftOf(editor.store.get());
   if (draft === null || !draft.valueEditorOpen) return;
   editor.store.set({ draft: { ...draft, valueEditorOpen: false }, focusTo: { spanId: draft.spanId } });
 }
 
-/** The day chosen in the calendar, written into the field as the page writes dates, and focus back in it. */
 export function chooseDate(editor: Editor, value: DateValue, date: CalendarDay): void {
   writeValue(editor, value, { write: (text) => withDate(text, value, date) });
 }
 
-/** The amount given, written into the field as the page writes amounts, and focus back in it unless it's `leaving`. */
 export function chooseAmount(
   editor: Editor,
   value: AmountValue,
@@ -47,7 +40,6 @@ export function chooseAmount(
   writeValue(editor, value, { write: (text) => withAmount(text, value, amount), returnFocus: !leaving });
 }
 
-/** Write `value` into the field with `write`, held in the form written until the field is written over by hand. */
 function writeValue(
   editor: Editor,
   value: EditableValue,
@@ -55,7 +47,6 @@ function writeValue(
 ): void {
   const state = editor.store.get();
   const draft = spanDraftOf(state);
-  // Closed already, by Escape: what it held then is left out.
   if (draft === null || !draft.valueEditorOpen) return;
   const typed =
     draft.runs === null
@@ -108,14 +99,9 @@ export function markedDays(
   return marked;
 }
 
-// Every digit a year can be written with.
 const DIGITS = "0123456789";
 
-/**
- * Every reason a calendar day can give while it's open in `year`, for the row its reasons show on to lay out, so
- * the calendar keeps its height as the months are stepped through: each of the year's days', and one naming every
- * letter a date of another year could lack, its month's and weekday's and any digit, which is as long as any.
- */
+/** Every reason a day can give in `year`, plus the longest another year's could, so the calendar keeps its height. */
 export function reasonsAnyDayGives(
   state: EditorState,
   { value, text, year }: { value: DateValue; text: string; year: number },
@@ -128,7 +114,6 @@ export function reasonsAnyDayGives(
     for (let day = 1; day <= daysIn(year, month); day++) {
       const troubles = check.added({ year, month, day });
       if (troubles.length > 0) reasons.add(troubles.join("\n"));
-      // A week of each month: every weekday's name beside each month's.
       const lacking = day <= 7 ? check.lacking(withDate(text, value, { year, month, day }) + DIGITS) : "";
       if (lacking.length > longest.length) longest = lacking;
     }
@@ -137,11 +122,6 @@ export function reasonsAnyDayGives(
   return [...reasons];
 }
 
-/**
- * How a date written in `value`'s place in `text` troubles the line: what choosing one day's date adds
- * (`troublesAddedOf`), and the letters some words need that the span's font lacks and the line without the date
- * doesn't already, said as a day's are. None while nothing's typed into, or its font is unknown.
- */
 function dateCheckOf(
   state: EditorState,
   { value, text }: { value: DateValue; text: string },
@@ -158,7 +138,6 @@ function dateCheckOf(
   return {
     added: (date) => addedTo(fitReading(withDate(text, value, date))),
     lacking: (words) => {
-      // The line as it stands, lacking these letters: no longer, so it says only which.
       const { missing } = fitOf(span, { font, text: words, rules });
       return addedTo({ ...now, missing }).join("\n");
     },
@@ -202,7 +181,6 @@ export function shownDayAfter(was: number | null, { day, isShown }: { day: numbe
   return was === day ? null : was;
 }
 
-/** How the amount's field shows `value`, the reader's way: in its currency, where Intl knows it, to its decimals. */
 export function amountFormatOptions({ format }: AmountValue): Intl.NumberFormatOptions {
   const { code, decimals } = format;
   const style: Intl.NumberFormatOptions =

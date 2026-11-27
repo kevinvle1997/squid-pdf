@@ -1,8 +1,6 @@
-"""Can this text be drawn here, and if not, what are the ways out.
+"""When a replacement won't fit, the app offers the choice rather than making it.
 
-The product rule: when a replacement will not fit, the app offers the choice
-rather than making it. A silent 20% squeeze looks wrong and the user never
-learns why.
+A silent squeeze looks wrong, and the user never learns why.
 """
 
 from __future__ import annotations
@@ -36,45 +34,29 @@ from squidpdf.editing.edits import Insert, Strategy
 
 @dataclass(frozen=True, slots=True)
 class Option:
-    """One way to make a too-long replacement work: its name, and what the user reads of it."""
-
     name: Strategy
     label: Message
     detail: Message
 
 
-# A line's width when it has none to speak of: what a share past its room is taken of.
 _SOME_WIDTH_PT = 1.0
 
 
 @dataclass(frozen=True, slots=True)
 class Verdict:
-    """How an edit comes out: in its span's own font, set as the page sets the span, or not.
-
-    The same verdict a span gets at upload (`Engine.fidelity_of`), for the edit's own words.
-    """
-
     fidelity: Fidelity
-    why: Message | None  # how an approximate edit won't match the text around it
-    # The face that draws it in its font's place, or would were the font refused.
+    why: Message | None
     substitute: SubstituteWidths
 
 
 @dataclass(frozen=True, slots=True)
 class FitReport:
-    """The answer to 'what happens if I type this'.
-
-    Facts and option identifiers: what's wrong comes out of `describe()` as Messages, so the
-    engine never learns about language. `strategy` is the one drawn: the one asked for if
-    offered, else as-is. `delta_pt` leaves out `left_out`, since those won't be drawn.
-    """
+    """Facts and option ids: `describe()` makes Messages, so the engine knows no language."""
 
     delta_pt: float
-    room_pt: float = 0.0  # the free space after it on its line (`core.text.room`)
-    original_pt: float = (
-        0.0  # how wide the original line is: what a line too long is a share of
-    )
-    missing: list[str] = field(default_factory=list)  # the span's own font lacks these
+    room_pt: float = 0.0
+    original_pt: float = 0.0
+    missing: list[str] = field(default_factory=list)
     options: list[Option] = field(default_factory=list)
     strategy: Strategy = "as-is"
     left_out: list[str] = field(default_factory=list)  # no font we have draws these
@@ -85,7 +67,6 @@ class FitReport:
 
     @property
     def ok(self) -> bool:
-        """True when the replacement can be drawn as-is, no compromise needed."""
         return not self.missing and not self.too_long
 
     @property
@@ -95,19 +76,14 @@ class FitReport:
 
     @property
     def percent_past_room(self) -> int:
-        """How far past its room the line runs, as a whole percent of the original, at least 1.
-
-        A share, not points, which anyone reads: `percentPastRoom` in react/src/editing/fit.ts.
-        """
+        """A share, not points, which anyone reads; `percentPastRoom` in fit.ts mirrors it."""
         past_pt = self.delta_pt - self.room_pt
         # Rounded first, so a share that's whole in decimal isn't pushed up by binary.
         share = round(past_pt / max(self.original_pt, _SOME_WIDTH_PT) * 100, 6)
         return max(1, math.ceil(share))
 
     def describe(self) -> list[Message]:
-        """Everything that won't come out as typed, in the order it's told; empty if nothing."""
         parts: list[Message] = []
-        # New text in a font that can't be used here: all of it is in the substitute.
         if self.unavailable:
             params: dict[str, Param] = {"chosen": self.unavailable, "font": self.substitute}
             parts.append(Message("chosen_unavailable", params))
@@ -115,13 +91,11 @@ class FitReport:
         switched = [ch for ch in self.missing if ch not in self.left_out]
         if switched:
             parts.append(Message("missing", {"chars": switched, "font": self.substitute}))
-        # Letters nothing can draw.
         if self.left_out:
             parts.append(Message("will_leave_out", {"letters": list(self.left_out)}))
         # The part past its room collides, unless a way out ends it where the original did.
         if self.too_long and self.strategy == "as-is":
             parts.append(Message("too_long", {"percent": self.percent_past_room}))
-        # The user's choice of way out wasn't one on offer.
         passed_over = self.asked != "as-is" and self.strategy != self.asked
         if passed_over and self.too_long:
             parts.append(Message("not_offered"))
@@ -130,12 +104,7 @@ class FitReport:
 
 @dataclass(frozen=True, slots=True, eq=False)
 class Fitted:
-    """A fit and the plan it measured, which `draw` then draws: one plan for both.
-
-    `plan` holds the fonts that draw the line, so it stays in the process that made it.
-    `verdict` is the plan's (`verdicts_of` says it as drawn). A None `size` keeps the
-    span's own; `scale_x` narrows the line from its start.
-    """
+    """`plan` holds the fonts that draw the line, so it stays in the process that made it."""
 
     report: FitReport
     plan: DrawPlan = field(repr=False)
@@ -166,8 +135,8 @@ class RunFitted:
     span: Span
     text: str
     x: float
-    changed: bool  # its words are new
-    moved: bool  # it starts elsewhere than it did
+    changed: bool
+    moved: bool
     report: FitReport
     plan: DrawPlan = field(repr=False)
     verdict: Verdict
@@ -177,13 +146,10 @@ class RunFitted:
 
 @dataclass(frozen=True, slots=True, eq=False)
 class LineFitted:
-    """A line's edit, run by run: one neither changed nor moved is left as the page has it."""
-
     runs: list[RunFitted]
 
     @property
     def redrawn(self) -> list[RunFitted]:
-        """The runs it erases and draws again: changed, or moved by a change before them."""
         return [run for run in self.runs if run.changed or run.moved]
 
 
@@ -212,23 +178,17 @@ class EditFits:
 
 @dataclass(frozen=True, slots=True)
 class RunWidths:
-    """One run of a line, measured: where the page starts it, and its words' widths."""
-
     x: float
-    original_pt: float  # its own words'
-    typed_pt: float  # the words it's to read
+    original_pt: float
+    typed_pt: float
     changed: bool
 
 
 @dataclass(frozen=True, slots=True)
 class RunsLaidOut:
-    """A line's runs fitted by those that change: the line's fit, and where each run starts.
+    """A way out ends the changed runs where they ended, so nothing after them moves."""
 
-    `scale` is how wide the changed runs are drawn, as a share of their typed width: a way
-    out ends them where they ended, so nothing after them moves.
-    """
-
-    report: FitReport  # the line's, without any one run's letters or face
+    report: FitReport
     scale: float
     starts: list[float]
 
@@ -254,24 +214,18 @@ def runs_laid_out(
         asked=strategy,
         at_split=at_split,
     )
-    # A way out is offered only past the room, so the changed runs have some width then.
     scale = 1.0 if drawn_strategy == "as-is" else original_width / (original_width + delta_pt)
     return RunsLaidOut(report, scale, _run_starts(runs, scale=scale))
 
 
 def _changed_widths(runs: Sequence[RunWidths]) -> tuple[float, float]:
-    """How wide a line's changed runs were, and how much wider they're typed."""
     changed = [run for run in runs if run.changed]
     original = sum(run.original_pt for run in changed)
     return original, sum(run.typed_pt for run in changed) - original
 
 
 def _run_starts(runs: Sequence[RunWidths], *, scale: float) -> list[float]:
-    """Where each run starts once the runs before it are drawn, the changed ones `scale` wide.
-
-    Each keeps the gap the page left after the run before it, so a run with no change
-    before it starts where it did.
-    """
+    """Each keeps the gap the page left after the run before it."""
     gaps = [after.x - (run.x + run.original_pt) for run, after in pairwise(runs)]
     starts = [runs[0].x]
     for run, gap in zip(runs[:-1], gaps, strict=True):
@@ -303,7 +257,6 @@ def options_for(
     if not past or original_width <= 0:
         return []
 
-    # What shrinking to fit would scale the size to, and how much condensing squeezes.
     shrunk_to = original_width / (original_width + delta_pt)
     squeezed_by = delta_pt / original_width
     names: list[Strategy] = []
@@ -323,13 +276,11 @@ def options_for(
 
 
 def _strategy_drawn(asked: Strategy, options: list[Option]) -> Strategy:
-    """The way out that's drawn: the one asked for if it was offered, else as-is."""
     offered = asked in {option.name for option in options}
     return asked if offered else "as-is"
 
 
 def insert_span(engine: Engine, insert: Insert) -> Span:
-    """An insert as a span, so it's judged, measured and drawn exactly like an edit."""
     return new_text(
         insert.page,
         origin=insert.origin,
@@ -344,7 +295,6 @@ def insert_span(engine: Engine, insert: Insert) -> Span:
 
 
 def insert_fit(engine: Engine, insert: Insert) -> Fitted:
-    """What new text will look like: its font and letters, as there's no width to fit."""
     span = insert_span(engine, insert)
     # A font that only lacks a letter is still usable: a substitute draws the line.
     unusable = insert.font not in FACES and not engine.fit.has_own_font(span)
@@ -361,8 +311,6 @@ def insert_fit(engine: Engine, insert: Insert) -> Fitted:
 
 
 def _new_text_verdict(insert: Insert, plan: DrawPlan, verdict: Verdict) -> Verdict:
-    """New text's verdict: in a face we ship, exact where it draws, else a similar face's."""
-    # In a font of the page's: judged as an edit of that font is.
     if insert.font not in FACES:
         return verdict
     drawn_as_asked = isinstance(plan.drawn_in, Face) and plan.drawn_in.name == insert.font
@@ -373,12 +321,6 @@ def _new_text_verdict(insert: Insert, plan: DrawPlan, verdict: Verdict) -> Verdi
 def replace_fit(
     engine: Engine, span: Span, text: str, *, room_pt: float, strategy: Strategy = "as-is"
 ) -> Fitted:
-    """What would happen if the user typed this, with the ways out if it will not fit.
-
-    `room_pt` is the span's room (`Engine.rooms`). `strategy` is drawn only if it
-    was offered; otherwise as-is.
-    """
-    # One plan for what's typed: the fit reads it, and the draw draws it.
     typed_plan = engine.fit.plan_for(span, text)
     original_width = engine.fit.measure(span, span.text)
     typed_width = engine.fit.width_of(span, typed_plan)
@@ -397,15 +339,12 @@ def replace_fit(
         asked=strategy,
     )
     verdict = _verdict_of(engine, span, text, plan=typed_plan)
-    # The span's size, no stretch.
     if drawn_strategy == "as-is":
         return Fitted(report, typed_plan, verdict)
-    # Width goes with size, so it ends where the original did.
     if drawn_strategy == "shrink":
         return Fitted(
             report, typed_plan, verdict, size=span.size * original_width / typed_width
         )
-    # The same size, letters squeezed narrower, to the same end.
     if drawn_strategy == "condense":
         return Fitted(report, typed_plan, verdict, scale_x=original_width / typed_width)
     assert_never(drawn_strategy)
@@ -511,7 +450,6 @@ def _run_fitted(
         verdict=_verdict_of(engine, span, text, plan=plan),
     )
     strategy = laid_out.report.strategy
-    # Unchanged, or no way out: at the span's size, no squeeze.
     if not changed or strategy == "as-is":
         return fitted
     if strategy == "shrink":
@@ -522,7 +460,6 @@ def _run_fitted(
 
 
 def _verdict_of(engine: Engine, span: Span, text: str, *, plan: DrawPlan) -> Verdict:
-    """How `text`, drawn at `span` as `plan` plans it, comes out, judged as upload judges."""
     report = engine.fidelity_of(span, plan)
     why = report.why if report.state == "approximate" else None
     substitute = engine.fit.substitute_widths(span, text, plan=plan)

@@ -1,5 +1,3 @@
-"""A document answers to the browser that uploaded it. To anyone else it doesn't exist."""
-
 from __future__ import annotations
 
 import pytest
@@ -7,11 +5,10 @@ import pytest
 from tests.api.conftest import upload
 from tests.helpers import assert_all, assert_equal, assert_in, assert_problem
 
-_UNKNOWN = "A" * 22  # shaped like an id, belongs to nothing
+_UNKNOWN = "A" * 22
 
 
-# The second climbs folders. The router refuses its slashes before the store sees it;
-# the store's own guard is tested in tests/documents/test_store.py.
+# The router refuses its slashes before the store sees them.
 @pytest.mark.parametrize("doc_id", [_UNKNOWN, "..%2F..%2Fetc"])
 def test_an_unknown_id_is_not_found(browser, doc_id):
     assert_problem(browser().get(f"/api/documents/{doc_id}"), "not_found", 404)
@@ -29,7 +26,7 @@ def test_another_browsers_document_is_not_found_exactly_like_an_unknown_one(brow
         theirs.post(f"{base}/export", json={"edits": []}),
         theirs.delete(base),
     ]
-    upload(theirs, pdf_bytes)  # now it has a cookie of its own
+    upload(theirs, pdf_bytes)
     with_own_cookie = theirs.get(base)
     attempts.append(with_own_cookie)
     unknown = theirs.get(f"/api/documents/{_UNKNOWN}")

@@ -3,11 +3,10 @@ import { aFont, aSpan } from "../fixtures";
 import { fontOf, fontsByObject, shownNameIn } from "./spanFonts";
 
 describe("the font that draws a span", () => {
-  // Two fonts listed under one name, as a file merged from two leaves them: each its own letters.
   const FONTS = fontsByObject([
     aFont("Calibri", { font_object: 5, glyphs: { a: 479 } }),
     aFont("Calibri", { font_object: 9, glyphs: { b: 525 } }),
-    aFont("Helvetica", { substitute: "Liberation Sans Regular" }), // no object: no page lists it
+    aFont("Helvetica", { substitute: "Liberation Sans Regular" }),
   ]);
 
   test("is the one its object names, where two fonts share a name", () => {

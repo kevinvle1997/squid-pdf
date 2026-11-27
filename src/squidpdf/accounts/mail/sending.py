@@ -1,5 +1,3 @@
-"""The emails accounts are sent, and the one door they leave by."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -13,38 +11,24 @@ _log = LogController.for_module(__name__)
 
 @dataclass(frozen=True, slots=True)
 class Letter:
-    """One email: who it's to, its subject and its words."""
-
     to: str
     subject: str
     body: str
 
 
 class Mailer(Protocol):
-    """What sends an email: SMTP, Brevo's API, or a test's double noting what it was given."""
-
-    def send(self, letter: Letter) -> None:
-        """Send `letter`, or raise the Problem saying why it wasn't sent."""
-        ...
+    def send(self, letter: Letter) -> None: ...
 
 
 @dataclass(frozen=True, slots=True, eq=False)
 class MailController:
-    """Every letter an account is sent: written in its reader's words, then sent.
-
-    Nothing goes to an address whose mail came back as never deliverable: each bounce
-    counts against the sender with every mail server. Inviting them again clears it.
-    """
+    """None goes to an address that bounced for good: each bounce counts against the sender."""
 
     mailer: Mailer
-    users: UserStore  # who has bounced
-    secret: bytes = field(repr=False)  # keys the digest an address no account has is kept as
+    users: UserStore
+    secret: bytes = field(repr=False)
 
     def send_sign_in_link(self, email: str, *, link: str, minutes: int, language: str) -> None:
-        """Send `email` the `link` signing it in for `minutes`, or raise why it wasn't.
-
-        Reads the table: a coroutine calls it in a thread.
-        """
         # Said as any address is, so no one learns which bounced; the log keeps it.
         if self._has_bounced(email):
             _log.write(LogEvent.MAIL_TO_BOUNCED_SKIPPED)
@@ -56,5 +40,4 @@ class MailController:
         self.mailer.send(Letter(email, subject=subject, body=body))
 
     def _has_bounced(self, email: str) -> bool:
-        """Whether mail to `email` came back as never deliverable, to an account or not."""
         return self.users.has_bounced(email, secret=self.secret)

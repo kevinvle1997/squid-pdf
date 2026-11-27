@@ -47,7 +47,6 @@ describe("a page image that fails while the server still has the document", () =
     expect(editor.store.get().images.get(0)?.tries).toBe(1);
     vi.advanceTimersByTime(IMAGE_RETRY_FIRST_MS);
     expect(editor.store.get().images.get(0)?.tries).toBe(2);
-    // The same reason again isn't announced again.
     expect(editor.store.get().announcement).toBe(announcement);
   });
 

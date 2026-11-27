@@ -11,7 +11,7 @@ describe("the lines under the bar", () => {
     const notices = {
       document: [SIGNED],
       export: [plain("Downloaded contract.pdf.")],
-      reopen: plain("Opened again."), // said in the bar, not under it
+      reopen: plain("Opened again."),
       font: null,
       drop: null,
     };
@@ -46,7 +46,6 @@ describe("the lines under the bar", () => {
       drop: warn("Not a PDF."),
     };
     expect(noticesAfterChange(notices, { stale: false })).toEqual({ ...NO_NOTICES, document: [SIGNED] });
-    // Why a stale reading couldn't be read again stays, until it is.
     const stale = noticesAfterChange(notices, { stale: true });
     expect(stale).toEqual({ ...NO_NOTICES, document: [SIGNED], reopen: plain("Opened again.") });
   });

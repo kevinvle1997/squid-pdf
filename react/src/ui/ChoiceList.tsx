@@ -2,35 +2,29 @@ import type { CSSProperties, Ref } from "react";
 import { Header, ListBox, ListBoxItem, ListBoxSection } from "react-aria-components";
 import styles from "./ChoiceList.module.css";
 
-/** One choice in the list, and how its name is set. */
 interface Choice {
   readonly id: string;
   readonly label: string;
   readonly style?: CSSProperties;
 }
 
-/** A group of choices, under a heading shown, or named for a screen reader alone. */
 interface ChoiceGroup {
   readonly name: string;
-  readonly shown: boolean; // its name is shown over it, not only heard
+  readonly shown: boolean;
   readonly choices: readonly Choice[];
 }
 
 interface Props {
-  label: string; // what the choices are of, for a screen reader
+  label: string;
   groups: readonly ChoiceGroup[];
   chosen: string;
   onChoose: (id: string) => void;
-  onEnter: () => void; // Enter on a choice: done choosing
-  onPointerChoice?: () => void; // a pointer chose: focus can go back to what it came from
-  listRef?: Ref<HTMLDivElement>; // the list, for focus sent to it
+  onEnter: () => void;
+  onPointerChoice?: () => void;
+  listRef?: Ref<HTMLDivElement>;
 }
 
-/**
- * One choice of many, listed open, the one chosen ticked in ink and softly filled: never blue, which is for what
- * changed. The arrow keys choose as they go, as React Aria's list does; a pointer's press chooses at once, a finger's
- * too. Enter is heard as the choice's own press, not as React Aria's action, which a tap would be.
- */
+/** Enter is heard as the choice's own press, not as React Aria's action, which a tap would be. */
 export function ChoiceList({ label, groups, chosen, onChoose, onEnter, onPointerChoice, listRef }: Props) {
   return (
     <ListBox
@@ -41,7 +35,7 @@ export function ChoiceList({ label, groups, chosen, onChoose, onEnter, onPointer
       selectionBehavior="replace"
       disallowEmptySelection
       escapeKeyBehavior="none"
-      // Chosen as the press lifts, not as it lands: what's chosen can change what sits round the list.
+      // As the press lifts, not as it lands: what's chosen can change what sits round the list.
       shouldSelectOnPressUp
       selectedKeys={[chosen]}
       onSelectionChange={(keys) => {
@@ -80,7 +74,6 @@ export function ChoiceList({ label, groups, chosen, onChoose, onEnter, onPointer
   );
 }
 
-/** The chosen one's tick, drawn at its own size so the stroke stays 1.5px. */
 function Tick() {
   return (
     <svg className={styles.tick} width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">

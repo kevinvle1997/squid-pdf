@@ -1,5 +1,3 @@
-"""An open PDF as MuPDF's low-level API sees it: one part per concern, over one document."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -20,8 +18,6 @@ from squidpdf.core.pdf.lowlevel.signatures import Signatures
 
 @dataclass(frozen=True, slots=True, eq=False)
 class PdfFile:
-    """An open PDF's low-level calls, a part per concern. Made by `pdf_file`."""
-
     fonts: FontRecords
     glyphs: PageGlyphs
     redaction: PageRedaction
@@ -35,7 +31,6 @@ class PdfFile:
 
 
 def pdf_file(doc: pymupdf.Document) -> PdfFile:
-    """The low-level calls over `doc`, open already: whoever opened it closes it."""
     return PdfFile(
         FontRecords(doc),
         glyphs=PageGlyphs(doc),

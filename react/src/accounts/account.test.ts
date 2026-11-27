@@ -22,7 +22,6 @@ describe("mustSignIn", () => {
     expect(mustSignIn({ kind: "read", state: stranger })).toBe(true);
     expect(mustSignIn({ kind: "read", state: invited })).toBe(false);
     expect(mustSignIn({ kind: "read", state: anAccount() })).toBe(false);
-    // Asking, or failed to ask: the landing shows, and the upload says why if it's refused.
     expect(mustSignIn({ kind: "asking" })).toBe(false);
     expect(mustSignIn({ kind: "failed", detail: "Couldn't reach the server." })).toBe(false);
   });

@@ -1,10 +1,3 @@
-"""The one door to logging: each line says what happened, in one shape, and carries no document.
-
-No other module imports `logging` (`tests/test_layers.py`). A field is never a
-plain string, so a line can't carry a file's words; a traceback or a debug after
-it has any document's folder hidden.
-"""
-
 from __future__ import annotations
 
 import contextlib
@@ -23,58 +16,47 @@ from typing import Any
 
 from squidpdf.core.app.errors import Problem
 
-_ROOT = "squidpdf"  # every module's logger is under it, by its own name
+_ROOT = "squidpdf"
 _REQUEST_ID_BYTES = 4  # 8 hex digits: enough to find one request's lines in a day's log
-_OUTCOME_WIDTH = 7  # "skipped", the longest, so the column after it lines up
-_LEVEL_WIDTH = 5  # "ERROR", the longest
-# A document's folder in a path, named as the documents store names it (`token_urlsafe`):
-# a document's id, which a library's error or a server error's debug can name.
+_OUTCOME_WIDTH = 7
+_LEVEL_WIDTH = 5
 _DOCUMENT_FOLDER = re.compile(r"(?<=[/\\])[A-Za-z0-9_-]{22}(?=[/\\'\"\s:]|$)", re.MULTILINE)
-_HIDDEN = "<document>"  # what stands in for one in the log
-_MS_PER_S = 1000  # milliseconds in a second, as a tally writes a wait
+_HIDDEN = "<document>"
+_MS_PER_S = 1000
 
-# The request the running code answers, if any: set by the API, read into every line.
 _REQUEST_ID: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     "request_id", default=None
 )
 
 
 class _Level(Enum):
-    """How much a line matters: its event's usual level, unless the call says otherwise."""
-
     INFO = logging.INFO
     WARN = logging.WARNING
     ERROR = logging.ERROR
 
 
 INFO, WARN, ERROR = _Level.INFO, _Level.WARN, _Level.ERROR
-# The level's name as a line writes it, by the stdlib's number.
 _LEVEL_NAMES = {level.value: level.name for level in _Level}
 
 
 class Tally(StrEnum):
-    """What a request did, tallied onto its line: why a slow one was slow, how its edits did."""
-
-    QUEUED_MS = "queued_ms"  # waiting for a free worker
-    WORKER_MS = "worker_ms"  # at work in one
-    COLD = "cold"  # tasks that were a new worker's first, which fills every cache
-    REANALYSED = "reanalysed"  # analyses worked out again, after a deploy retired them
-    GOOGLE_HIT = "google_hit"  # Google's copies read from the disk cache
-    GOOGLE_FETCHED = "google_fetched"  # downloaded in time
-    # None came: failed, late, or held back after a recent failure.
+    QUEUED_MS = "queued_ms"
+    WORKER_MS = "worker_ms"
+    COLD = "cold"
+    REANALYSED = "reanalysed"
+    GOOGLE_HIT = "google_hit"
+    GOOGLE_FETCHED = "google_fetched"
     GOOGLE_FAILED = "google_failed"
-    GOOGLE_MS = "google_ms"  # waiting on downloads
-    EDITS_EXACT = "edits_exact"  # drawn in the file's own font, set as the text around it
-    EDITS_SUBSTITUTE = "edits_substitute"  # drawn in a similar font we ship
-    EDITS_APPROXIMATE = "edits_approximate"  # the own font, but unlike the text around it
+    GOOGLE_MS = "google_ms"
+    EDITS_EXACT = "edits_exact"
+    EDITS_SUBSTITUTE = "edits_substitute"
+    EDITS_APPROXIMATE = "edits_approximate"
 
 
 class _Outcome(StrEnum):
-    """What happened, the column a grep finds a line by, whatever its level."""
-
-    NOTED = "noted"  # something happened as it should, worth a line
-    SKIPPED = "skipped"  # something was left undone, and the work went on without it
-    FAILED = "failed"  # something went wrong: its traceback follows the line
+    NOTED = "noted"
+    SKIPPED = "skipped"
+    FAILED = "failed"
 
 
 _NOTED, _SKIPPED, _FAILED = _Outcome.NOTED, _Outcome.SKIPPED, _Outcome.FAILED
@@ -82,20 +64,12 @@ _NOTED, _SKIPPED, _FAILED = _Outcome.NOTED, _Outcome.SKIPPED, _Outcome.FAILED
 
 @dataclass(frozen=True, slots=True)
 class _EventFacts:
-    """An event's word in the line, what happened, and how much it usually matters."""
-
     written: str
     outcome: _Outcome
-    level: _Level  # a call can say this one matters more, or less
+    level: _Level
 
 
 class LogEvent(Enum):
-    """Everything the server can say in its log: its word, what happened, its usual level.
-
-    One list, so an event always has the same outcome, and a grep finds it at one level
-    unless a call says this one matters more or less.
-    """
-
     REQUEST_DONE = _EventFacts("request_done", _NOTED, INFO)
     UNHANDLED = _EventFacts("unhandled", _FAILED, ERROR)
     PROBLEM_SENT_WITHOUT_DEBUG = _EventFacts("problem_sent_without_debug", _FAILED, WARN)
@@ -132,65 +106,51 @@ class LogEvent(Enum):
 
 @dataclass(frozen=True, slots=True)
 class OwnText:
-    """Text the server wrote itself, never read from a file or a request: a route's template."""
-
     text: str
 
 
 @dataclass(slots=True)
 class Tallies:
-    """What one request, or a task of it in a worker, tallied on the way."""
-
     amounts: dict[Tally, int] = field(default_factory=dict)
 
     def add(self, tally: Tally, amount: int) -> None:
-        """Add `amount` to `tally`."""
-        self.amounts[tally] = self.amounts.get(tally, 0) + amount  # .get: its first
+        self.amounts[tally] = self.amounts.get(tally, 0) + amount
 
     def add_all(self, more: Tallies) -> None:
-        """Add everything `more` tallied."""
         for tally, amount in more.amounts.items():
             self.add(tally, amount)
 
 
 @dataclass(frozen=True, slots=True)
 class WorkerAnswer[T]:
-    """A task's result, and what it tallied in its worker, for its request's line."""
-
     result: T
     tallies: Tallies
 
 
-# What the request the running code answers has tallied; None outside a request.
 _TALLIES: contextvars.ContextVar[Tallies | None] = contextvars.ContextVar(
     "tallies", default=None
 )
-# The attribute a task's failure carries its worker's tallies back to the server in.
 _CARRIED = "squidpdf_tallies"
 
 
 type _Field = int | float | bool | Enum | OwnText
-# How a field of each type is written. Looked up along the value's ancestry, so a bool is
-# written as one before it's an int, and an enum of strings as an enum; a plain str has none.
+# Looked up along the value's ancestry, so a bool is written as one before it's an int.
 _WRITTEN: dict[type, Callable[[Any], str]] = {
     bool: lambda yes: "true" if yes else "false",
     int: str,
     float: str,
-    Enum: lambda ours: str(ours.value),  # ours, so its value is ours too
+    Enum: lambda ours: str(ours.value),
     OwnText: lambda own: own.text,
 }
 
 
 @dataclass(frozen=True, slots=True, eq=False)
 class LogController:
-    """Where a module logs: one line per event, at its usual level unless the call says."""
-
     logger: logging.Logger
-    module: str  # the module's name under the package, as the line shows it
+    module: str
 
     @classmethod
     def for_module(cls, name: str) -> LogController:
-        """The controller for module `name`, as `__name__` gives it."""
         return cls(logging.getLogger(name), module=name.removeprefix(f"{_ROOT}."))
 
     def write(
@@ -202,17 +162,11 @@ class LogController:
         level: _Level | None = None,
         **fields: _Field,
     ) -> None:
-        """One line for `event`, its fields checked, with the request it's for.
-
-        A failed event takes what failed, whose traceback and a Problem's debug
-        follow the line; any other takes none. Raises TypeError when that's wrong.
-        """
         facts = event.value
         if (failure is not None) != (facts.outcome is _FAILED):
             raise TypeError(f"{facts.written}: what failed goes with a failed event, and only")
         words = [f"{facts.outcome:<{_OUTCOME_WIDTH}}", self.module, facts.written]
         words += [f"{key}={_written(value)}" for key, value in fields.items()]
-        # A Problem's type is ours, and names what went wrong as the browser was told.
         if isinstance(failure, Problem):
             words.append(f"problem={failure.type}")
         request_id = _REQUEST_ID.get()
@@ -225,7 +179,6 @@ class LogController:
 
     @staticmethod
     def configure() -> None:
-        """Lines at INFO and above go to stdout, once however often it's called."""
         root = logging.getLogger(_ROOT)
         root.setLevel(logging.INFO)
         if not any(isinstance(handler, _Lines) for handler in root.handlers):
@@ -233,7 +186,6 @@ class LogController:
 
 
 def _written(value: _Field) -> str:
-    """A field's value as the line writes it. Raises TypeError for anything but a `_Field`."""
     ancestry = type(value).__mro__
     write = next((_WRITTEN[kind] for kind in ancestry if kind in _WRITTEN), None)
     # A str may be a file's words: one of ours comes as an enum or OwnText.
@@ -243,9 +195,7 @@ def _written(value: _Field) -> str:
 
 
 def _what_failed(failure: BaseException) -> str:
-    """A failure's traceback, after a Problem's debug, which only the log is told."""
     traceback_text = "".join(traceback.format_exception(failure)).rstrip("\n")
-    # A server error's why, kept from the browser, is for the log (`decisions/api.md`).
     debug = failure.debug if isinstance(failure, Problem) else None
     if debug is None:
         return traceback_text
@@ -253,19 +203,12 @@ def _what_failed(failure: BaseException) -> str:
 
 
 class _Lines(logging.Handler):
-    """Writes each line to stdout, after its time (UTC) and level, as one write.
-
-    Stdout as it is when the line is written, so a test capturing it sees the line.
-    """
-
     def format(self, record: logging.LogRecord) -> str:
-        """The record as the controller wrote it, after the time and level."""
         when = datetime.fromtimestamp(record.created, UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         level = _LEVEL_NAMES[record.levelno]
         return f"{when} {level:<{_LEVEL_WIDTH}} {record.getMessage()}"
 
     def emit(self, record: logging.LogRecord) -> None:
-        """Write the record, whole."""
         try:
             sys.stdout.write(self.format(record) + "\n")
             sys.stdout.flush()
@@ -274,7 +217,6 @@ class _Lines(logging.Handler):
 
 
 def start_request() -> str:
-    """Start a request, nothing tallied yet: a random id its lines carry, linked to nothing."""
     request_id = secrets.token_hex(_REQUEST_ID_BYTES)
     _REQUEST_ID.set(request_id)
     _TALLIES.set(Tallies())
@@ -282,30 +224,23 @@ def start_request() -> str:
 
 
 def current_request_id() -> str | None:
-    """The id of the request the running code answers; None outside a request."""
     return _REQUEST_ID.get()
 
 
 def tally(kind: Tally, amount: int = 1) -> None:
-    """Add to `kind` on the running request's line; outside a request, nothing."""
     running = _TALLIES.get()
     if running is not None:
         running.add(kind, amount)
 
 
 def tally_fields() -> dict[str, int]:
-    """What the running request tallied, as its line's fields, in the order `Tally` lists."""
     running = _TALLIES.get()
     amounts = {} if running is None else running.amounts
     return {tally.value: amounts[tally] for tally in Tally if tally in amounts}
 
 
 def in_request[T](request_id: str | None, task: Callable[[], T]) -> WorkerAnswer[T]:
-    """In a worker: `task()`, its lines carrying `request_id`, and what it tallied.
-
-    A worker misses the request's context, so its tallies go back with the result,
-    or on the failure it raises (`tallies_carried_by`), for the server to add.
-    """
+    """A worker misses the request's context: its tallies go back with the result or failure."""
     _REQUEST_ID.set(request_id)
     tallies = Tallies()
     _TALLIES.set(tallies)
@@ -317,25 +252,20 @@ def in_request[T](request_id: str | None, task: Callable[[], T]) -> WorkerAnswer
 
 
 def add_from_worker(tallies: Tallies | None) -> None:
-    """Add what a task tallied in its worker to the running request's line."""
     running = _TALLIES.get()
     if tallies is not None and running is not None:
         running.add_all(tallies)
 
 
 def carried[E: BaseException](failure: E, tallies: Tallies | None) -> E:
-    """`failure`, carrying what its task tallied in its worker back to the server."""
-    # One that refuses new attributes goes up as it is, carrying none.
     with contextlib.suppress(AttributeError):
         setattr(failure, _CARRIED, tallies)
     return failure
 
 
 def tallies_carried_by(failure: BaseException) -> Tallies | None:
-    """What a task tallied before it failed; None for pebble's own, as at a timeout."""
-    return getattr(failure, _CARRIED, None)  # set by `carried`, on a task's failures
+    return getattr(failure, _CARRIED, None)
 
 
 def ms_since(started: float) -> int:
-    """Whole milliseconds since `started`, a `time.monotonic()`."""
     return round((time.monotonic() - started) * _MS_PER_S)

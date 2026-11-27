@@ -1,40 +1,34 @@
-// What a span's mark shows, and what an edit in it says as typing starts: a font's warning waits for the
-// edit (`editNote`), the bar's count saying it before (Rule 1). A new kind of span is a case here and a class.
 import type { FitInfo, FontInfo, RedactionInfo, Sentences, SpanInfo } from "../api/types";
 import type { SpanReading } from "./project";
 import { type FontsByObject, fontOf } from "./spanFonts";
 import { liveVerdictOf, type Verdict, verdictOf } from "./verdicts";
 import { fill } from "./words";
 
-/** What hover, focus or a tap says of a span, or an edit in it as typing starts. */
 export interface Note {
   readonly warn: boolean;
-  readonly sentence: string; // in the server's words
-  readonly why: string | null; // why the file's own font can't be used
+  readonly sentence: string;
+  readonly why: string | null;
 }
 
-/** Each is a line under the span, drawn by what's true of it. */
 export interface Look {
-  readonly formField: boolean; // a form field draws it, not the page: an edit here is left out
-  readonly changed: boolean; // the user changed its words
-  readonly trouble: boolean; // it went in, but not quite as typed: the server said why
-  readonly redacted: boolean; // all of its words are to be taken out of the file, whole
-  readonly wordsRedacted: boolean; // some of its words are, each run of them boxed on its own
-  readonly unredacted: boolean; // redacted, but the server found its words still there: the download is refused
-  readonly note: Note | null; // nothing at rest, nor for an edit that keeps its font and went in as typed
+  readonly formField: boolean;
+  readonly changed: boolean;
+  readonly trouble: boolean;
+  readonly redacted: boolean;
+  readonly wordsRedacted: boolean;
+  readonly unredacted: boolean;
+  readonly note: Note | null;
 }
 
-/** A span to mark, and everything its mark is drawn from. */
 interface MarkedSpan {
-  readonly span: SpanInfo; // its fidelity and the face an edit here is drawn in, as the server judged it
-  readonly font: FontInfo | undefined; // for why its own copy can't be used, which the server says per font
-  readonly reading: SpanReading | undefined; // what it reads now, if an edit changed it
-  readonly fit: FitInfo | undefined; // the server's verdict on its edit, once a render of it as it reads now landed
-  readonly redaction: RedactionInfo | undefined; // the server's verdict on its redaction, once drawn
+  readonly span: SpanInfo;
+  readonly font: FontInfo | undefined;
+  readonly reading: SpanReading | undefined;
+  readonly fit: FitInfo | undefined;
+  readonly redaction: RedactionInfo | undefined;
   readonly sentences: Sentences;
 }
 
-/** What a span's mark shows, and the note it gives on hover, focus or a tap. */
 export function lookOf({ span, font, reading, fit, redaction, sentences }: MarkedSpan): Look {
   const redacted = reading?.redacted ?? null;
   const changed = reading?.replaced ?? false;
@@ -48,19 +42,13 @@ export function lookOf({ span, font, reading, fit, redaction, sentences }: Marke
     wordsRedacted: redacted !== null && redacted !== "whole",
     unredacted: redacted !== null && redaction?.verified === false,
   };
-  // Redacted: what the server found before any export, whether the words are gone and where else they were (Rule 4).
   if (redacted !== null) return { ...looks, note: redactionNote(redaction) };
   if (trouble) return { ...looks, note: { warn: true, sentence: trouble, why: null } };
-  // Untouched, its font's warning waits for an edit; a form field's says an edit there is left out.
   if (!changed && !span.form_field) return { ...looks, note: null };
   const live = () => liveVerdictOf(span, { font, text: reading?.text ?? span.text });
   return { ...looks, note: fidelityNote(verdictOf(span, { reading, fit, live }), { span, font, sentences }) };
 }
 
-/**
- * What an edit in `span` warns of in full while it's typed, as `verdict` says of the words typed: nothing when
- * they keep its look, or its font's warning is muted.
- */
 export function editNote(
   span: SpanInfo,
   {
@@ -70,37 +58,30 @@ export function editNote(
     muted,
   }: { verdict: Verdict; font: FontInfo | undefined; sentences: Sentences; muted: boolean },
 ): Note | null {
-  // A form field's is a trouble of the field's own: whatever is typed, the edit is left out.
   if (muted || span.form_field) return null;
   return fidelityNote(verdict, { span, font, sentences });
 }
 
-/** What a redaction's render found, in the server's words: nothing to say until it's drawn, or when it all went. */
 function redactionNote(redaction: RedactionInfo | undefined): Note | null {
   if (redaction?.message == null) return null;
-  // Its words left in, a hidden copy taken out, or every signature gone: none is what was asked, so each warns.
   return { warn: true, sentence: redaction.message, why: null };
 }
 
-/** Why an edit here won't match the text around it, in the server's words. */
 function approximateSentence(why: NonNullable<SpanInfo["why"]>, sentences: Sentences): string {
   return fill(sentences.approximate[why.code] ?? "", why.params);
 }
 
-/** What an edit here comes to, as `verdict` says: kept as it was, or drawn in what font. Nothing when it matches. */
 function fidelityNote(
   verdict: Verdict,
   { span, font, sentences }: Pick<MarkedSpan, "span" | "font" | "sentences">,
 ): Note | null {
-  // A form field draws it: no edit changes it yet, whatever its font.
   if (span.form_field) return { warn: true, sentence: sentences.form_field_not_edited, why: null };
-  // Its own font draws it, but an edit won't match the text around it.
   if (verdict.why !== null) return { warn: true, sentence: approximateSentence(verdict.why, sentences), why: null };
   if (verdict.substitute === null) return null;
   const substituteSentence = verdict.same_widths ? sentences.substitute_same_widths : sentences.substitute;
   // The font's reason is its first span's: it holds here only if a similar face draws that one too.
   const why = font?.substitute == null ? null : font.why;
-  // Warned whatever the widths: the file's own font doesn't draw it (`decisions/product.md`, The fidelity contract).
+  // Warned whatever the widths: the file's own font doesn't draw it.
   return { warn: true, sentence: fill(substituteSentence, { font: verdict.substitute }), why };
 }
 

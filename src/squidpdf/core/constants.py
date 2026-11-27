@@ -1,89 +1,65 @@
-"""The numbers the engine is tuned by. Change one here and it changes everywhere.
-
-Facts about a file format or one algorithm's insides stay next to their code;
-these are the judgement calls.
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-# The one number the product is judged on: the share of spans that keep their font.
 GREEN_RATE_TARGET = 0.8  # below this, substitution is the normal case, not the exception
 GREEN_RATE_WARN = 0.5  # below this, the CLI marks a document red rather than yellow
 
-# Runs merge into one span on one baseline, one face, and a gap that's only kerning.
 BASELINE_EPS = 0.6  # pt: two letters' baselines this close are one line
 SIZE_EPS = 0.1  # pt: two runs' sizes this close are one size
 GAP_RATIO = 0.35  # of the size: a gap past this between two runs is a word's, not kerning
 KERNING_PT = -1.0  # a gap down to this far below 0 is kerning pulling letters together
 
-# Two copies of a font under one name are one font when every letter both draw
-# is this close in width, per 1000 em: a width list rounds to whole units.
+# Per 1000 em: a width list rounds to whole units.
 SAME_WIDTH = 1.0
-# ...and only when they share at least this many letters: a few can agree by chance.
+# A few letters can agree by chance.
 SAME_FONT_SHARED = 3
 
 # A span's box is kept to hundredths of a point: a letter on its edge can sit this far past it.
 ROUNDED_PT = 0.005
-# A glyph further than this from where it was has moved: past the rounding of a rewritten
-# line, well short of anything a reader sees.
+# Past the rounding of a rewritten line, well short of anything a reader sees.
 MOVED_PT = 0.05
 
-# Fit. The server's check and the browser's live one both use these.
+# The server's fit check and the browser's live one both use these.
 TOLERANCE_PT = 4.0  # beyond this the line is visibly disturbed
-# Past its room by less than this, a line isn't too long: the warning, to a tenth of a
-# point, would say 0.0, and nobody could see the difference.
+# Less than this, the warning would say 0.0 and nobody could see it.
 ROOM_SLACK_PT = 0.1
 
-# Letters set apart by less than this, per em, are kerned, not spaced: a kerned pair moves
-# about a hundredth of an em, a heading set tight two hundredths, a tracked label five.
+# A kerned pair moves about 0.01 em, a tight heading 0.02, a tracked label 0.05.
 LETTER_SPACING_MIN_EM = 0.015
 
-# A line: spans on one baseline, a word space apart, edited as one. A drawing or a link with an
-# edge inside one cuts it there; an edge this close inside a span's end is at its end, as a
-# stroke's ink spreads a little past where it's drawn.
+# A stroke's ink spreads a little past where it's drawn.
 LINE_EDGE_SLACK_PT = 1.0
 
-# Room: how far a line runs to the right before it reaches anything, read from the page.
 ROOM_TOUCH_PT = 0.1  # boxes overlapping by less than this don't touch: a hairline is no wall
-# Line art taller than this many of a page's tallest lines (a frame, a column rule) is
-# searched apart, so it doesn't widen the search through a chart's many short strokes.
+# Searched apart, so a frame doesn't widen the search through a chart's many short strokes.
 ROOM_TALL_ART_LINES = 4.0
 
-# A line turned further than this (the sine of its angle, about half a degree) isn't
-# redrawn as it was: redraws are level, and half a degree drifts 4 pt over a page's width.
+# Sine of the angle, about half a degree: redraws are level, and that drifts 4 pt over a page.
 TURN_TOLERANCE = 0.01
 CONDENSE_LIMIT = 0.05  # a squeeze past this reads as condensed, worse than running long
 SHRINK_FLOOR = 0.9  # of the original size, set by eye: smaller reads as another line
 
-# How hard a save cleans the file: MuPDF's garbage level. 2 drops unused objects;
-# 3 also merges copies, which takes time in the square of the pages.
+# MuPDF's garbage level: 3 also merges copies, in time square in the pages.
 GARBAGE_COLLECT = 2
 
-# How hard a page image is compressed: zlib-ng's level, 1 quickest to 9 smallest.
-# Grey pages, most of them text, at 3: a little larger than at 6, in far less time.
+# zlib-ng's level: grey text pages at 3 are a little larger than at 6, in far less time.
 PNG_GRAY_LEVEL = 3
 PNG_COLOR_LEVEL = 6  # the usual level, MuPDF's own: lower made some photos larger
 
-# Half of `build`: bump it when what's drawn or judged changes, so nothing older is reused.
+# Bump it when what's drawn or judged changes, so nothing older is reused.
 LIBRARY_VERSION = "11"
 
-# Google's font collection (github.com/google/fonts) at this commit: `google-families.json`
-# and every copy come from it. Part of `build`: a new pin judges every document again.
+# Part of `build`: a new pin judges every document again.
 GOOGLE_FONTS_COMMIT = "23e54b51ddffbc7713c583748e3bd86f62b1fa4a"
-# How long one fetch of Google's copy may take before the line goes to the substitute.
-FETCH_TIMEOUT_S = 5.0
-# How long a copy that failed to come is left before it's tried again; a fetch with
-# no answer leaves every copy that long, since each would wait out the timeout too.
+FETCH_TIMEOUT_S = 5.0  # past this, the line goes to the substitute
+# A fetch with no answer holds back every copy this long: each would wait out the timeout.
 FETCH_RETRY_S = 600.0
-# The letters a Western keyboard types: a pool missing one looks to Google's copy.
-KEYBOARD_RANGES = (range(0x20, 0x7F), range(0xA0, 0x100))
-# How many copies from outside the file (the user's, Google's) a worker keeps the letters
-# of: each is a few tens of KB, so all of them stay near a megabyte.
+KEYBOARD_RANGES = (range(0x20, 0x7F), range(0xA0, 0x100))  # a pool missing one asks Google
+# Each is a few tens of KB, so all of them stay near a megabyte.
 LENT_COPIES_KEPT = 32
 
-# The numbers an analysis is worked out by: it's kept under them, so add any new one here.
+# An analysis is kept under these numbers, so add any new one here.
 ANALYSIS_TUNING = {
     "baseline_eps": BASELINE_EPS,
     "gap_ratio": GAP_RATIO,
@@ -98,8 +74,7 @@ ANALYSIS_TUNING = {
     "keyboard_ranges": KEYBOARD_RANGES,
 }
 
-# The letters a face we ship lists widths for, so the browser can preview new text;
-# short to keep the font list small, and letters past these still draw.
+# Short to keep the font list small; letters past these still draw.
 GLYPH_LIST_RANGES = (
     range(0x20, 0x250),
     range(0x370, 0x530),
@@ -110,26 +85,19 @@ GLYPH_LIST_RANGES = (
 
 @dataclass(frozen=True, slots=True)
 class _OptionKeys:
-    """One way out of a too-long edit: the keys of the sentences that offer it.
+    """Defined here, not in core/types.py, since that module reads this one."""
 
-    Defined here, not in core/types.py, since that module reads this one.
-    """
-
-    label: str  # what the choice is called, e.g. "Make it slightly smaller"
-    detail: str  # what it does to the line; some take how far the text runs over
+    label: str
+    detail: str
 
 
-# The ways out of a too-long edit, by the name an edit's `strategy` uses: what offers
-# each. The fit check and the browser's copy of its sentences both read it.
 OPTION_KEYS = {
     "shrink": _OptionKeys(label="shrink_label", detail="shrink_detail"),
     "condense": _OptionKeys(label="condense_label", detail="condense_detail"),
     "as-is": _OptionKeys(label="as_is_label", detail="as_is_detail"),
 }
 
-# How many bytes sooner than MuPDF another reader may end an image in a drawing, for the
-# redaction check: it may read a line end after ID as one byte, or decode fewer bytes ahead.
+# Another reader may read a line end after ID as one byte, or decode fewer bytes ahead.
 IMAGE_SOONER_BY = 16
-# How many bytes a filter undone before an image's last may give per byte written, at most:
-# past that, a bomb would fill a worker's memory, so it's cut there, and may size nothing.
+# Past this, a decompression bomb would fill a worker's memory, so it's cut there.
 DECODED_PER_BYTE = 8

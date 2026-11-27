@@ -1,5 +1,3 @@
-"""The user's own copy of a font: attached, checked against the file's, lent from, removed."""
-
 from __future__ import annotations
 
 import shutil
@@ -32,28 +30,24 @@ from tests.helpers import (
     assert_true,
 )
 
-_WANTED = "Yearly Hello"  # Y, a and y aren't in the file's trimmed Poppins
-_ARIAL_TEXT = "Hello there"  # what `named_only` writes
+_WANTED = "Yearly Hello"
+_ARIAL_TEXT = "Hello there"
 
 
 def _font_url(doc: dict, font_name: str) -> str:
-    """Where the user's copy of one of the document's fonts is attached, by its listed name."""
     return f"/api/documents/{doc['id']}/fonts/{quote(font_name, safe='')}"
 
 
 def _attach(client: TestClient, doc: dict, font_name: str, font_file: bytes) -> Response:
-    """Send a font file as the user's copy of `font_name`, raw, as the browser does."""
     return client.put(_font_url(doc, font_name), content=font_file)
 
 
 def _only_font(doc: dict) -> dict:
-    """The document's one font, as the browser lists it."""
     [font] = doc["fonts"]
     return font
 
 
 def _fit(client: TestClient, doc: dict, text: str) -> dict:
-    """What render says of `text` in place of the document's one line."""
     [span] = doc["spans"]
     body = {
         "edits": [{"kind": "replace", "span_id": span["id"], "text": text}],
@@ -65,19 +59,16 @@ def _fit(client: TestClient, doc: dict, text: str) -> dict:
 
 
 def _kept_fonts(doc: dict) -> list[Path]:
-    """The font files kept in the document's folder."""
     return sorted((store.root() / doc["id"] / "fonts").glob("[!.]*"))
 
 
 @pytest.fixture
 def poppins_doc(mine: TestClient, poppins_subset: str) -> dict:
-    """A line in a trimmed copy of Poppins, as uploaded: Y, a and y aren't in it."""
     return upload(mine, Path(poppins_subset).read_bytes()).json()
 
 
 @pytest.fixture
 def arial_doc(mine: TestClient, tmp_path: Path) -> dict:
-    """A line in Arial, which the file only names, with its width list, as Word writes it."""
     path = named_with_widths(
         str(tmp_path / "arial.pdf"), "Liberation Sans Regular", base_font="Arial"
     )
@@ -87,7 +78,6 @@ def arial_doc(mine: TestClient, tmp_path: Path) -> dict:
 def test_an_attached_copy_with_the_same_widths_lends_the_letters_the_file_lacks(
     mine, poppins_doc, tmp_path
 ):
-    """Exact, drawn from it, cut down on save, and the line reads back whole."""
     font = _only_font(poppins_doc)
     before = _fit(mine, poppins_doc, _WANTED)
 
@@ -140,7 +130,6 @@ def test_removing_the_copy_judges_every_span_again(mine, poppins_doc):
 
 
 def test_a_font_the_file_only_names_takes_the_users_copy_as_its_own(mine, arial_doc):
-    """Checked against its width list: Liberation Sans has Arial's widths; Carlito, not."""
     [span] = arial_doc["spans"]
     font = _only_font(arial_doc)
 
@@ -158,7 +147,6 @@ def test_a_font_the_file_only_names_takes_the_users_copy_as_its_own(mine, arial_
 
 
 def test_a_font_only_named_without_a_width_list_is_refused(mine, tmp_path):
-    """Nothing to check a copy against: taking it by its name alone would let a wrong one in."""
     path = named_only(str(tmp_path / "named.pdf"), "Arial")
     doc = upload(mine, Path(path).read_bytes()).json()
 
@@ -175,7 +163,6 @@ def test_a_font_only_named_without_a_width_list_is_refused(mine, tmp_path):
 def test_a_width_list_is_read_as_written_or_found_unreadable(
     mine, tmp_path, first_char, status
 ):
-    """Neither is a server error: one is read through its reference, the other can't be read."""
     path = named_with_widths(
         str(tmp_path / "arial.pdf"), "Liberation Sans Regular", base_font="Arial"
     )
@@ -214,7 +201,6 @@ def test_a_font_over_the_size_limit_is_refused_and_not_kept(mine, poppins_doc, m
 
 
 def test_a_font_past_the_limit_on_other_bodies_still_comes_in(mine, poppins_doc, monkeypatch):
-    """A font streams in under its own limit, as an upload does, not the edit list's."""
     monkeypatch.setattr(limits, "MAX_BODY_BYTES", 1000)
     font = _only_font(poppins_doc)
 
@@ -224,7 +210,6 @@ def test_a_font_past_the_limit_on_other_bodies_still_comes_in(mine, poppins_doc,
 
 
 def test_a_font_is_refused_while_the_disk_is_nearly_full(mine, poppins_doc, monkeypatch):
-    """A copy streams to disk as an upload does, so it holds against the same floor."""
     whole_disk = shutil.disk_usage(store.root()).total
     monkeypatch.setattr(constants, "MIN_FREE_BYTES", whole_disk + 1)
     font = _only_font(poppins_doc)
@@ -260,7 +245,6 @@ def test_a_font_the_document_doesnt_use_is_refused(mine, poppins_doc):
 
 
 def test_attaching_a_copy_leaves_the_documents_lines_as_they_were(mine, poppins_doc):
-    """The line the document drew is untouched by an attach: only the edits use the copy."""
     font = _only_font(poppins_doc)
     attached = _attach(mine, poppins_doc, font["name"], POPPINS.read_bytes()).json()
 
@@ -270,7 +254,6 @@ def test_attaching_a_copy_leaves_the_documents_lines_as_they_were(mine, poppins_
 
 
 def test_a_font_named_with_a_slash_is_still_the_documents(mine, tmp_path):
-    """A PDF writes `/` in a name as `#2F`: in the path it must stay a name, not a step."""
     path = named_only(str(tmp_path / "slash.pdf"), "Odd#2FName")
     doc = upload(mine, Path(path).read_bytes()).json()
 
@@ -283,8 +266,8 @@ def test_a_font_named_with_a_slash_is_still_the_documents(mine, tmp_path):
     "long_name",
     [
         "Arial" + "X" * 122,  # a PDF's names run to 127 bytes; MuPDF keeps 31
-        "Arial" + "#C3#A9" * 20,  # é, as two bytes each
-        "AB+Arial" + "X" * 40,  # a "+" that starts no subset prefix
+        "Arial" + "#C3#A9" * 20,
+        "AB+Arial" + "X" * 40,
     ],
 )
 def test_a_font_only_named_by_a_long_name_takes_and_gives_up_the_users_copy(
@@ -307,7 +290,6 @@ def test_a_font_only_named_by_a_long_name_takes_and_gives_up_the_users_copy(
 
 
 def test_a_font_stored_under_a_long_name_is_read_by_it(mine, tmp_path):
-    # A stored font, named as a real trimmed copy is, past what MuPDF keeps of a name.
     doc = pymupdf.open()
     page = doc.new_page()
     page.insert_font(fontname="own", fontbuffer=POPPINS.read_bytes())

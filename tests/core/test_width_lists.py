@@ -1,5 +1,3 @@
-"""A font's width list, read as the PDF writes it, or found unreadable: never a server error."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -15,7 +13,6 @@ _TWO_BYTE_CODES = 65536  # the most CIDs a two-byte font can have
 
 
 def _two_byte_with(path: Path, w: str) -> tuple[str, int]:
-    """A line in a two-byte copy of Poppins, with `w` as its width list: its file and font."""
     doc = pymupdf.open()
     page = doc.new_page()
     page.insert_font(fontname="own", fontbuffer=POPPINS.read_bytes())
@@ -35,7 +32,6 @@ def test_a_width_list_cut_short_is_no_list(tmp_path):
 
 
 def test_a_run_past_every_code_a_font_can_have_stops_there(tmp_path):
-    """`0 4000000000 500` would list four billion CIDs: it lists the codes a font can have."""
     path, font_object = _two_byte_with(tmp_path / "run.pdf", "[0 4000000000 500]")
 
     widths = open_driver(path).listed_widths(font_object)
@@ -46,7 +42,6 @@ def test_a_run_past_every_code_a_font_can_have_stops_there(tmp_path):
 
 
 def test_a_type0_whose_inner_font_points_nowhere_has_no_list(type0_pointing_nowhere):
-    """Its inner font, or its list of them, points past the file's last object."""
     driver = open_driver(type0_pointing_nowhere)
     damaged = next(font for font in driver.fonts(0) if font.resource == "F0")
 

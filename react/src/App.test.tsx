@@ -43,9 +43,8 @@ vi.mock(import("./api/client"), async (original) => ({
   checkout: vi.fn(),
   billingPortal: vi.fn(),
 }));
-// Leaving for Stripe's page would leave the test's own: where it goes is noted instead.
+// Leaving for Stripe's page would leave the test's own.
 vi.mock(import("./accounts/billing"), async (original) => ({ ...(await original()), goTo: vi.fn() }));
-// The browser's real storage, but a delete can be held under way.
 vi.mock(import("./documents/localPersistence"), async (original) => {
   const module = await original();
   return { ...module, forgetOrSayWhy: vi.fn(module.forgetOrSayWhy) };
@@ -53,9 +52,7 @@ vi.mock(import("./documents/localPersistence"), async (original) => {
 
 beforeEach(async () => {
   vi.mocked(upload).mockReset();
-  // Reset, so the calls a test reads are its own.
   vi.mocked(terms).mockReset().mockResolvedValue(null);
-  // A server that keeps no accounts, as a self-hosted copy: the landing as it always was.
   vi.mocked(account)
     .mockReset()
     .mockResolvedValue(anAccount({ offered: false }));
@@ -65,11 +62,9 @@ beforeEach(async () => {
   vi.mocked(checkout).mockReset();
   vi.mocked(billingPortal).mockReset();
   vi.mocked(goTo).mockReset();
-  // The browser's real storage, one test at a time: each starts with nothing persisted.
   await forgetPersisted();
 });
 
-// The server keeps it an hour from now, as it says on every read.
 const PERSISTED_DOC = aDoc({
   id: "persisted",
   spans: [aSpan({ id: "a" })],
@@ -77,7 +72,6 @@ const PERSISTED_DOC = aDoc({
   expires_at: new Date(Date.now() + 3_600_000).toISOString(),
 });
 
-/** Persist `contract.pdf` here as an editor would, its one change "is a", until `until`. */
 async function persistedHere(until: number) {
   const history = historyReducer(EMPTY_HISTORY, {
     kind: "add",
@@ -87,7 +81,6 @@ async function persistedHere(until: number) {
   await persistState({ doc: PERSISTED_DOC, work: { history, fonts: [] }, until });
 }
 
-/** A PDF chosen on the landing, as its file picker hands one over. */
 function choose(container: HTMLElement, name: string) {
   const input = container.querySelector("input[type=file]") as HTMLInputElement;
   const files = new DataTransfer();
@@ -101,7 +94,7 @@ test("a bug while opening is said, and another file can be chosen", async () => 
   vi.mocked(upload).mockRejectedValue(new TypeError("request.response is null"));
   const screen = await render(<App />);
   choose(screen.container, "contract.pdf");
-  // The landing's words for a bug, not the crash screen's, which would also start "Something went wrong".
+  // Not the crash screen's, which would also start "Something went wrong".
   await expect.element(screen.getByText(SOMETHING_WENT_WRONG)).toBeVisible();
   await expect.element(screen.getByRole("button", { name: "Choose a PDF" })).toBeEnabled();
 });
@@ -117,8 +110,7 @@ test("a PDF dropped on the editor opens in place of the one open, as the landing
 
   const files = new DataTransfer();
   files.items.add(new File(["%PDF-"], "invoice.pdf", { type: "application/pdf" }));
-  // The editor listens from an effect, which can run after its file's name shows: a drag over
-  // the page is taken once it does, since both are listened for together.
+  // The editor listens from an effect, which can run after its file's name shows.
   await expect
     .poll(() => {
       const over = new DragEvent("dragover", { dataTransfer: files, bubbles: true, cancelable: true });
@@ -164,7 +156,6 @@ test("a document persisted here opens again with its changes, without sending th
 test("a document persisted before the server's sentences were renamed comes back with them under their new name", async () => {
   await persistedHere(Date.now() + 60_000);
   const { sentences, ...rest } = PERSISTED_DOC;
-  // The shape a browser stored it in before, which no type names now.
   const before = { ...rest, copy: sentences } as unknown as typeof PERSISTED_DOC;
   await persistState({ doc: before, work: (await persistedDocument())?.work, until: Date.now() + 60_000 });
   expect((await persistedDocument())?.doc.sentences).toEqual(PERSISTED_DOC.sentences);
@@ -186,7 +177,6 @@ test("Delete it now forgets the document persisted here, file and all", async ()
   await expect.poll(() => persistedDocument()).toBeNull();
 });
 
-/** The browser's storage throwing `error` as anything persisted here is deleted, until the test ends. */
 function deleteThrows(error: Error) {
   const throwing = vi.spyOn(IDBObjectStore.prototype, "clear").mockImplementation(() => {
     throw error;
@@ -227,7 +217,6 @@ test("Open it again waits while a delete is under way, so the delete can't take 
   const screen = await render(<App />);
   await screen.getByRole("button", { name: "Delete it now" }).click();
   await screen.getByRole("button", { name: "Open it again" }).click();
-  // Opened, the offer would go at once, in the same update.
   await expect.element(screen.getByRole("button", { name: "Open it again" })).toBeVisible();
   await expect.poll(() => persistedDocument()).not.toBeNull();
 });
@@ -240,14 +229,12 @@ test("one past the server's hour isn't offered, and is forgotten", async () => {
   await expect.element(screen.getByRole("button", { name: "Open it again" })).not.toBeInTheDocument();
 });
 
-/** The app opened at `path`, as a link to it opens it, until the test ends. */
 function openedAt(path: string) {
   const before = window.location.pathname;
   window.history.replaceState(null, "", path);
   onTestFinished(() => window.history.replaceState(null, "", before));
 }
 
-/** The server's answer to the ask for the terms, held until the test gives it, or fails it. */
 function termsHeld() {
   let resolve: (answer: Terms | null) => void = () => undefined;
   let reject: (failure: unknown) => void = () => undefined;
@@ -274,7 +261,7 @@ test("a deployment with no terms, as a self-hosted copy, links none", async () =
   const screen = await render(<App />);
   answer.resolve(null);
   await vi.mocked(terms).mock.results[0]?.value;
-  // Drawn again inside React's act, which draws the answer first, so the link can't be still to come.
+  // Drawn again inside React's act, which draws the answer first.
   await screen.rerender(<App />);
   await expect.element(screen.getByRole("link", { name: "read the code that does it" })).toBeVisible();
   await expect.element(screen.getByRole("link", { name: "Terms of use" })).not.toBeInTheDocument();
@@ -286,7 +273,6 @@ test("a landing that can't learn whether there are terms links none, as a self-h
   await vi.mocked(terms).mock.results[0]?.value.catch(() => undefined);
   await screen.rerender(<App />);
   const code = screen.getByRole("link", { name: "read the code that does it" });
-  // The sentence ends where it always has: nothing kept for a link that isn't there.
   expect(code.element().parentElement?.textContent?.endsWith("read the code that does it.")).toBe(true);
 });
 
@@ -299,7 +285,6 @@ test("on a touch screen, the terms' link is a touch's size below its words, neve
   const box = link.element().getBoundingClientRect();
   const middle = box.left + box.width / 2;
   expect(document.elementFromPoint(middle, box.top + box.height / 2 + 20)).toBe(link.element());
-  // Its words' own line, and none above: the line before keeps its own words to tap.
   expect(document.elementFromPoint(middle, box.top - 4)).not.toBe(link.element());
   expect(document.elementFromPoint(middle, box.top - 12)).not.toBe(link.element());
 });
@@ -320,7 +305,6 @@ test("the terms' link waits for the interface's font, so a stand-in's wrapping n
   await expect.element(screen.getByRole("link", { name: "Terms of use" })).toBeVisible();
 });
 
-/** The landing's sentence that links the code: its height, a line's, and the gap under it to the facts. */
 function sentenceAndGap(container: HTMLElement) {
   const code = [...container.querySelectorAll("a")].find((link) => link.textContent === "read the code that does it");
   const sentence = code?.parentElement as HTMLElement;
@@ -415,7 +399,6 @@ test("the terms' page says why it can't read them in the status that was waiting
   const region = waiting.element();
   answer.reject(new ProblemError(aProblem(0, "Couldn't reach the server.")));
   await expect.element(waiting).toHaveTextContent("Couldn't reach the server.");
-  // The same region, so a screen reader hears the words as they come.
   expect(waiting.element()).toBe(region);
   await expect.element(screen.getByRole("button", { name: "Reload" })).toBeVisible();
 });
@@ -485,10 +468,8 @@ test("Sign out on the landing signs this browser out, and the landing no longer 
   await expect.element(screen.getByRole("button", { name: "Open it again" })).toBeVisible();
   await userEvent.click(screen.getByRole("button", { name: "Sign out" }));
   await expect.element(screen.getByText("Signed in as", { exact: false })).not.toBeInTheDocument();
-  // Leaving this browser to others: the document kept here goes with the account.
   await expect.element(screen.getByRole("button", { name: "Open it again" })).not.toBeInTheDocument();
   await expect.poll(() => persistedDocument()).toBeNull();
-  // The button pressed has gone: focus is on the sheet's one action, not lost to the page.
   await expect.element(screen.getByRole("button", { name: "Choose a PDF" })).toHaveFocus();
   expect(signOut).toHaveBeenCalledOnce();
 });
@@ -547,7 +528,6 @@ test("signed in with a limit, the landing counts this month's documents left, un
 
 test("back on the landing after a file, its count is asked for again, so it never shows one from before", async () => {
   const signedIn = (left: number) => anAccount({ signed_in: aSignedIn({ documents_left: { left, monthly: 3 } }) });
-  // Another tab opened one meanwhile.
   vi.mocked(account).mockResolvedValueOnce(signedIn(2)).mockResolvedValue(signedIn(1));
   vi.mocked(upload).mockRejectedValue(new ProblemError(aProblem(422, "This file isn't a PDF.")));
   const screen = await render(<App />);

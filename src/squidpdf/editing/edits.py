@@ -1,9 +1,4 @@
-"""Everything the user did, as one ordered list: the browser keeps it and sends it whole.
-
-One union, not a list per kind, so undo in the browser is truncation. The server applies its
-final state, each span once as its last edit leaves it; an edit that would undo a redaction
-refuses the whole list.
-"""
+"""One union, not a list per kind, so undo in the browser is truncation."""
 
 from __future__ import annotations
 
@@ -15,10 +10,8 @@ from typing import Literal, assert_never
 from squidpdf.editing import constants
 from squidpdf.editing.errors import TextTooLong, TooManyEdits
 
-# How a too-long replacement is drawn; the names the user's options go by.
 type Strategy = Literal["as-is", "shrink", "condense"]
 
-# Unicode's categories not on a line: controls, line and paragraph separators, half an emoji.
 # typing.ts's NOT_ON_A_LINE copies this and _BIDI_CONTROLS: change both.
 _NOT_ON_A_LINE = frozenset({"Cc", "Zl", "Zp", "Cs"})
 
@@ -27,12 +20,7 @@ _BIDI_CONTROLS = (range(0x202A, 0x202F), range(0x2066, 0x206A))
 
 
 def check_text(text: str) -> None:
-    """Refuse new text that isn't one line of letters, however the edit is made.
-
-    A line break would draw a second line over the next (reflow is out of
-    scope), and the rest draw nothing. From the browser, pydantic turns the
-    ValueError into a bad request.
-    """
+    """A line break would draw a second line over the next (reflow is out of scope)."""
     # Each character refused below is unprintable, so printable text passes as it is.
     if text.isprintable():
         return
@@ -42,22 +30,18 @@ def check_text(text: str) -> None:
 
 
 def _is_on_a_line(ch: str) -> bool:
-    """Whether a character can stand in one line of new text."""
     bidi_control = any(ord(ch) in controls for controls in _BIDI_CONTROLS)
     return not bidi_control and unicodedata.category(ch) not in _NOT_ON_A_LINE
 
 
 @dataclass(frozen=True, slots=True)
 class Replace:
-    """Swap a span's text: remove the old letters and draw the new ones in their place."""
-
     span_id: str
     text: str
     strategy: Strategy = "as-is"
     kind: Literal["replace"] = "replace"
 
     def __post_init__(self) -> None:
-        """Refuse text that isn't one line of letters."""
         check_text(self.text)
 
 
@@ -109,27 +93,15 @@ class ReplaceRuns:
 
 @dataclass(frozen=True, slots=True)
 class Redact:
-    """Remove a span's text, or the words `range` names, and draw nothing in their place.
-
-    A covering box would leave the text extractable underneath, so this deletes it from the
-    page itself, and the output is re-read to check.
-    """
+    """A covering box would leave the text extractable, so this deletes it, then re-reads."""
 
     span_id: str
-    # The words' start and end in the span's text, in code points; None takes all of it.
     range: tuple[int, int] | None = None
     kind: Literal["redact"] = "redact"
 
 
 @dataclass(frozen=True, slots=True)
 class Insert:
-    """Draw new text where the document has none: a signature, an annotation.
-
-    `font` names a face we ship (`core.fonts.catalog.FACES`, e.g. "Caveat Bold") or a font
-    this page uses, by `font_object` too where given: two can read by one name. Anything
-    else is drawn in a look-alike, and its fit says so: the fit says what will really draw.
-    """
-
     page: int
     origin: tuple[float, float]
     text: str
@@ -140,10 +112,6 @@ class Insert:
     kind: Literal["insert"] = "insert"
 
     def __post_init__(self) -> None:
-        """Refuse a place, size, color or text nothing can draw, however the insert is made.
-
-        From the browser, pydantic turns the ValueError into a bad request.
-        """
         if not all(math.isfinite(xy) for xy in self.origin):
             raise ValueError(f"origin must be finite, got {self.origin}")
         if not (math.isfinite(self.size) and self.size > 0):
@@ -155,8 +123,6 @@ class Insert:
 
 @dataclass(frozen=True, slots=True)
 class RotatePage:
-    """Turn a page clockwise by `degrees`, on top of the turn the file gives it."""
-
     page: int
     degrees: Literal[90, 180, 270]
     kind: Literal["rotate_page"] = "rotate_page"
@@ -164,38 +130,27 @@ class RotatePage:
 
 @dataclass(frozen=True, slots=True)
 class DeletePage:
-    """Leave a page out of the file, and everything on it."""
-
     page: int
     kind: Literal["delete_page"] = "delete_page"
 
 
 @dataclass(frozen=True, slots=True)
 class MovePage:
-    """Put a page just before page `before`, or after the last page when it's None."""
-
     page: int
     before: int | None
     kind: Literal["move_page"] = "move_page"
 
 
 # Plain aliases, not `type` statements: pydantic gives those a schema, changing the wire's.
-# An edit to text the document has, named by its span.
 SpanEdit = Replace | Redact
-# An edit to a line the document has, named by its spans.
 LineEdit = ReplaceRuns
-# An edit to a page's place, turn or presence in the file, named by its original number.
 PageOp = RotatePage | DeletePage | MovePage
-# An edit to a page as a whole, named by its page.
 PageEdit = Insert | PageOp
-# Every edit the browser can send. Each place that treats kinds differently ends in
-# `assert_never`, so a new kind is a type error until every one handles it.
+# Each place that treats kinds differently ends in `assert_never`, so a new kind won't type.
 Edit = SpanEdit | LineEdit | PageEdit
 
 
 def check_edits(edits: list[Edit]) -> None:
-    """Refuse an edit list over the limits: too many edits, or too much text in one."""
-    # Read as module attributes, so a test can lower the limits.
     if len(edits) > constants.MAX_EDITS:
         raise TooManyEdits(constants.MAX_EDITS)
     longest = constants.MAX_TEXT_CHARS
@@ -205,7 +160,6 @@ def check_edits(edits: list[Edit]) -> None:
 
 
 def _typed_in(edit: Edit) -> str:
-    """The new text an edit carries, a line's runs together; empty for one that draws none."""
     if isinstance(edit, Replace | Insert):
         return edit.text
     if isinstance(edit, ReplaceRuns):

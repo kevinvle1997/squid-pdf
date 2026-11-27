@@ -4,22 +4,18 @@ import { learnDateLanguages } from "./dateNames";
 import { type DateReading, type DateValue, dateReadingOf, withDate } from "./dates";
 import { editableValueIn, formattedValuesIn, heldThrough } from "./formattedValues";
 
-// Every language a date is read in, learnt in the background as an editor would: the dates here need them.
 beforeAll(() => learnDateLanguages());
 
-/** How the dates of a document of `texts` read, for a reader of English. */
 function readingOf(...texts: string[]): DateReading {
   return dateReadingOf(texts, { readerLanguages: ["en-US"] });
 }
 
-/** The one value `text` holds, a date, read as the document of `texts` settles it. */
 function dateIn(text: string, dates = readingOf(text)): DateValue {
   const [value, ...more] = formattedValuesIn(text, { dates });
   if (value?.kind !== "date" || more.length > 0) throw new Error(`not one date: ${text}`);
   return value;
 }
 
-/** The one value `text` holds, an amount. */
 function amountIn(text: string): AmountValue {
   const [value, ...more] = formattedValuesIn(text, { dates: readingOf(text) });
   if (value?.kind !== "amount" || more.length > 0) throw new Error(`not one amount: ${text}`);
@@ -41,7 +37,6 @@ describe("a date", () => {
   });
 
   test("keeps its language, whatever the reader's: a German month stays German", () => {
-    // Swiss and Low German name March so too: the document's other months are German's alone.
     const date = dateIn("14. März 2026", readingOf("14. März 2026", "1. Februar 2026", "24. Dezember 2025"));
     expect(withDate("14. März 2026", date, { year: 2026, month: 2, day: 3 })).toBe("3. Februar 2026");
   });
@@ -61,7 +56,6 @@ describe("a date", () => {
     expect(formattedValuesIn("03/04/2026", { dates: readingOf("03/04/2026") })).toEqual([]);
     const date = dateIn("03/04/2026", readingOf("03/04/2026", "Signed 25/12/2026"));
     expect(date.date).toEqual({ year: 2026, month: 4, day: 3 });
-    // Its zeros are kept, as the page wrote them.
     expect(withDate("03/04/2026", date, { year: 2026, month: 5, day: 9 })).toBe("09/05/2026");
   });
 });
@@ -77,7 +71,6 @@ describe("an amount", () => {
     const amount = amountIn("Balance ($1,250.00)");
     expect(amount.amount).toBe(-1250);
     expect(withAmount("Balance ($1,250.00)", amount, -2400)).toBe("Balance ($2,400.00)");
-    // With no sign or code, the same digits are no amount.
     expect(formattedValuesIn("(1,250.00)", { dates: readingOf() })).toEqual([]);
   });
 
@@ -109,7 +102,6 @@ describe("the value an editor opens on", () => {
     expect(editableValueIn(text, { dates, at: text.indexOf("March"), held })?.kind).toBe("amount");
     const rewritten = "Due 14 March 2026, total 980,00 €";
     expect(editableValueIn(rewritten, { dates, at: undefined, held })?.kind).toBe("amount");
-    // Typed away, it holds nothing: the first is offered again.
     expect(editableValueIn("Due 14 March 2026, total", { dates, at: undefined, held })?.kind).toBe("date");
   });
 
@@ -121,10 +113,8 @@ describe("the value an editor opens on", () => {
     const longer = "Due 14 March 2026, total amount payable now 1.250,00 €";
     const fromLonger = { kind: "amount", start: longer.indexOf("1.250"), end: longer.length } as const;
     expect(heldThrough(fromLonger, { before: longer, after: text })).toEqual(held);
-    // Typed after it, or right before it, it keeps to its own letters.
     expect(heldThrough(held, { before: text, after: `${text} ` })).toEqual(held);
     expect(heldThrough(held, { before: text, after: text.replace("1.250", "€ 1.250") }).start).toBe(held.start + 2);
-    // Rewritten inside, it covers what's there now.
     expect(heldThrough(held, { before: text, after: text.replace("1.250,00", "980,5") })).toEqual({ ...held, end: 32 });
   });
 });

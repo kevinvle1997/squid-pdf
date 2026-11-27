@@ -1,8 +1,4 @@
-"""Every constant a feature keeps in its constants.py is read somewhere in the app.
-
-A limit nothing reads looks enforced and isn't, so each name must have a reader.
-Read from the source, as tests/test_layers.py reads imports.
-"""
+"""A limit nothing reads looks enforced and isn't, so each name must have a reader."""
 
 from __future__ import annotations
 
@@ -18,7 +14,6 @@ _NOT_READ_YET: dict[str, str] = {}
 
 
 def _defined(path: Path) -> list[str]:
-    """The upper-case names a constants.py assigns at its top level."""
     names: list[str] = []
     for node in ast.parse(path.read_text(encoding="utf-8")).body:
         targets = node.targets if isinstance(node, ast.Assign) else []
@@ -29,7 +24,6 @@ def _defined(path: Path) -> list[str]:
 
 
 def _read(path: Path) -> set[str]:
-    """Every name a module reads, bare (`MAX_PAGES`) or off a module (`constants.MAX_PAGES`)."""
     names: set[str] = set()
     for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
         if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):

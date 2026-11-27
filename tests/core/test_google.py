@@ -1,5 +1,3 @@
-"""Google's copy of a font: fetched by name, cached soundly, lent if its widths agree."""
-
 from __future__ import annotations
 
 import contextvars
@@ -55,17 +53,16 @@ from tests.helpers import (
     assert_true,
 )
 
-_WANTED = "Yearly Hello"  # Y, a and y aren't in the file's copy of Poppins
+_WANTED = "Yearly Hello"
 _LACKED = ["Y", "a", "y"]
 _POPPINS_PATH = "ofl/poppins/Poppins-Regular.ttf"
 _EM = 1000
-_WIDE = 200  # how much wider the made-up variable font's A is at its heaviest
-_DEADLINE_S = 0.1  # the whole-fetch deadline in the hang test
+_WIDE = 200
+_DEADLINE_S = 0.1
 _HANG_S = 2.0  # the longest its fake connection hangs: far past the deadline
 
 
-# A font, its description, and why Google has no file for it: Aclonica has no italic,
-# and Roboto, variable only, would be cut at any weight named, even 450 or 0.
+# Aclonica has no italic, and Roboto, variable only, would be cut at any weight named.
 _NOT_GOOGLES = [
     ("Arial", None, "google_not_listed"),
     ("Aclonica-Italic", None, "google_no_cut"),
@@ -76,7 +73,6 @@ _NOT_GOOGLES = [
 
 
 def _google(font_file: bytes | None) -> tuple[Fetch, list[GoogleFile]]:
-    """A fetch handing back `font_file` for anything asked, and the list of what was asked."""
     asked: list[GoogleFile] = []
 
     def fetch(file: GoogleFile) -> bytes | None:
@@ -87,14 +83,12 @@ def _google(font_file: bytes | None) -> tuple[Fetch, list[GoogleFile]]:
 
 
 def _missing(path: str, fetch: Fetch) -> list[str]:
-    """What the fit says the first span can't draw of _WANTED, with `fetch` to Google."""
     with open_pdf(path, sources=FontSources(google=fetch)) as eng:
         span = next(iter(eng.index()))
         return eng.fit.plan_for(span, _WANTED).missing
 
 
 def _why_substitute(path: str, fetch: Fetch) -> str | None:
-    """Why new text reading _WANTED in the first span's font is a substitute, by its key."""
     with open_pdf(path, sources=FontSources(google=fetch)) as engine:
         span = next(iter(engine.index()))
         new = new_text(
@@ -112,7 +106,6 @@ def _why_substitute(path: str, fetch: Fetch) -> str | None:
 def _through(
     download: Callable[[str], bytes], folder: Path, *, cache_only: bool = False
 ) -> Fetch:
-    """The way to Google's copies cached in `folder`, `download` standing in for GitHub."""
     fetch = google_fonts(folder=folder, cache_only=cache_only, download=download)
     if fetch is None:
         pytest.fail("no way to Google's copies, though a download was handed in")
@@ -122,31 +115,26 @@ def _through(
 def _fresh_fetch(
     file: GoogleFile, folder: Path, download: Callable[[str], bytes]
 ) -> bytes | None:
-    """`file` through `download`, remembering no failure from any call before."""
     return _through(download, folder)(file)
 
 
 def _failing(url: str) -> bytes:
-    """A download that never gets through, as a network down does."""
     raise OSError(f"no route to {url}")
 
 
 def _not_found(url: str) -> bytes:
-    """A download GitHub answers, but without the file."""
     raise httpx.HTTPStatusError(
         "404 Not Found", request=httpx.Request("GET", url), response=httpx.Response(404)
     )
 
 
 def _returning(data: bytes) -> Callable[[str], bytes]:
-    """A download that hands back `data` whatever it's asked for."""
     return lambda _url: data
 
 
 def test_a_letter_no_copy_in_the_file_draws_comes_from_googles_copy_and_is_exact(
     poppins_subset, tmp_path
 ):
-    """The file's Poppins has no Y; Google's has, as wide: exact, and drawn from it."""
     fetch, asked = _google(POPPINS.read_bytes())
     out = str(tmp_path / "redrawn.pdf")
     with open_pdf(poppins_subset, sources=FontSources(google=fetch)) as engine:
@@ -166,12 +154,10 @@ def test_a_letter_no_copy_in_the_file_draws_comes_from_googles_copy_and_is_exact
     ]
     lending = [file for file in font_files if coverage_of(file).covers("Y")]
     assert_equal(len(lending), 1, "font files on the page that draw a Y")
-    # Cut down to what was drawn, as a face we ship is: not the whole font.
     assert_at_most(len(lending[0]), len(POPPINS.read_bytes()) - 1, "Google's copy's size")
 
 
 def test_googles_copy_lends_only_the_letters_it_draws(poppins_subset):
-    """Google's Poppins draws a Y but no Ω, though the browser previews both: only Y lends."""
     fetch, _asked = _google(POPPINS.read_bytes())
     with open_pdf(poppins_subset, sources=FontSources(google=fetch)) as engine:
         span = next(iter(engine.index()))
@@ -186,7 +172,6 @@ def test_googles_copy_lends_only_the_letters_it_draws(poppins_subset):
 
 
 def test_a_google_copy_with_other_widths_lends_nothing(poppins_subset):
-    """Liberation Sans handed back as Poppins: its letters are other widths, so none lend."""
     fetch, _asked = _google(face_bytes(FACES["Liberation Sans Regular"]))
     assert_equal(_missing(poppins_subset, fetch), _LACKED, "letters Poppins lacks")
 
@@ -194,7 +179,6 @@ def test_a_google_copy_with_other_widths_lends_nothing(poppins_subset):
 def test_a_fetch_that_fails_leaves_the_line_to_the_substitute_and_is_logged(
     poppins_subset, tmp_path, caplog
 ):
-    """No Google copy to be had: the letters stay missing, and nothing is raised."""
     fetch, _asked = _google(None)
     assert_equal(_missing(poppins_subset, fetch), _LACKED, "letters Poppins lacks")
 
@@ -206,7 +190,6 @@ def test_a_fetch_that_fails_leaves_the_line_to_the_substitute_and_is_logged(
 
 
 def test_a_google_copy_that_cant_be_had_is_named_in_the_fonts_why(poppins_subset):
-    """The file's Poppins lacks Y: the reader hears why Google's copy didn't lend it either."""
     not_fetched, _asked = _google(None)
     unreadable, _asked = _google(b"not a font")
 
@@ -216,7 +199,6 @@ def test_a_google_copy_that_cant_be_had_is_named_in_the_fonts_why(poppins_subset
 
 
 def test_a_google_copy_found_unusable_is_remembered_by_its_reason_alone(poppins_subset):
-    """A failure is kept bare: no traceback, cause or context to hold the font's bytes."""
     unreadable, asked = _google(b"not a font")
     with open_pdf(poppins_subset, sources=FontSources(google=unreadable)) as engine:
         span = next(iter(engine.index()))
@@ -245,7 +227,6 @@ def test_a_google_copy_found_unusable_is_remembered_by_its_reason_alone(poppins_
 
 
 def test_bytes_the_pinned_commit_doesnt_have_are_not_used_or_kept(tmp_path):
-    """A download is checked against git's hash for the file; only a match is kept."""
     poppins = POPPINS.read_bytes()
     file = GoogleFile("ofl/poppins/Poppins-Regular.ttf", blob_hash(poppins), None)
 
@@ -255,12 +236,10 @@ def test_bytes_the_pinned_commit_doesnt_have_are_not_used_or_kept(tmp_path):
 
     got = _fresh_fetch(file, tmp_path, _returning(poppins))
     assert_equal(got, poppins, "what the pinned file's own bytes give")
-    # Kept: the next ask is answered from disk, with the network down.
     assert_equal(_fresh_fetch(file, tmp_path, _failing), poppins, "from the cache")
 
 
 def test_a_cache_miss_is_logged_once_and_a_hit_logs_nothing(tmp_path, caplog):
-    """One INFO line per miss, saying whether the call may download; counted by grep."""
     poppins = POPPINS.read_bytes()
     file = GoogleFile(_POPPINS_PATH, blob_hash(poppins), None)
 
@@ -283,20 +262,16 @@ def test_a_cache_miss_is_logged_once_and_a_hit_logs_nothing(tmp_path, caplog):
 
 
 def test_a_request_tallies_what_googles_copies_cost_it(tmp_path):
-    """A slow analysis says it waited on Google, and how long; a cached copy, that it didn't."""
     poppins = POPPINS.read_bytes()
     file = GoogleFile(_POPPINS_PATH, blob_hash(poppins), None)
-    # Each one worker's, across its requests: the second is cached; the fourth, held back.
     answering = _through(_returning(poppins), tmp_path)
     down = _through(_failing, tmp_path / "down")
 
     def tallied_by(fetch: Fetch) -> list[str]:
-        """What one request tallies asking for the copy."""
         start_request()
         fetch(file)
         return sorted(tally_fields())
 
-    # Each in a context of its own, as each request runs in its own task.
     said = [
         contextvars.copy_context().run(tallied_by, fetch)
         for fetch in [answering, answering, down, down]
@@ -314,7 +289,6 @@ def test_a_request_tallies_what_googles_copies_cost_it(tmp_path):
 def test_a_cache_that_cant_be_written_still_lends_the_copy_and_leaves_no_piece(
     tmp_path, monkeypatch, caplog
 ):
-    """A full disk: the checked copy still lends, the failure is logged, and no piece stays."""
     poppins = POPPINS.read_bytes()
     file = GoogleFile("ofl/poppins/Poppins-Regular.ttf", blob_hash(poppins), None)
 
@@ -331,7 +305,6 @@ def test_a_cache_that_cant_be_written_still_lends_the_copy_and_leaves_no_piece(
 
 
 def test_a_damaged_cached_copy_is_deleted_logged_and_fetched_again(tmp_path, caplog):
-    """An empty file, as a crash between writing and flushing leaves, is never trusted."""
     poppins = POPPINS.read_bytes()
     file = GoogleFile(_POPPINS_PATH, blob_hash(poppins), None)
     cached = tmp_path / GOOGLE_FONTS_COMMIT / file.source
@@ -348,7 +321,6 @@ def test_a_damaged_cached_copy_is_deleted_logged_and_fetched_again(tmp_path, cap
 
 
 def test_a_damaged_copy_on_a_read_only_disk_is_left_and_fetched_again(tmp_path, monkeypatch):
-    """A disk remounted read-only after errors: the bad copy can't go, and nothing raises."""
     poppins = POPPINS.read_bytes()
     file = GoogleFile(_POPPINS_PATH, blob_hash(poppins), None)
     cached = tmp_path / GOOGLE_FONTS_COMMIT / file.source
@@ -364,12 +336,6 @@ def test_a_damaged_copy_on_a_read_only_disk_is_left_and_fetched_again(tmp_path, 
 
 
 def _variable_font() -> bytes:
-    """A made-up variable font with one letter, A: 500 wide at weight 400, wider when bolder.
-
-    The weight axis runs 100 to 900, default 400. Its one variation moves A's right edge and
-    advance (points three, four and six: two corners, then the right phantom point) out by
-    _WIDE at 900, so A is 620 wide at 700.
-    """
     builder = FontBuilder(_EM, isTTF=True)
     builder.setupGlyphOrder([".notdef", "A"])
     builder.setupCharacterMap({ord("A"): "A"})
@@ -379,14 +345,12 @@ def _variable_font() -> bytes:
 
 
 def _bolder_is_wider(builder: FontBuilder) -> None:
-    """A weight axis whose one variation moves A's right edge and advance _WIDE out at 900."""
     builder.setupFvar(axes=[("wght", 100, 400, 900, "Weight")], instances=[])
     moved = [(0, 0), (0, 0), (_WIDE, 0), (_WIDE, 0), (0, 0), (_WIDE, 0), (0, 0), (0, 0)]
     builder.setupGvar({"A": [TupleVariation({"wght": (0, 1, 1)}, moved)]})
 
 
 def test_a_variable_font_is_cut_to_the_weight_and_the_cut_is_checked_when_read(tmp_path):
-    """Cut once and cached; a cached cut that's gone bad is deleted, not drawn with."""
     variable = _variable_font()
     file = GoogleFile("ofl/madeup/Madeup[wght].ttf", blob_hash(variable), 700)
 
@@ -404,7 +368,6 @@ def test_a_variable_font_is_cut_to_the_weight_and_the_cut_is_checked_when_read(t
 
 
 def test_two_cuts_of_one_file_are_the_same_bytes_whenever_they_are_made(tmp_path, monkeypatch):
-    """Two workers may cut one file at once, each keeping its hash: they must agree."""
     variable = _variable_font()
     file = GoogleFile("ofl/madeup/Madeup[wght].ttf", blob_hash(variable), 700)
     # fontTools stamps a saved font with the time, read from here when it's set.
@@ -418,7 +381,6 @@ def test_two_cuts_of_one_file_are_the_same_bytes_whenever_they_are_made(tmp_path
 
 
 def test_a_font_google_doesnt_have_is_never_fetched(pdf):
-    """The sample's fonts aren't Google's: no fetch, whatever letters are missing."""
     fetch, asked = _google(POPPINS.read_bytes())
     with open_pdf(pdf, sources=FontSources(google=fetch)) as engine:
         for span in engine.index():
@@ -431,7 +393,6 @@ def test_a_font_google_doesnt_have_is_never_fetched(pdf):
 
 
 def _described_as(path: str, out: Path, *, name: str, described: dict[str, str]) -> str:
-    """The Poppins fixture at `out`, its font named `name` and described by `described`."""
     doc = pymupdf.open(path)
     [(font_object, *_)] = doc[0].get_fonts()
     # A space in a PDF name is written #20.
@@ -444,7 +405,6 @@ def _described_as(path: str, out: Path, *, name: str, described: dict[str, str])
     return str(out)
 
 
-# A font's name and description, the file Google is asked for (None: none), the substitute.
 # Flags 33 is the fixture's 32 plus fixed width; 1 << 18 is ForceBold.
 _WEIGHTS_SAID = [
     ("Poppins-Regular", {"FontWeight": "123456"}, None, "Poppins Bold"),
@@ -476,7 +436,6 @@ _WEIGHTS_SAID = [
 def test_google_is_asked_only_for_the_font_s_own_weight_one_of_nine(
     poppins_subset, tmp_path, name, described, file_name, face
 ):
-    """Only the font's own weight is asked for; the substitute is bold when the font is."""
     path = _described_as(
         poppins_subset, tmp_path / "described.pdf", name=name, described=described
     )
@@ -487,7 +446,6 @@ def test_google_is_asked_only_for_the_font_s_own_weight_one_of_nine(
     asked_for = [Path(file.path).name for file in asked]
     said = _why_substitute(path, fetch)
 
-    # Asked for a file, the fetch hands back nothing; asked for none, Google has no cut.
     expected = (
         ([], face, "google_no_cut")
         if file_name is None
@@ -497,26 +455,22 @@ def test_google_is_asked_only_for_the_font_s_own_weight_one_of_nine(
 
 
 def test_the_poppins_fixture_is_google_s_file_and_draws_only_its_line():
-    """Guards the fixtures above: the test font is the pinned file, the trim keeps one line."""
-    listed = "0bda228ade88b0bb5aac7da2c881d0c3f64d0817"  # Poppins-Regular.ttf at the pin
+    listed = "0bda228ade88b0bb5aac7da2c881d0c3f64d0817"
     assert_equal(blob_hash(POPPINS.read_bytes()), listed, "the test font's git hash")
     assert_false(any(ch in POPPINS_TEXT for ch in _LACKED), "the line uses a lacked letter")
 
 
 def test_the_vendored_family_list_was_read_from_the_pinned_commit():
-    """A new pin without a new list would fail every changed file's hash check, quietly."""
     listed = resources.files("squidpdf").joinpath("fonts", "google-families.json")
     commit = json.loads(listed.read_text())["commit"]
     assert_equal(commit, GOOGLE_FONTS_COMMIT, "the list's commit")
 
 
 def test_nothing_is_fetched_when_told_not_to():
-    """The suite sets SQUIDPDF_NO_FETCH, so no test, and no worker, reaches the network."""
     assert_equal(google_fonts(), None, "the way to Google's copies")
 
 
 def test_a_failed_fetch_is_not_tried_again_for_a_while(tmp_path):
-    """Remembered per process: an analysis, then every render, would each wait on it again."""
     asked: list[str] = []
 
     def failing(url: str) -> bytes:
@@ -538,7 +492,6 @@ def test_a_failed_fetch_is_not_tried_again_for_a_while(tmp_path):
 def test_a_failed_download_holds_back_every_file_only_when_nothing_answered(
     tmp_path, download, others_tried
 ):
-    """No route to GitHub: every other font would fail as fast. A 404 is that file's alone."""
     poppins = POPPINS.read_bytes()
     asked: list[str] = []
 
@@ -550,7 +503,6 @@ def test_a_failed_download_holds_back_every_file_only_when_nothing_answered(
     other = GoogleFile(_POPPINS_PATH, blob_hash(poppins), None)
 
     def by_file(url: str) -> bytes:
-        """The first file's download as the case has it; any other answers."""
         return download(url) if url == google.raw_url(file.path) else answering(url)
 
     fetch = _through(by_file, tmp_path)
@@ -562,7 +514,6 @@ def test_a_failed_download_holds_back_every_file_only_when_nothing_answered(
 def test_a_fetch_answered_past_its_deadline_keeps_the_answer_and_lifts_the_hold(
     tmp_path, monkeypatch
 ):
-    """GitHub answering late: the fetch stops waiting, then keeps what came and tries again."""
     poppins = POPPINS.read_bytes()
     released = threading.Event()
     asked: list[str] = []

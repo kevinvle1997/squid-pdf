@@ -1,8 +1,4 @@
-"""What the server will accept, how hard it works, and what a worker's failure means.
-
-The numbers are starting values, not findings. They protect the server, not the
-business, so no plan or account lifts them.
-"""
+"""They protect the server, not the business, so no plan or account lifts them."""
 
 from __future__ import annotations
 
@@ -16,62 +12,43 @@ from squidpdf.core import Damaged, Failure, TooHeavy
 
 _MB = 1024 * 1024
 
-# Page images: the scales a route accepts. The pixel limit is documents' own.
 PAGE_SCALES = (1, 2, 3, 4)
 
-# Uploads. Their size and page limits are documents' own.
 UPLOADS_PER_MINUTE = 20  # per IP
-# Per IP, PDFs and copies of fonts together: each holds disk against the floor until it's in.
+# Per IP, PDFs and fonts together: each holds disk against the floor until it's in.
 UPLOADS_UNDER_WAY = 2
 
-# Sign-in links an address may ask for a minute: one mistyped address asks twice, and a page
-# sending one to every address it can think of is stopped before it fills an inbox.
+# Per IP: a mistyped address asks twice; a page asking for every address is stopped.
 LINKS_PER_MINUTE = 3
-# Links one inbox is sent while one still works (LINK_VALID_S), from every address together:
-# a first and a resend, so a flood of addresses can't fill an inbox from our sender.
+# Per inbox while a link works (LINK_VALID_S): a first and a resend.
 LINKS_PER_INBOX = 2
 
-# Stripe's pages an address may ask for a minute, its checkout and its portal together: a few
-# presses, and a page asking without end is stopped before it holds billing's threads.
+# Per IP, checkout and portal together: each holds one of billing's few threads.
 PAYMENT_PAGES_PER_MINUTE = 5
 
-# Every request body but an upload's or a font's, which check their own size.
 MAX_BODY_BYTES = 5 * _MB
 
-# Each address's requests to routes that run a job, so one can't hold every worker. Past
-# those at work, the rest wait their turn holding none: page images near the view ask at once.
+# Past those at work, the rest wait holding no worker: page images near the view ask at once.
 JOBS_AT_WORK = 3  # per IP
 JOBS_WAITING = 30  # per IP, beyond those at work; past both, refused
 
-# Workers. Each feature's timeouts are in its own constants.py.
 WORKERS = os.process_cpu_count() or 1  # PDF work keeps a core busy: one each
 WORKER_MEMORY_BYTES = 1024 * _MB
-# New objects a worker makes before Python collects garbage, 25 times its default: a page's
-# letters are many small objects, soon gone, and each full collection walks its caches too.
+# 25 times Python's default: a page's letters are many small, short-lived objects.
 WORKER_GC_THRESHOLD = 50_000
-# Then replaced, so the memory a worker creeps up over mixed tasks never nears the cap;
-# rarely, since each new worker imports everything and fills its caches again.
+# Then replaced, before creeping memory nears the cap; rarely, as a new one refills caches.
 TASKS_PER_WORKER = 500
-# A task allowed this long (an export, an analysis) is stopped when its caller leaves.
-# A shorter one (a render, a page image) finishes: stopping it kills its worker.
+# A task this long stops when its caller leaves; a shorter one finishes: stopping kills it.
 STOP_WHEN_LEFT_S = 30
-# Room for a new worker to start, beyond a task's timeout; past both, the task is too slow.
-# Generous, a guess: pebble should have answered any task by then.
 WORKER_START_S = 30
 # As often as pebble checks: a pool that breaks as a task is sent can lose it and say nothing.
 BROKEN_POOL_CHECK_S = 0.1
 
-
-# Worker failures, matched in order with `isinstance`, so a subclass finds its row; the
-# first match wins, so a narrower row goes above one it overlaps.
+# Matched in order with `isinstance`: a narrower row goes above one it overlaps.
 WORKER_FAILURES = (
-    # Out of time, waiting or working: slow, not necessarily broken.
     Failure(raised=TimeoutError, problem=TooSlow),
-    Failure(raised=MemoryError, problem=TooHeavy),  # past the memory ceiling
-    # The worker died: MuPDF crashed on the file.
+    Failure(raised=MemoryError, problem=TooHeavy),
     Failure(raised=ProcessExpired, problem=Damaged),
-    # pebble gave up on the pool under the task, or no worker could start or stay up.
     Failure(raised=BrokenProcessPool, problem=NoWorkers),
 )
-# The types alone, for an `except` or an `isinstance`.
 WORKER_FAILURE_TYPES = tuple(failure.raised for failure in WORKER_FAILURES)

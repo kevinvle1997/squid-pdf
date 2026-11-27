@@ -20,7 +20,6 @@ describe("a zoom step", () => {
 });
 
 test("zoomed in, pages are drawn sharp enough for it, and never blurrier than they were", () => {
-  // At 2x, a page shown at its printed size needs 2 * 4/3 pixels a point, rounded up.
   expect(scaleFor(1, { pixelRatio: 2, scale: 1 })).toBe(3);
   expect(scaleFor(2, { pixelRatio: 1, scale: 2 })).toBe(3);
   expect(scaleFor(0.5, { pixelRatio: 1, scale: 2 })).toBe(2);
@@ -35,7 +34,6 @@ test("the bar says which page is being read, or a one-page document's length", (
     );
   expect(whereSentence({ reading: reading(2), pageInView: 1 })).toBe("Page 2 of 2");
   expect(whereSentence({ reading: reading(1), pageInView: 0 })).toBe("1 page");
-  // A page left out isn't counted, nor before the page in view.
   expect(whereSentence({ reading: reading(4, aDeletePage(1)), pageInView: 3 })).toBe("Page 3 of 3");
   expect(whereSentence({ reading: reading(2, aDeletePage(0)), pageInView: 1 })).toBe("1 page");
 });

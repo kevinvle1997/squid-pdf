@@ -9,7 +9,6 @@ const fonts = new Map([
   ["ABCDEF+Arial", aFont("ABCDEF+Arial", { shown_name: "Arial", substitute: "Liberation Sans", why: NOT_IN_FILE })],
   ["Times-Roman", aFont("Times-Roman")],
 ]);
-/** A place before any change: the span, judged on its own words. */
 const atRest = (span: SpanInfo) => ({ span, verdict: span, missing: [] });
 const similar = (id: string, font = "Arial") =>
   atRest(aSpan({ id, font, fidelity: "substitute", substitute: "Liberation Sans", in_file: false }));
@@ -80,7 +79,6 @@ describe("the places a shown row marks on a page", () => {
 });
 
 describe("a changed span, as the bar counts it", () => {
-  // Its copy of the font lacks "€", so judged on its own words it's a similar font's; the copy draws every other letter.
   const lacking = aSpan({
     id: "l",
     text: "Total 14 €",
@@ -99,7 +97,6 @@ describe("a changed span, as the bar counts it", () => {
   test("drawn in its own font, as its render says, a span a similar font drew at upload is no place", () => {
     const reading = typed(lacking, "Total 2");
     expect(placeOf(lacking, { changed: true, reading, fit: aFit(), font })).toBeUndefined();
-    // Before its render lands, as worked out from the words typed.
     expect(placeOf(lacking, { changed: true, reading, fit: undefined, font })).toBeUndefined();
   });
 

@@ -1,7 +1,4 @@
-"""Export: the edits applied to the whole document, and the file sent back.
-
-No web framework here, so a worker can import it.
-"""
+"""No web framework here, so a worker can import it."""
 
 from __future__ import annotations
 
@@ -58,17 +55,16 @@ from squidpdf.editing.redaction import redactions_of
 from squidpdf.editing.replies import notice_info
 from squidpdf.editing.types import Exported, FileNotice, Replaced, Saved
 
-_EXPORTED = "export.pdf"  # saved and checked by the worker, then streamed by the server
-_PRODUCER = "squidpdf"  # the Producer an exported file names: the program that changed it last
-_UNLISTED = "unlisted"  # the font logged for one none of our lists name: its name is the file's
+_EXPORTED = "export.pdf"
+_PRODUCER = "squidpdf"
+_UNLISTED = "unlisted"
 
-# The body is the file, so these headers carry the rest. The route lists them in the OpenAPI.
+# The body is the file, so these headers carry the rest.
 SKIPPED_HEADER = "Squid-Skipped-Edits"
 NOTICES_HEADER = "Squid-Notices"
 
 _log = LogController.for_module(__name__)
 
-# What each replace adds to on the export's line, by how it turned out.
 _TALLY_OF: dict[Fidelity, Tally] = {
     "exact": Tally.EDITS_EXACT,
     "substitute": Tally.EDITS_SUBSTITUTE,
@@ -78,50 +74,37 @@ _TALLY_OF: dict[Fidelity, Tally] = {
 
 @dataclass(frozen=True, slots=True, eq=False)
 class ExportController:
-    """Export, from request to reply."""
-
-    workers: Workers  # where it makes files, off the server's own thread
-    documents: DocumentStore  # where its document is kept, and what opens it
+    workers: Workers
+    documents: DocumentStore
 
     async def export(
         self, doc: Loaded, *, edits: list[Edit], pages: list[int] | None, language: str
     ) -> Reply[BufferedReader]:
-        """The edited PDF, open to stream, every page or `pages` in that order, and headers.
-
-        Refuses edits over the limits and pages the document lacks. A
-        redaction still in the saved file fails the whole request.
-        """
         check_edits(edits)
         if pages is not None:
-            # Read and parsed from disk: off the server's thread.
             saved_pages = await asyncio.to_thread(store.load_pages, doc.folder)
             _check_pages(pages, len(saved_pages))
-        # The server's folder: a killed worker runs no cleanup, and the edit mustn't outlive the
-        # document. Made on the loop, not awaited, so no cancel lands between it and the `try`.
+        # A killed worker runs no cleanup. Made on the loop, so no cancel lands before `try`.
         scratch = Path(tempfile.mkdtemp())
         try:
             exported = await self._enqueue_make_pdf(
                 doc.folder, scratch, edits=edits, pages=pages
             )
-            # Opened here, not sent back: a large file in pebble's one result pipe would hold
-            # up every other worker's answer. Streamed from the handle, never held whole.
+            # Opened here, not sent back: a large file in pebble's result pipe blocks the rest.
             pdf = await asyncio.to_thread(_opened_to_read, scratch / _EXPORTED)
         finally:
-            # In a thread: it may hold the whole file. An open file outlives its folder, so
-            # the reply still streams it. Nothing to keep, so a failure is ignored.
+            # In a thread, as it may hold the whole file. An open file outlives its folder.
             await asyncio.to_thread(shutil.rmtree, scratch, ignore_errors=True)
         return Reply(pdf, _reply_headers(exported, language))
 
     async def _enqueue_make_pdf(
         self, folder: Path, scratch: Path, *, edits: list[Edit], pages: list[int] | None
     ) -> Exported:
-        """Make the PDF on a worker."""
         task = partial(_make_pdf, self.documents, folder, scratch, edits=edits, pages=pages)
         return await self.workers.run(constants.EXPORT_TIMEOUT_S, task)
 
 
 def _opened_to_read(path: Path) -> BufferedReader:
-    """`path`, opened to be read from its start."""
     return path.open("rb")
 
 
@@ -133,10 +116,6 @@ def _make_pdf(
     edits: list[Edit],
     pages: list[int] | None,
 ) -> Exported:
-    """Save the document in `folder`, the edits applied and checked, into `scratch`.
-
-    The server makes `scratch`, reads the file from it, and removes it. Runs in a worker.
-    """
     index = store.require_index(folder)
     free_space = kept_free_space(documents, folder, index)
 
@@ -154,15 +133,11 @@ def _make_pdf(
         )
     _tally_by_fidelity(saved.applied.replaced)
     skipped = [skip.position for skip in saved.applied.skipped]
-    # Only the file's own notices: render already said apply's.
     return Exported(skipped_edits=skipped, file_notices=saved.notices)
 
 
 def _tally_by_fidelity(replaced: list[Replaced]) -> None:
-    """Tally each replace drawn on the export's line by how it turned out; log each substitute.
-
-    At export, not render: a file downloaded is the edits made, each span's last edit once.
-    """
+    """At export, not render: a file downloaded is the edits made, each span's last once."""
     for outcome in replaced:
         tally(_TALLY_OF[outcome.verdict.fidelity])
         if outcome.verdict.fidelity == "substitute":
@@ -170,7 +145,6 @@ def _tally_by_fidelity(replaced: list[Replaced]) -> None:
 
 
 def _log_substitute(outcome: Replaced) -> None:
-    """A replace a similar font drew: the face, its widths, the font if our lists name it."""
     loggable = loggable_family(outcome.shown_name)
     font = OwnText(_UNLISTED if loggable is None else loggable)
     substitute = outcome.verdict.substitute
@@ -199,12 +173,6 @@ def save_edited(
     to: str,
     driver_factory: DriverFactory,
 ) -> Saved:
-    """Apply the edits, keep `pages`, save to `to` naming squidpdf, and check the redactions.
-
-    Raises, deleting the file, RedactionFailed or RedactionCovered if a redacted span's words
-    are left, RedactionMoved if the erase moved other text, or RedactionUnchecked if where it
-    set a rest can't be read. The CLI saves this way too. `free_space`: `Engine.free_space`.
-    """
     resolved = resolve(engine, index, free_space=free_space, edits=edits)
     order = page_order(resolved, pages)
     # Before the edits: erasing can drop the fonts new text is measured with.
@@ -215,16 +183,13 @@ def save_edited(
     engine.mark_changed_by(_PRODUCER, datetime.now(UTC))
     applied = apply_edits(engine, resolved, planned)
     notices: list[Message] = []
-    # By their numbers in the original, so before any page is renumbered.
     engine.turn_pages(resolved.turns)
-    # Pages left out or moved: renumbered after the last draw, in the order the check reads.
     renumbered = order != list(range(resolved.page_count))
     if renumbered:
         notices += engine.keep_pages(order)
     notices += engine.save(to)
     try:
         redactions.check_saved(to, pages=order, driver_factory=driver_factory)
-    # Refused: never leave the file.
     except RedactionFailed, RedactionCovered, RedactionMoved, RedactionUnchecked:
         Path(to).unlink()
         raise
@@ -232,7 +197,6 @@ def save_edited(
 
 
 def _reply_headers(exported: Exported, language: str) -> dict[str, str]:
-    """What export says besides the file: edits left out, notices, and the language."""
     notices = [notice_info(FileNotice(message), language) for message in exported.file_notices]
     return {
         SKIPPED_HEADER: ", ".join(str(position) for position in exported.skipped_edits),
@@ -243,7 +207,6 @@ def _reply_headers(exported: Exported, language: str) -> dict[str, str]:
 
 
 def _check_pages(pages: list[int], page_count: int) -> None:
-    """Refuse a page list export can't give: none, one the document lacks, or one twice."""
     if not pages:
         raise InvalidRequest(debug="pages: empty; leave it out for every page")
     outside = [page for page in pages if not is_page(page, page_count)]

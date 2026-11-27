@@ -13,10 +13,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Upload
-         * @description A raw PDF sent as application/pdf, no filename. Answers with every span judged.
-         */
+        /** Upload */
         post: operations["upload_api_documents_post"];
         delete?: never;
         options?: never;
@@ -31,17 +28,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * Read
-         * @description The document, in the reader's language, or 304 if the browser has it already.
-         */
+        /** Read */
         get: operations["read_api_documents__doc_id__get"];
         put?: never;
         post?: never;
-        /**
-         * Delete
-         * @description The document and everything worked out from it, now rather than in an hour.
-         */
+        /** Delete */
         delete: operations["delete_api_documents__doc_id__delete"];
         options?: never;
         head?: never;
@@ -56,16 +47,10 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /**
-         * Attach Font
-         * @description The user's own copy of a document font, raw TrueType or OpenType; spans judged again.
-         */
+        /** Attach Font */
         put: operations["attach_font_api_documents__doc_id__fonts__font_name__put"];
         post?: never;
-        /**
-         * Detach Font
-         * @description The user's copy of a document font removed; every span judged again.
-         */
+        /** Detach Font */
         delete: operations["detach_font_api_documents__doc_id__fonts__font_name__delete"];
         options?: never;
         head?: never;
@@ -79,10 +64,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * Page
-         * @description Page `n` of the original as a PNG, unrotated, `scale` pixels per point.
-         */
+        /** Page */
         get: operations["page_api_documents__doc_id__pages__n__get"];
         put?: never;
         post?: never;
@@ -101,10 +83,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Render
-         * @description Each region drawn with the edits on its page, a fit per edit, and what was skipped.
-         */
+        /** Render */
         post: operations["render_api_documents__doc_id__render_post"];
         delete?: never;
         options?: never;
@@ -121,10 +100,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Export
-         * @description The edited document as a PDF: every page, or `pages` in that order.
-         */
+        /** Export */
         post: operations["export_api_documents__doc_id__export_post"];
         delete?: never;
         options?: never;
@@ -139,10 +115,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * Fonts
-         * @description Every face new text can be drawn in, by family, with each letter's width.
-         */
+        /** Fonts */
         get: operations["fonts_api_fonts_get"];
         put?: never;
         post?: never;
@@ -159,10 +132,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * Terms
-         * @description The service's terms, as its deployment wrote them; null where it wrote none.
-         */
+        /** Terms */
         get: operations["terms_api_terms_get"];
         put?: never;
         post?: never;
@@ -179,10 +149,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * Account
-         * @description Whether this server offers accounts, and which this browser is signed in to.
-         */
+        /** Account */
         get: operations["account_api_account_get"];
         put?: never;
         post?: never;
@@ -201,10 +168,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Send Link
-         * @description Email a link that signs this browser in as `email`; say where it went.
-         */
+        /** Send Link */
         post: operations["send_link_api_account_link_post"];
         delete?: never;
         options?: never;
@@ -221,10 +185,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Sign In
-         * @description Sign this browser in with a link's token, its account made on first use.
-         */
+        /** Sign In */
         post: operations["sign_in_api_account_sign_in_post"];
         delete?: never;
         options?: never;
@@ -241,10 +202,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Sign Out
-         * @description Sign this browser out: its signed-in cookie cleared.
-         */
+        /** Sign Out */
         post: operations["sign_out_api_account_sign_out_post"];
         delete?: never;
         options?: never;
@@ -261,10 +219,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Mail Events
-         * @description Brevo's webhook: note each address mail can never reach.
-         */
+        /** Mail Events */
         post: operations["mail_events_api_account_mail_events_post"];
         delete?: never;
         options?: never;
@@ -281,10 +236,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Checkout
-         * @description Where this browser's account pays monthly for no document limit: Stripe's checkout.
-         */
+        /** Checkout */
         post: operations["checkout_api_account_checkout_post"];
         delete?: never;
         options?: never;
@@ -301,10 +253,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Billing Portal
-         * @description Where this browser's account manages what it pays: Stripe's portal.
-         */
+        /** Billing Portal */
         post: operations["billing_portal_api_account_billing_portal_post"];
         delete?: never;
         options?: never;
@@ -323,9 +272,7 @@ export interface paths {
         put?: never;
         /**
          * Billing Events
-         * @description Stripe's webhook: keep each event once, and set the paid time it leads to.
-         *
-         *     Its body is read as the bytes Stripe signed: read as JSON first, no signature holds.
+         * @description Read as the bytes Stripe signed: parsed as JSON first, no signature holds.
          */
         post: operations["billing_events_api_account_billing_events_post"];
         delete?: never;
@@ -341,10 +288,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * Health
-         * @description Up and answering.
-         */
+        /** Health */
         get: operations["health_api_health_get"];
         put?: never;
         post?: never;
@@ -358,10 +302,7 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        /**
-         * AccountState
-         * @description Whether this server offers accounts, and which this browser is signed in to.
-         */
+        /** AccountState */
         AccountState: {
             /** Offered */
             offered: boolean;
@@ -371,12 +312,7 @@ export interface components {
             takes_payment: boolean;
             signed_in: components["schemas"]["SignedIn"] | null;
         };
-        /**
-         * ApproximateInfo
-         * @description How an approximate span would come back unlike itself, in no language.
-         *
-         *     `code` names the reason, and its sentence: `sentences.approximate[code]`. `params` fill it.
-         */
+        /** ApproximateInfo */
         ApproximateInfo: {
             /**
              * Code
@@ -388,10 +324,7 @@ export interface components {
                 [key: string]: components["schemas"]["Param"];
             };
         };
-        /**
-         * Box
-         * @description A box on the page in points, top-left origin.
-         */
+        /** Box */
         Box: {
             /** X0 */
             x0: number;
@@ -404,20 +337,14 @@ export interface components {
         };
         /** @enum {string} */
         Category: "sans" | "serif" | "mono" | "handwriting";
-        /**
-         * CountedSentence
-         * @description A sentence said with a count, a form for each plural category: the browser picks one.
-         */
+        /** CountedSentence */
         CountedSentence: {
             /** One */
             one: string;
             /** Other */
             other: string;
         };
-        /**
-         * DeletePage
-         * @description Leave a page out of the file, and everything on it.
-         */
+        /** DeletePage */
         DeletePage: {
             /** Page */
             page: number;
@@ -427,10 +354,7 @@ export interface components {
              */
             kind: "delete_page";
         };
-        /**
-         * Document
-         * @description The stored document, as the browser gets it, in the reader's language.
-         */
+        /** Document */
         Document: {
             /** Build */
             build: string;
@@ -453,13 +377,7 @@ export interface components {
             /** Notices */
             notices: components["schemas"]["DocumentNoticeInfo"][];
         };
-        /**
-         * DocumentNoticeInfo
-         * @description Something about the document that may not be what the user expected.
-         *
-         *     `type` is what the browser branches on; `detail` says it in the reader's
-         *     words, and `code` and `params` are the same, unsaid.
-         */
+        /** DocumentNoticeInfo */
         DocumentNoticeInfo: {
             /** Code */
             code: string;
@@ -472,20 +390,14 @@ export interface components {
             /** Detail */
             detail: string;
         };
-        /**
-         * DocumentsLeft
-         * @description How many of this month's documents an account has left, of how many it opens a month.
-         */
+        /** DocumentsLeft */
         DocumentsLeft: {
             /** Left */
             left: number;
             /** Monthly */
             monthly: number;
         };
-        /**
-         * ExportBody
-         * @description What export reads from the request body. No `pages` means every page.
-         */
+        /** ExportBody */
         ExportBody: {
             /** Edits */
             edits: (components["schemas"]["Replace"] | components["schemas"]["Redact"] | components["schemas"]["ReplaceRuns"] | components["schemas"]["Insert"] | components["schemas"]["RotatePage"] | components["schemas"]["DeletePage"] | components["schemas"]["MovePage"])[];
@@ -494,10 +406,7 @@ export interface components {
         };
         /**
          * FaceInfo
-         * @description A face new text can be drawn in, and each letter it draws, by width.
-         *
-         *     `name` is what an insert's `font` asks for. Widths are in thousandths of the
-         *     font size, the same the server measures with, so a preview matches the draw.
+         * @description Widths in thousandths of the size, as the server measures: a preview matches the draw.
          */
         FaceInfo: {
             /** Name */
@@ -508,10 +417,7 @@ export interface components {
                 [key: string]: number;
             };
         };
-        /**
-         * FamilyInfo
-         * @description A family of faces we ship, and what kind of font it is.
-         */
+        /** FamilyInfo */
         FamilyInfo: {
             /** Family */
             family: string;
@@ -523,10 +429,7 @@ export interface components {
             /** Faces */
             faces: components["schemas"]["FaceInfo"][];
         };
-        /**
-         * FileNoticeInfo
-         * @description What saving did to the whole file other than asked, and why.
-         */
+        /** FileNoticeInfo */
         FileNoticeInfo: {
             /** Code */
             code: string;
@@ -542,13 +445,7 @@ export interface components {
              */
             kind: "file";
         };
-        /**
-         * FitInfo
-         * @description Whether a replacement fits, the ways out if not, which one was drawn, and its verdict.
-         *
-         *     The verdict is the edit's own, as drawn, in the four fields a span's at upload is in
-         *     (`SpanInfo`): `why` set only when approximate, `substitute` only when substitute.
-         */
+        /** FitInfo */
         FitInfo: {
             /** Delta Pt */
             delta_pt: number;
@@ -574,10 +471,7 @@ export interface components {
             /** Same Widths */
             same_widths: boolean;
         };
-        /**
-         * FitRules
-         * @description The thresholds the browser runs the fit check with, the server's own.
-         */
+        /** FitRules */
         FitRules: {
             /** Tolerance Pt */
             tolerance_pt: number;
@@ -588,12 +482,7 @@ export interface components {
             /** Shrink Floor */
             shrink_floor: number;
         };
-        /**
-         * FontInfo
-         * @description A font the spans use, as the browser gets it: its facts, and why in the reader's words.
-         *
-         *     `why_code` and `why_params` are `why` unsaid, both empty when `why` is None.
-         */
+        /** FontInfo */
         FontInfo: {
             /** Font Object */
             font_object: number | null;
@@ -622,20 +511,14 @@ export interface components {
                 [key: string]: number;
             };
         };
-        /**
-         * FontList
-         * @description Every face we ship, by family, under this build.
-         */
+        /** FontList */
         FontList: {
             /** Build */
             build: string;
             /** Families */
             families: components["schemas"]["FamilyInfo"][];
         };
-        /**
-         * ImageInfo
-         * @description A drawn strip, its top `y` in points on the page, as a base64 PNG.
-         */
+        /** ImageInfo */
         ImageInfo: {
             /** Page */
             page: number;
@@ -644,14 +527,7 @@ export interface components {
             /** Image */
             image: string;
         };
-        /**
-         * Insert
-         * @description Draw new text where the document has none: a signature, an annotation.
-         *
-         *     `font` names a face we ship (`core.fonts.catalog.FACES`, e.g. "Caveat Bold") or a font
-         *     this page uses, by `font_object` too where given: two can read by one name. Anything
-         *     else is drawn in a look-alike, and its fit says so: the fit says what will really draw.
-         */
+        /** Insert */
         Insert: {
             /** Page */
             page: number;
@@ -690,10 +566,7 @@ export interface components {
              */
             kind: "insert";
         };
-        /**
-         * InsertFitInfo
-         * @description An insert's fit, named by its place in the list the browser sent.
-         */
+        /** InsertFitInfo */
         InsertFitInfo: {
             /** Delta Pt */
             delta_pt: number;
@@ -721,10 +594,7 @@ export interface components {
             /** Edit */
             edit: number;
         };
-        /**
-         * InsertNoticeInfo
-         * @description An insert drawn other than asked, by its place in the list the browser sent, and why.
-         */
+        /** InsertNoticeInfo */
         InsertNoticeInfo: {
             /** Code */
             code: string;
@@ -742,48 +612,31 @@ export interface components {
             /** Edit */
             edit: number;
         };
-        /**
-         * LineInfo
-         * @description Spans the page draws one after another on one baseline, a word space apart: one field.
-         *
-         *     Only a line of more than one span is listed. `room_pt` is how far its end can run.
-         */
+        /** LineInfo */
         LineInfo: {
             /** Span Ids */
             span_ids: string[];
             /** Room Pt */
             room_pt: number;
         };
-        /**
-         * LinkBody
-         * @description Where to send a sign-in link: the address as it was typed.
-         */
+        /** LinkBody */
         LinkBody: {
             /** Email */
             email: string;
         };
-        /**
-         * LinkSent
-         * @description A sign-in link is on its way: where, in the reader's words.
-         */
+        /** LinkSent */
         LinkSent: {
             /** Sentence */
             sentence: string;
         };
-        /**
-         * MailEvent
-         * @description What Brevo's webhook says happened to an email: its word for it, and the address.
-         */
+        /** MailEvent */
         MailEvent: {
             /** Event */
             event: string;
             /** Email */
             email: string;
         };
-        /**
-         * MessageInfo
-         * @description A Message as JSON: the sentence's key as `code`, and the facts that fill it.
-         */
+        /** MessageInfo */
         MessageInfo: {
             /** Code */
             code: string;
@@ -792,10 +645,7 @@ export interface components {
                 [key: string]: components["schemas"]["Param"];
             };
         };
-        /**
-         * MovePage
-         * @description Put a page just before page `before`, or after the last page when it's None.
-         */
+        /** MovePage */
         MovePage: {
             /** Page */
             page: number;
@@ -807,10 +657,7 @@ export interface components {
              */
             kind: "move_page";
         };
-        /**
-         * PageInfo
-         * @description A page unrotated, and the turn the browser gives it: clockwise, as the file asks.
-         */
+        /** PageInfo */
         PageInfo: {
             /** Width */
             width: number;
@@ -823,21 +670,12 @@ export interface components {
             turn_cw: 0 | 90 | 180 | 270;
         };
         Param: string | number | string[];
-        /**
-         * PaymentPage
-         * @description Stripe's page this browser goes to next: its checkout, or its portal.
-         */
+        /** PaymentPage */
         PaymentPage: {
             /** Url */
             url: string;
         };
-        /**
-         * ProblemInfo
-         * @description A Problem as the browser gets it: RFC 9457 Problem Details, plus its Message unsaid.
-         *
-         *     `type` is one of every Problem's, which the OpenAPI lists. `detail` is shown
-         *     verbatim; `code` is always `type`, and `params` fill it.
-         */
+        /** ProblemInfo */
         ProblemInfo: {
             /**
              * Type
@@ -862,10 +700,7 @@ export interface components {
         };
         /**
          * Redact
-         * @description Remove a span's text, or the words `range` names, and draw nothing in their place.
-         *
-         *     A covering box would leave the text extractable underneath, so this deletes it from the
-         *     page itself, and the output is re-read to check.
+         * @description A covering box would leave the text extractable, so this deletes it, then re-reads.
          */
         Redact: {
             /** Span Id */
@@ -881,24 +716,13 @@ export interface components {
              */
             kind: "redact";
         };
-        /**
-         * RedactedRunInfo
-         * @description A run of words a redaction takes: its code points, and the box its letters take.
-         *
-         *     The box is in points on the page, however the line is turned.
-         */
+        /** RedactedRunInfo */
         RedactedRunInfo: {
             /** Range */
             range: number[];
             box: components["schemas"]["Box"];
         };
-        /**
-         * RedactionInfo
-         * @description A redaction drawn: whether its words are gone from the file, and where else they were.
-         *
-         *     `hidden_copies` ends with "signatures" in a signed file: any redaction takes them.
-         *     `message` says it in the reader's words; None when there's nothing to say.
-         */
+        /** RedactionInfo */
         RedactionInfo: {
             /** Verified */
             verified: boolean;
@@ -909,10 +733,7 @@ export interface components {
             /** Runs */
             runs: components["schemas"]["RedactedRunInfo"][];
         };
-        /**
-         * Region
-         * @description What to draw: a full-width strip of a page, from `y0` to `y1` in points, or all of it.
-         */
+        /** Region */
         Region: {
             /** Page */
             page: number;
@@ -921,13 +742,7 @@ export interface components {
             /** Y1 */
             y1?: number | null;
         };
-        /**
-         * Render
-         * @description Render's reply, as the browser gets it: the strips, a fit per edit, and what it skipped.
-         *
-         *     `notices` are edits drawn other than asked, such as in a substitute.
-         *     `redactions` are the redactions drawn, by span id, as `fits` are.
-         */
+        /** Render */
         Render: {
             /** Images */
             images: components["schemas"]["ImageInfo"][];
@@ -950,10 +765,7 @@ export interface components {
             /** Expires At */
             expires_at: string;
         };
-        /**
-         * RenderBody
-         * @description What render reads from the request body.
-         */
+        /** RenderBody */
         RenderBody: {
             /** Edits */
             edits: (components["schemas"]["Replace"] | components["schemas"]["Redact"] | components["schemas"]["ReplaceRuns"] | components["schemas"]["Insert"] | components["schemas"]["RotatePage"] | components["schemas"]["DeletePage"] | components["schemas"]["MovePage"])[];
@@ -962,10 +774,7 @@ export interface components {
             /** Regions */
             regions: components["schemas"]["Region"][];
         };
-        /**
-         * Replace
-         * @description Swap a span's text: remove the old letters and draw the new ones in their place.
-         */
+        /** Replace */
         Replace: {
             /** Span Id */
             span_id: string;
@@ -997,10 +806,7 @@ export interface components {
              */
             kind: "replace_runs";
         };
-        /**
-         * RotatePage
-         * @description Turn a page clockwise by `degrees`, on top of the turn the file gives it.
-         */
+        /** RotatePage */
         RotatePage: {
             /** Page */
             page: number;
@@ -1032,10 +838,7 @@ export interface components {
             /** End */
             end?: number | null;
         };
-        /**
-         * Sentences
-         * @description The sentences the browser says about the document, unfilled, in the reader's language.
-         */
+        /** Sentences */
         Sentences: {
             /** Missing */
             missing: string;
@@ -1168,18 +971,12 @@ export interface components {
                 [key: string]: string;
             };
         };
-        /**
-         * SignInBody
-         * @description The token a sign-in link carried, as the browser read it from the link.
-         */
+        /** SignInBody */
         SignInBody: {
             /** Token */
             token: string;
         };
-        /**
-         * SignedIn
-         * @description The account this browser is signed in to.
-         */
+        /** SignedIn */
         SignedIn: {
             /** Email */
             email: string;
@@ -1191,12 +988,7 @@ export interface components {
             has_billing: boolean;
             documents_left: components["schemas"]["DocumentsLeft"] | null;
         };
-        /**
-         * SkippedInfo
-         * @description An edit left out, by its place in the list the browser sent, and why.
-         *
-         *     `detail` is why in the reader's words; `code` and `params` the same, unsaid.
-         */
+        /** SkippedInfo */
         SkippedInfo: {
             /** Code */
             code: string;
@@ -1211,13 +1003,7 @@ export interface components {
             /** Detail */
             detail: string;
         };
-        /**
-         * SpanInfo
-         * @description One editable span and whether it keeps its own font.
-         *
-         *     `why` names how an approximate span comes back unlike itself (`sentences.approximate`);
-         *     `form_field`, text a form field draws, which an edit leaves alone (`form_field_not_edited`).
-         */
+        /** SpanInfo */
         SpanInfo: {
             /** Id */
             id: string;
@@ -1257,10 +1043,7 @@ export interface components {
             /** Turned */
             turned: boolean;
         };
-        /**
-         * SpanNoticeInfo
-         * @description A replace or a redaction drawn other than asked, by its span, and why.
-         */
+        /** SpanNoticeInfo */
         SpanNoticeInfo: {
             /** Code */
             code: string;
@@ -1282,10 +1065,7 @@ export interface components {
         Strategy: "as-is" | "shrink" | "condense";
         /** @enum {string} */
         Style: "regular" | "bold" | "italic" | "bold-italic";
-        /**
-         * Terms
-         * @description The service's terms, as its deployment wrote them.
-         */
+        /** Terms */
         Terms: {
             /** Title */
             title: string;
@@ -1294,10 +1074,7 @@ export interface components {
             /** Paragraphs */
             paragraphs: components["schemas"]["TermsParagraph"][];
         };
-        /**
-         * TermsEmail
-         * @description An email address in a paragraph, shown as a link to write to it.
-         */
+        /** TermsEmail */
         TermsEmail: {
             /**
              * Kind
@@ -1307,20 +1084,14 @@ export interface components {
             /** Address */
             address: string;
         };
-        /**
-         * TermsParagraph
-         * @description One paragraph: its lead, set bold, then the rest in pieces.
-         */
+        /** TermsParagraph */
         TermsParagraph: {
             /** Lead */
             lead: string;
             /** Pieces */
             pieces: (components["schemas"]["TermsWords"] | components["schemas"]["TermsEmail"])[];
         };
-        /**
-         * TermsWords
-         * @description Words of a paragraph, shown as they're written.
-         */
+        /** TermsWords */
         TermsWords: {
             /**
              * Kind

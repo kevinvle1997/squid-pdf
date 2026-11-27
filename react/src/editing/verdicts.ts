@@ -1,15 +1,11 @@
-// How an edit comes out, or a span untouched, as the note, the chip's short warning and the bar's count all say
-// it: one verdict, the server's once its render lands, worked out here as it's typed (Rule 1).
 import type { FitInfo, FontInfo, SpanInfo, Strategy } from "../api/types";
 import { missingIn } from "./fit";
 import type { SpanReading } from "./project";
 import { type Drawn, landedFitOf } from "./render";
 import { drawingOf } from "./substitutes";
 
-/** How an edit comes out, or the span untouched: the four fields the server sends of a span and of an edit's fit alike. */
 export type Verdict = Pick<SpanInfo, "fidelity" | "why" | "substitute" | "same_widths">;
 
-/** An edit drawn in the font asked for, set as the text around it: no note. */
 export const EXACT: Verdict = { fidelity: "exact", why: null, substitute: null, same_widths: false };
 
 /**
@@ -42,10 +38,8 @@ export function isDrawnAgain(
  * server. Where the page's spacing hid behind a letter the copy lacks, only the render can tell, and it wins.
  */
 export function liveVerdictOf(span: SpanInfo, { font, text }: { font: FontInfo | undefined; text: string }): Verdict {
-  // Its font unknown: there's nothing to work it out from.
   if (font === undefined) return span;
   const drawing = drawingOf(span, { font, text, missing: missingIn(text, font.glyphs) });
-  // The file's own copy can't be used, or lacks a letter typed that a face we ship draws: the line goes to that face.
   if (!span.in_file || drawing.switched.length > 0) {
     const sameWidths = drawing.face === span.substitute && span.same_widths;
     return { fidelity: "substitute", why: null, substitute: drawing.face, same_widths: sameWidths };
@@ -54,7 +48,6 @@ export function liveVerdictOf(span: SpanInfo, { font, text }: { font: FontInfo |
   return why === null ? EXACT : { ...EXACT, fidelity: "approximate", why };
 }
 
-/** What `span` changed to read `text` comes to: its render's once one of these very words lands, else `liveVerdictOf`. */
 export function editVerdictOf(
   drawn: Drawn,
   { span, font, text, strategy }: { span: SpanInfo; font: FontInfo; text: string; strategy: Strategy | undefined },
@@ -64,7 +57,6 @@ export function editVerdictOf(
   return verdictOf(span, { reading: now, fit: landedFitOf(drawn, now), live });
 }
 
-/** How an edit in the span's own font won't match the text around it, as the server checks it in turn; null when it will. */
 function setApartBy(span: SpanInfo, leftOut: readonly string[]): Verdict["why"] {
   const own = span.why;
   // Turned, or right to left: whatever is typed is redrawn level, left to right.
@@ -88,7 +80,6 @@ export function worstOf(verdicts: readonly Verdict[]): Verdict {
 /** What the chip says of an edit that will match, where it says the short warning of one that won't: Find's own words. */
 export const LOOKS_IDENTICAL = "looks identical";
 
-/** The chip's short warning on an edit of `verdict`: "a similar font", "will look different", or none when it matches. */
 export function shortWarningOf({ fidelity }: Pick<Verdict, "fidelity">): string | null {
   if (fidelity === "substitute") return "a similar font";
   return fidelity === "approximate" ? "will look different" : null;

@@ -1,9 +1,4 @@
-"""The only package that uses MuPDF's low-level API, one module per concern.
-
-Everyday PyMuPDF calls (get_text, get_pixmap, save) are easy to read, so they stay in
-`core.pdf.mupdf`, whose driver holds a `PdfFile` for the rest. Results come back as named
-dataclasses, reporting only what the PDF says: the engine decides what to do.
-"""
+"""The only package that uses MuPDF's low-level API; everyday PyMuPDF calls stay in `mupdf`."""
 
 from __future__ import annotations
 

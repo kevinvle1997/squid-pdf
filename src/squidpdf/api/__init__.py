@@ -1,8 +1,3 @@
-"""Shared HTTP plumbing: the app, errors, the owner cookie, workers, and their constants.
-
-No feature logic lives here. Needs the `api` extra; nothing outside `api/` and
-the features' `api.py` may import this, so the CLI runs without it
-(tests/test_layers.py checks).
-"""
+"""Only `api/` and features' `api.py` import it, so the CLI runs without the `api` extra."""
 
 from __future__ import annotations

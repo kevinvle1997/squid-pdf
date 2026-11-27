@@ -2,14 +2,13 @@ import { ToggleButton, ToggleButtonGroup } from "react-aria-components";
 import styles from "./Choices.module.css";
 
 interface Props<T extends string> {
-  label: string; // what the choices are of, for a screen reader
+  label: string;
   options: readonly { id: T; label: string }[];
   chosen: T;
   onChoose: (id: T) => void;
-  keepFocus?: boolean; // a press leaves focus where it is, so a field being typed in keeps it
+  keepFocus?: boolean; // so a field being typed in keeps it
 }
 
-/** One of a few choices, side by side, the one chosen in ink: never blue, which is for what changed. */
 export function Choices<T extends string>({ label, options, chosen, onChoose, keepFocus = false }: Props<T>) {
   return (
     <ToggleButtonGroup

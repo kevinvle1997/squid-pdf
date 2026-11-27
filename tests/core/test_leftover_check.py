@@ -1,5 +1,3 @@
-"""The saved-file check finds any word of a removed span still in its box (Rule 4)."""
-
 from __future__ import annotations
 
 import pymupdf
@@ -7,20 +5,18 @@ import pymupdf
 from squidpdf.core import LineToDraw, new_text, open_pdf
 from tests.helpers import assert_equal
 
-_CARD = "Card 4111 2222 3333"  # four groups: the check once passed with three of them left
-_LABELLED = "Card A 4111"  # "A" is a word of one letter, as in a name
-_LABEL = "[REDACTED]"  # what people draw over a redaction; it has an A in it
+_CARD = "Card 4111 2222 3333"
+_LABELLED = "Card A 4111"
+_LABEL = "[REDACTED]"
 
 
 def test_a_removal_that_left_some_words_in_the_box_is_still_there(tmp_path):
-    """It flagged a span only when its whole text was left, and passed three groups of four."""
     path, leaky = str(tmp_path / "card.pdf"), str(tmp_path / "leaky.pdf")
     doc = pymupdf.open()
     doc.new_page().insert_text((72, 96), _CARD, fontname="helv", fontsize=12)
     doc.save(path)
     with open_pdf(path) as engine:
         [span] = list(engine.index())
-    # An erase that missed three groups of four, made by hand: only "Card" goes.
     doc = pymupdf.open(path)
     [card] = doc[0].search_for("Card")
     doc[0].add_redact_annot(card)
@@ -34,7 +30,6 @@ def test_a_removal_that_left_some_words_in_the_box_is_still_there(tmp_path):
 
 
 def test_a_label_drawn_over_a_removal_is_not_its_text_left_behind(tmp_path):
-    """Every word once counted alone, so the "A" of "Card A 4111" was found in "[REDACTED]"."""
     path, saved_path = str(tmp_path / "card.pdf"), str(tmp_path / "labelled.pdf")
     doc = pymupdf.open()
     doc.new_page().insert_text((72, 96), _LABELLED, fontname="helv", fontsize=12)

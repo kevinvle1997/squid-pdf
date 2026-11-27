@@ -1,5 +1,3 @@
-/* A transparent button over the span's own pixels: the page image shows the text. Its corners are
-   its focus ring's, 1px out, less that 1px, so the ring curves at --r-1: corners nest. */
 .span {
   position: absolute;
   padding: 0; margin: 0; border: 0; border-radius: calc(var(--r-1) - 1px);
@@ -9,46 +7,35 @@
 }
 /* Not a redacted one, whose look `ui/Redacted` gives: loaded first, it would lose to a rule here. */
 .span:not(.redacted) { background: transparent; }
-/* The hint is the page's own grey, in both themes: it says "text", not "change". */
 .span::after {
   content: ""; position: absolute; inset-inline: 0; bottom: -1px;
   height: 1px; background: var(--sheet-ink-lo); opacity: 0;
   transition: opacity var(--dur-press) var(--ease-out);
 }
 .span[data-hovered]::after, .span[data-focus-visible]::after { opacity: .6; transition-duration: var(--dur-quick); }
-/* The pencil's non-repro wash, solid; multiplied over the page image, the text beneath still shows. */
 .span[data-hovered] { background: var(--mark-change-soft); mix-blend-mode: multiply; }
 /* On the page the ring is the page's own blue pencil: the dark theme's would wash out on white. */
 .span[data-focus-visible] { outline: 2px solid var(--mark-change); outline-offset: 1px; }
-/* A form field draws it, and an edit is left out: a dashed warning line, always, no fainter than a mark's
-   3:1. A font's warning has none: it waits for an edit, or a page in a similar font would be lined throughout. */
+/* A font's warning has no line: it waits for an edit, or a page in a similar font would be lined throughout. */
 .formField::after {
   opacity: .75; height: 1.5px;
   background: repeating-linear-gradient(90deg, var(--mark-warn) 0 2px, transparent 2px 4px);
 }
 .formField[data-hovered] { background: var(--mark-warn-soft); }
 .formField[data-hovered]::after, .formField[data-focus-visible]::after { opacity: 1; }
-/* You changed this. */
 .changed::after { opacity: 1; height: 2px; background: var(--mark-change); }
-/* It went in, but not quite as typed: the server said why. The change keeps its solid line, and the
-   warning's dashed one runs under it, clear of the focus ring, so each shows by its shape, never by colour alone. */
+/* The warning's dashed line runs under the change's solid one, so each shows by its shape, never by colour alone. */
 .trouble { composes: warnLine from "../../ui/WarnLine.module.css"; }
-/* Redacted: its words gone, as it exports, and the change's own line. */
 .redacted { composes: redacted from "../../ui/Redacted.module.css"; }
 .redacted[data-hovered] { background: var(--mark-change-soft); }
 .redacted::after, .redacted[data-hovered]::after { opacity: 1; height: 2px; background: var(--mark-change); }
-/* Some of its words redacted: the change's line under it all, held on hover and focus as a redaction's is, and each
-   run of words gone, beside the mark, which stays to press: the rest of its words can still be read and selected. */
 .wordsRedacted::after, .wordsRedacted[data-hovered]::after, .wordsRedacted[data-focus-visible]::after {
   opacity: 1; height: 2px; background: var(--mark-change);
 }
 .redactedRun { composes: redacted from "../../ui/Redacted.module.css"; position: absolute; pointer-events: none; }
-/* Redacted, but the server found its words still there: a warning, never the change's colour, its box too. The
-   focus ring stays the pencil's: it says where focus is, not what's true of the words. */
 .redacted.unredacted, .redacted.unredacted[data-hovered], .redactedRun[data-unredacted] {
   background: var(--mark-warn-soft); box-shadow: inset 0 0 0 1.5px var(--mark-warn);
 }
-/* Pointed at, a line with some words redacted takes the warning's wash too, never the pencil's. */
 .wordsRedacted.unredacted[data-hovered] { background: var(--mark-warn-soft); }
 .unredacted::after, .unredacted[data-hovered]::after, .unredacted[data-focus-visible]::after {
   background: var(--mark-warn);
@@ -57,6 +44,5 @@
   .span::after { background: CanvasText; }
   /* A gradient is dropped in this mode: a dashed border keeps the warning's shape. */
   .formField::after { height: 0; background: none; border-top: 2px dashed CanvasText; }
-  /* A change's line is solid, over a form field's too, as on the page. */
   .changed::after, .redacted::after, .wordsRedacted::after { height: 2px; border-top: 0; background: Highlight; }
 }

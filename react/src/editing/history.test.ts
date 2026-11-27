@@ -36,7 +36,6 @@ describe("the edit history", () => {
     expect(entriesOf(history).map((entry) => entry.id)).toEqual([1, 2, 3]);
     const again = historyReducer(historyReducer(history, { kind: "undo" }), { kind: "redo" });
     expect(entriesOf(again)).toEqual(entriesOf(history));
-    // Ids are never reused, even for an edit made after an undo.
     const after = add(historyReducer(history, { kind: "undo" }), aReplace("d", "four"));
     expect(entriesOf(after).map((entry) => entry.id)).toEqual([1, 2, 4]);
   });

@@ -1,5 +1,3 @@
-// The proof slip under the field: what an edit here will come to before it's made (Rule 1), the ways
-// out of a long line, and what a pointer can press there; the keyboard's ways are the field's keys and Fonts.
 import { type RefObject, useCallback } from "react";
 import { FileTrigger } from "react-aria-components";
 import type { PageInfo, SpanInfo } from "../../api/types";
@@ -29,7 +27,7 @@ const SIZE = new Intl.NumberFormat("en", { maximumFractionDigits: 1 });
 
 interface Props {
   span: SpanInfo;
-  fieldEndPt: number; // where the field ends across the page, longer as it's typed: the slip keeps off it
+  fieldEndPt: number;
   info: PageInfo;
   trouble: string; // what won't come out as typed, a line each; empty when it fits
   verdict: Verdict; // what an edit of what's typed comes to, and in what face
@@ -46,19 +44,15 @@ export function Chip({ span, fieldEndPt, info, trouble, verdict, setting, value,
   const editor = useEditor();
   const font = useEditorState((state) => fontOf(state.layout.fonts, span));
   const sentences = useEditorState((state) => state.doc.sentences);
-  // What draws the edit: the span's similar font, or else its own, which the preview can only stand in for.
   const shown = useEditorState((state) => shownNameIn(state.layout.fonts, span));
-  // What an edit here warns of, in full, as typing starts: until the user mutes its font's warning.
   const muted = useEditorState((state) => state.mutedFonts.has(shown));
   const offered = useEditorState(copyOfferedFor);
   const attaching = useEditorState((state) => state.attaching !== null);
-  // A signed document's, until its first edit: no mute, since that edit ends it.
   const signature = useEditorState(signatureWarningOf);
   const splitRefusal = useEditorState(splitRefusalOf);
   const note = lineNote === undefined ? editNote(span, { verdict, font, sentences, muted }) : lineNote.note;
   const mutes = lineNote === undefined ? [shown] : lineNote.fonts;
   const ways = setting.offered.map((id) => ({ id, label: sentences.options[id]?.label ?? id }));
-  // Off the line and in view, as what it holds grows, or the page or the window is shown another size.
   const { slipRef, style } = useSlipPlace(span.bbox, { page: info, endPt: fieldEndPt });
   const placed = useCallback(
     (element: HTMLDivElement | null) => {
@@ -69,22 +63,13 @@ export function Chip({ span, fieldEndPt, info, trouble, verdict, setting, value,
   );
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: it hears only the presses its controls don't take, to keep focus
-    <div
-      ref={placed}
-      className={styles.chip}
-      // A key pressed in it is the edit's own, as one in the field is (`isTyping`).
-      data-slip=""
-      style={style}
-      onMouseDown={keepFocusOnPress}
-    >
+    <div ref={placed} className={styles.chip} data-slip="" style={style} onMouseDown={keepFocusOnPress}>
       {signature !== null && (
-        // Announced as the field takes focus, before the font's note.
         <span className={styles.signature} aria-hidden="true">
           <Warn mark>{signature}</Warn>
         </span>
       )}
       {note !== null && (
-        // Announced as the field takes focus; its button is a pointer's, the keyboard's way is the Fonts list.
         <span className={styles.note}>
           <span className={styles.noteWords} aria-hidden="true">
             <Warn mark>{note.sentence}</Warn>
@@ -109,7 +94,6 @@ export function Chip({ span, fieldEndPt, info, trouble, verdict, setting, value,
         sizePt={span.size * setting.size}
       />
       {ways.length > 0 && (
-        // A pointer's way to choose; the keyboard's is Up and Down in the field, which keeps focus.
         <span className={styles.ways}>
           <Choices
             label="How it fits"
@@ -148,7 +132,6 @@ export function Chip({ span, fieldEndPt, info, trouble, verdict, setting, value,
             </FileTrigger>
           </span>
         )}
-        {/* Redaction where a pointer or a finger can reach it, of the words selected in the field, or all of it. */}
         <Button keepFocus onPress={() => redact(editor, span.id, { selected: selectedIn(field.current) })}>
           Redact
         </Button>
@@ -163,7 +146,6 @@ export function Chip({ span, fieldEndPt, info, trouble, verdict, setting, value,
   );
 }
 
-/** The edit's facts before it's made: what won't come out as typed, else what draws it and whether it will match. */
 export function Facts({
   trouble,
   shortWarning,
@@ -186,7 +168,6 @@ export function Facts({
     <span className={styles.facts} aria-hidden="true">
       <span>{drawnIn}</span>
       <Num>{SIZE.format(sizePt)} pt</Num>
-      {/* Find's own words when it will match. */}
       {shortWarning === null ? (
         <span className={styles.identical}>{LOOKS_IDENTICAL}</span>
       ) : (

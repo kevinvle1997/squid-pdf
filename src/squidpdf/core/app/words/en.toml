@@ -1,178 +1,112 @@
-# Every sentence the app says, in English, under the key a Message names it by.
-#
-# Another language is another file like this one, named by its tag (fr.toml,
-# pt-br.toml), with the same keys and the same {placeholders}. A key it leaves
-# out is said in English. A key is renamed only with the browser, in the same change:
-# the browser branches on it.
+# A key is renamed only with the browser, in the same change: the browser branches on it.
 
-# What's wrong with a replacement.
-# `{font}` is the face that draws the line instead.
 missing = "no {chars} in this font, so the line is drawn in our {font}"
-# Said by the browser on a calendar day whose date the span's font can't write: the slip above
-# it says `missing` in full, so the day says only which letters.
 not_in_font = "no {chars} in this font"
 will_leave_out = "{letters} can't be drawn in any font we have, and will be left out"
 chosen_unavailable = "{chosen} can't be used here, so this is drawn in {font}"
 not_offered = "too far to fit without looking different, so it's left long"
 too_long = "about {percent}% too long for its place: shorten it, or it runs into what's beside it"
-# A font the file doesn't let us use. `{font}` is the face that draws instead.
 substitute = "Edits here use {font}, which may be a different width from the original."
-# The same, when that face's letters are exactly as wide as the original's.
 substitute_same_widths = "Edits here use {font}, whose letters are the same width as the original's."
-# Which copy of a font edits use, said in the list of the document's fonts.
 drawn_in_your_copy = "Edits here use your copy of this font."
 drawn_in_own_copy = "Edits here use the file's own copy of this font."
 
-# Why an edit was left out.
 no_span = "This edit points at text that isn't in this document."
 not_one_line = "This edit names text that isn't one line of this document, so it's left out."
 split_unreadable = "This line can't be split here, so the edit is left out."
 no_page = "This edit points at a page that isn't in this document."
 last_page = "A file needs at least one page, so its last page stays in."
 
-# Why a font's own copy can't be used, so a similar font stands in. One per font.
 font_not_in_file = "This font isn't stored in the file, so a similar font stands in for it."
 font_unreadable = "This font is stored in the file but can't be read, so a similar font stands in for it."
 font_no_letter_list = "This font is stored in the file without saying which shape is which letter, so a similar font stands in for it."
 font_lacks_letters = "The file's copy of this font can't draw every letter here, so a similar font stands in for it."
 font_cant_write = "This font is stored in the file in a way we can't write new text with yet, so a similar font stands in for it."
-# Why another copy by the font's name, in the file or Google's, lends it no letter.
 copy_stored_apart = "Another copy of this font has the letters needed here, but it's stored in a way that can't be mixed with this one, so a similar font stands in for it."
 copy_too_few_shared = "Another copy of this font has the letters needed here, but too few letters in common with this one to be sure it's the same font, so a similar font stands in for it."
 copy_other_widths = "Another font by this name has the letters needed here, but its letters are a different width, so a similar font stands in for it."
-# Why the user's own copy of a font can't stand in for one the file only names.
 font_no_width_list = "This font isn't stored in the file, and the file doesn't list how wide its letters are, so no copy of it can be checked against it."
 attached_unreadable = "The copy of this font you added can't be read as a font, so a similar font stands in for it."
 attached_removed = "The copy of this font you added was just removed, so a similar font stands in for it."
-# Why Google Fonts can't lend a font the letters its copy in the file lacks: the file's
-# reason, then Google's. One per font.
 google_not_listed = "The file's copy of this font can't draw every letter here, and Google Fonts has no font by this name to lend them, so a similar font stands in for it."
 google_no_cut = "The file's copy of this font can't draw every letter here, and Google Fonts has this font but not in this weight and style, so a similar font stands in for it."
 google_name_reserved = "The file's copy of this font can't draw every letter here, and Google Fonts has it only in a form we'd have to change, while its licence keeps its name for the original, so a similar font stands in for it."
 google_not_fetched = "The file's copy of this font can't draw every letter here, and Google's copy of it couldn't be fetched, so a similar font stands in for it."
 google_unreadable = "The file's copy of this font can't draw every letter here, and Google's copy of it can't be read, so a similar font stands in for it."
 
-# Why text in its own font still won't come back as it looks now. One per span.
 turned_text = "This text is turned on the page, and edits are drawn level, so an edit here will look different."
 right_to_left_text = "This text has Arabic or Hebrew in it, and edits are drawn left to right, so an edit here will look different."
 spaced_text = "This text is spaced out or stretched in a way edits don't copy yet, so an edit here will look different."
 undrawable_letters = "No font we have can draw {letters} here, so an edit here leaves them out."
 
-# An edit that went in, but not quite as asked. `{letters}` is space-separated.
 font_not_added = "The file's own font couldn't be used for this edit, so a similar font drew it."
 left_out = "Left out {letters}, which no font we have can draw."
-# Text a form field shows is drawn by the field, not the page, so it can't be changed yet.
 form_field_not_edited = "This text is a form field, which can't be edited yet, so an edit here is left out."
 line_not_edited = "Part of this line couldn't be taken off the page, so the whole line is left as it was."
-# Said by the browser as an email address in a span is typed so it no longer reads as one: the
-# file draws whatever is typed, so it's a warning, not a refusal.
+# A warning, not a refusal: the file draws whatever is typed.
 email_broken = "the email address here no longer reads as one"
-# Said by the browser while the field it's typed in is empty: taking text out isn't a change.
 empty = "This text can't be left empty. Type what it should say, or leave the field to keep it as it was."
-# A redaction whose words are still in the file once drawn, on the page or in a hidden copy.
-# `{text}` is the words redacted, `{page}` the page they're on, as the line under the bar says it.
 not_redacted = "Couldn't remove “{text}” on page {page}, so the file can't be downloaded with this redaction."
-# A redaction whose words are gone, but whose erase moved other text on the page: the check can't
-# tell what moved from what it was to take, so the download is refused all the same.
+# The check can't tell what moved from what it was to take, so the download is refused.
 moved_other_text = "Redacting “{text}” on page {page} moved other text there too, so the file can't be downloaded with this redaction."
-# A redaction whose erase set the rest of its line along, where the letters landed couldn't be read:
-# whether they land on other text can't be told, so the download is refused.
 not_checked = "Couldn't check what redacting “{text}” on page {page} did to the text around it, so the file can't be downloaded with this redaction."
-# A redaction of some words of a line whose erase moved the rest of the line, or removed more of
-# it: said before the download, which still comes, since the words are gone. `{text}` is the
-# words redacted, `{page}` the page they were on: two such lines on two pages say each.
 rest_of_line_moved = "Redacting “{text}” on page {page} moved the rest of its line, so it won't look quite as it did."
 rest_of_line_removed = "Redacting “{text}” on page {page} removed other words on its line too."
-# A redaction new text is drawn over: the check reads the new text's words in its box too.
 covered_by_new_text = "New text sits over this redaction, so it can't be checked and the file can't be downloaded with it. Move the new text off it."
-# `{places}` are the places below, each in a word of its own.
 hidden_copies = "These words were also in this file's {places}. The file you download leaves them out; where a part can't be kept without them, that part goes too."
-# Where a file keeps a hidden copy of words, each named in a sentence above.
 place_title = "title"
 place_metadata = "document properties"
 place_bookmarks = "bookmarks"
 place_comments = "comments"
 place_form_fields = "form fields"
 place_screen_reader_text = "text for screen readers"
-# The download is a new file, so no signature in it would still hold.
 signatures_removed = "This file is signed, and a redaction changes it, so the file you download has no signatures."
-# `{font}` is a face we ship.
 face_not_trimmed = "{font} went into the file whole, not only the letters used, so the file is larger than it needs to be."
-# Exporting some pages of a tagged file drops its tags.
 tags_dropped = "The tags that tell screen readers how to read this file went with the pages left out, so this file has none."
 
-# Said by the browser after its own steps, not the server's.
-# The server no longer had the document mid-edit (its hour ran out, or a deploy retired it),
-# and the browser uploaded its copy again.
 reopened = "The server no longer had this document, so it was opened again from this browser."
-# An export that left some edits out, because they point at nothing in the document.
 export_left_out = "Downloaded, but some changes were left out: they point at text that isn't in this document."
-# A page deleted in the editor: on the slip left where it was, and announced. It names no number,
-# since the slip sits in the page's place, and the pages after it are counted again without it.
 page_left_out = "This page is left out of the download"
-# A deleted page put back, or its delete undone: announced. `{page}` is its number among the pages
-# shown, now it's back.
 page_put_back = "Page {page} is back in the download"
-# How to start, beside the first page until the first edit: one line, then the next under it, each of
-# which a touch screen says its own way.
 how_to_fix = "Click any word to fix it."
 how_to_fix_touch = "Tap any word to fix it."
 how_to_add = "Double-click any blank spot to add text."
 how_to_add_touch = "Double-tap any blank spot to add text."
-# The note on text the user put on a page: what it is, then how to move it or type in it again, which a
-# touch screen says its own way, with no keys.
 new_text = "New text"
 new_text_moves = "Drag it to move it, or nudge it with the arrow keys, Shift for a bigger step. Enter types in it again."
 new_text_moves_touch = "Drag it to move it. Double-tap to type in it again."
-# Said to a screen reader as a span changes: its words now, quoted as `quoted` quotes a character.
-# Undone, and done again or typed and kept.
 back_to = "Back to “{text}”."
 changed_to = "Changed to “{text}”."
-# Put back as the document had it, from its margin note.
 put_back = "Put back “{text}”."
 redacted = "Redacted “{text}”."
-# Said as words already redacted are selected and redacted again: nothing more to take.
 already_redacted = "“{text}” is redacted already."
-# Said to a screen reader as new text changes: put on a page, moved, or taken out, its words quoted
-# as above; set in another face, by the name the slip's list shows it by. Typed into again, it's
-# `changed_to`.
 new_text_added = "Added “{text}”."
 new_text_moved = "Moved “{text}”."
 new_text_taken_out = "Took out “{text}”."
 new_text_set_in = "Set in {font}."
-# The user's own copy of a font taken in, or removed. `{font}` is the name the font is shown by.
 your_copy_in_use = "Your copy of {font} is in use."
 your_copy_removed = "Your copy of {font} is removed."
-# A font's warning muted, or brought back: what an edit in it says from now on.
 warning_muted = "Edits in {font} won't warn again."
 warning_unmuted = "Edits in {font} warn again."
-# A file the browser downloaded, by the name it was saved under.
 downloaded = "Downloaded {name}."
 
-# Find's count, and what Change all did. A sentence with a count has a form for each plural
-# category the reply sends, `one` and `other`, chosen by `{count}`.
+# A sentence with a count has a form per plural category (`one`, `other`), chosen by `{count}`.
 find_nothing = "Nothing matches"
 find_identical.one = "{count} place will look identical"
 find_identical.other = "{count} places will look identical"
 find_different.one = "{count} place will look different"
 find_different.other = "{count} places will look different"
-# When some places will look different: the count, then, as a warning of its own, how many.
 find_places.one = "{count} place, "
 find_places.other = "{count} places, "
 find_some_different.one = "{count} of them will look different"
 find_some_different.other = "{count} of them will look different"
-# When a change would leave a place's text empty: Change all leaves it as it is, as typing would.
 find_empty.one = "{count} place can't be left empty"
 find_empty.other = "{count} places can't be left empty"
-# When some would be: as a warning of its own, after how many will look different.
 find_some_empty.one = "{count} of them can't be left empty"
 find_some_empty.other = "{count} of them can't be left empty"
 changed_places.one = "Changed {count} place."
 changed_places.other = "Changed {count} places."
 
-# The bar's count of the changes, and of those that won't match: "will look different" once one
-# is drawn in the document's own font, else "in a similar font". All of them, or so many of them,
-# each its own sentence, so the part that warns is marked as a whole, as Find's is.
 changes.one = "{count} change"
 changes.other = "{count} changes"
 changes_different.one = "{count} change will look different"
@@ -185,21 +119,16 @@ changes_some_different.one = "{count} of them will look different"
 changes_some_different.other = "{count} of them will look different"
 changes_some_similar.one = "{count} of them in a similar font"
 changes_some_similar.other = "{count} of them in a similar font"
-# The bar's count before any change: the places an edit won't match, as the count above says it.
 at_rest_different.one = "Edits in {count} place will look different"
 at_rest_different.other = "Edits in {count} places will look different"
 at_rest_similar.one = "Edits in {count} place will use a similar font"
 at_rest_similar.other = "Edits in {count} places will use a similar font"
-# The bar's count of the changes left long past the space after them, as a change's own note says it.
 changes_too_long.one = "{count} too long for its place"
 changes_too_long.other = "{count} too long for their places"
-# Heard as the words typed come to look identical, different or in a similar font, where the
-# font's warning isn't heard in full: muted, or none to give.
 typed_identical = "This edit will look identical."
 typed_different = "This edit will look different."
 typed_similar = "This edit will use a similar font."
 
-# Asked before the user edits text they redacted, all of it or some words: yes goes ahead, no keeps it.
 undo_redaction = "This text is redacted. Editing it undoes the redaction. Edit it anyway?"
 undo_redacted_words = "Part of this text is redacted. Editing it undoes the redaction. Edit it anyway?"
 # Said by the browser as a line is split at the caret, or joined there again, and where it can't be split
@@ -209,7 +138,6 @@ split_changed = "A line can only be split before or after the words you've chang
 split_cant_here = "There's nothing to split here."
 split_redacted = "A line with redacted words can't be split."
 
-# The ways out of an overflow: what each is called, and what it does.
 shrink_label = "Make it slightly smaller"
 shrink_detail = "Reduces the type size just enough to fit."
 condense_label = "Tighten the letters"
@@ -217,8 +145,7 @@ condense_detail = "Squeezes the spacing by a few percent, which isn't noticeable
 as_is_label = "Leave it long"
 as_is_detail = "Runs {delta_pt} pt past where the original ended."
 
-# A Problem's `detail`, shown to the user verbatim. Limits are placeholders so
-# the sentence can't drift from the number the server enforces.
+# Limits are placeholders so a sentence can't drift from the number the server enforces.
 not_a_pdf = "This isn't a PDF."
 not_sent_as_pdf = "Send the file as a PDF (Content-Type application/pdf)."
 too_large = "This file is over {mb} MB."
@@ -252,11 +179,8 @@ server_error = "Something went wrong on our side. Try again."
 server_full = "We can't take new files right now. Try again in a few minutes."
 no_workers = "We can't work on files right now. Try again in a few minutes."
 
-# What the command line says when the file it made can't be put where it was told.
 not_saved = "Couldn't save {path}: {why}."
 
-# Why the page can't show a deployment's terms file, said as the server starts and by
-# `squidpdf terms`, to whoever runs the server. `{line}` counts the file's lines from 1.
 terms_none_named = "No terms file is named: pass one, or set SQUIDPDF_TERMS to one."
 terms_missing = "There's no terms file at {path}: check the file SQUIDPDF_TERMS names."
 terms_folder = "{path} is a folder, not a terms file: name the file itself."
@@ -284,33 +208,23 @@ terms_entity = "{path}, line {line}: the terms page shows a code such as &amp; a
 terms_escape = "{path}, line {line}: the terms page shows a backslash as written, and breaks no line at one. Leave it out."
 terms_emphasis = "{path}, line {line}: the terms page can't show bold, italic, struck-through text or code past a paragraph's lead. Write the words plainly."
 
-# A notice on an upload that worked, but may not be what the user expected.
 no_text = "This PDF has no text we can edit. It may be a scan or a photo of the page."
 active_content_dropped = "This PDF had scripts, attached files or links that open other files. They're taken out, so the file you download has none."
 plain_xmp_dropped = "Some of this PDF's document properties couldn't be read, so the file you download leaves them out."
-# The file is signed, and any download from here is a new file.
 signed_file = "This PDF is signed. Any change breaks the signature, and so does downloading it from here: a PDF reader will say the file changed after it was signed."
-# Beside the field as the first edit of a signed file starts: what this edit does to the signature.
 edit_breaks_signature = "This PDF is signed, so this change breaks its signature."
 
-# Not sentences: what joins a list's items, the parts of one line (join_parts: a fit's, each no
-# sentence of its own), and whole sentences said at once (join_sentences).
 # A list whose placeholder has no join_<its name> here is joined as items.
-# Punctuation or a symbol in a list of characters, quoted so it reads as one: no “(” in this font.
 quoted = "“{char}”"
 join_chars = " or "
 join_letters = " "
 join_items = ", "
 join_parts = "; "
-# Whole sentences said at once, each ending in its own stop.
 join_sentences = " "
 
-# What sets a number's fraction apart: "3.1" in English, "3,1" in French.
 decimal_separator = "."
 
-# A character that draws nothing on its own, named so a person can tell which it is:
-# a space, an invisible mark, or an accent typed alone. The key is its code point,
-# char_u202f for U+202F. One not here is said by Unicode's name, lower case.
+# One not here is said by Unicode's name, lower case.
 char_u0009 = "tab"
 char_u0020 = "space"
 char_u00a0 = "no-break space"
@@ -345,14 +259,12 @@ char_u030c = "caron"
 char_u0327 = "cedilla"
 char_u0328 = "ogonek"
 
-# A letter that looks like another in many faces, the interface's among them: capital I
-# and lowercase l are one stroke, and O and 0 differ only by width. Named, so they read apart.
+# Named, as capital I and lowercase l, or O and 0, look alike in many faces.
 char_u0030 = "zero"
 char_u0049 = "capital I"
 char_u004f = "capital O"
 char_u006c = "lowercase l"
 
-# Signing in.
 not_an_email = "That isn't an email address a sign-in link could reach."
 link_expired = "This sign-in link has been used or has run out, or isn't whole. Ask for a new one."
 mail_not_sent = "The sign-in email couldn't be sent just now. Try again in a minute."
@@ -375,19 +287,15 @@ sign_in_letter = """Open this link to sign in to squid-pdf:
 {link}
 
 It works for {minutes} minutes. If you didn't ask for it, you can ignore this email."""
-# How many documents a browser opens, without an account, then with one.
 free_documents_used = "You've opened the documents you can without an account. Sign in to open more: an account is free, and opens {monthly} a month."
 monthly_documents_used = "Your account has opened all {monthly} of this month's documents. More open at the start of next month."
-# What `squidpdf invite` says.
 invited = "{email} is invited."
 invited_unlimited = "{email} is invited, and may use as many documents as they like."
 no_database = "SQUIDPDF_DATABASE names no database, so this server keeps no accounts."
 no_secret = "Nothing was done for {email}: run this beside the server, with its SQUIDPDF_SECRET, as the deploy/ scripts do."
-# What `squidpdf remove` says.
 removed = "{email} is removed and signed out everywhere. Their documents go when their hour runs out, as everyone's do."
 no_account = "{email} has no account here, so nothing was removed."
 still_paying = "{email} pays for no document limit, so nothing was removed: they'd be charged for an account that's gone. Cancel their subscription in Stripe, then remove them."
-# What `squidpdf billing` says above the account's ledger.
 billing_paid = "{email} has no document limit: their month is paid until {until}."
 billing_unpaid = "{email} has no paid month."
 billing_no_account = "{email} has no account here."

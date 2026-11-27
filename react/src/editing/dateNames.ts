@@ -1,26 +1,23 @@
-// Month and weekday names in every language a date is read in, worked out from Intl.DateTimeFormat, so no
-// table of names ships: which languages name a word, and a month or a weekday named again in one of them.
+// Worked out from Intl.DateTimeFormat, so no table of names ships.
 import { LEARN_BATCH, LEARN_SLICE_MS } from "./constants";
 
 export type NameWidth = "long" | "short";
 export type NameKind = "month" | "weekday";
 export type LetterCase = "as-the-language" | "upper" | "lower" | "title";
 
-/** One name in one language, as it's written inside a date, which some languages decline. */
 export interface DateName {
   readonly language: string;
   readonly kind: NameKind;
-  readonly index: number; // a month from 1, a weekday from 0, Sunday
+  readonly index: number;
   readonly width: NameWidth;
   readonly name: string;
 }
 
-/** How the page wrote a month or a weekday by name: in which language, how long, in what case, and with its stop. */
 export interface NameWord {
   readonly language: string;
   readonly width: NameWidth;
   readonly letterCase: LetterCase;
-  readonly stopLeftOff: boolean; // the page leaves off the full stop the language ends it with: "Sa" for "Sa."
+  readonly stopLeftOff: boolean;
 }
 
 // Those at CLDR's "modern" level in coverageLevels.json, CLDR 49: a thinly covered one names stray words months.
@@ -36,20 +33,16 @@ const DATE_LANGUAGES = [
   "sw", "ta", "te", "th", "tk", "tr", "uk", "ur", "uz", "vi", "yo", "yue",
   "yue-Hans", "zh", "zh-Hant", "zu",
 ];
-// The world's, Europe's and Latin America's forms of a language, where Intl has them: en-001 writes "14 Sept 2026".
 const REGIONS = ["001", "150", "419"];
 const WIDTHS: readonly NameWidth[] = ["long", "short"];
 const KINDS: readonly NameKind[] = ["month", "weekday"];
-// A Sunday, the first of the week as Intl numbers its days.
 const A_SUNDAY = Date.UTC(2000, 0, 2);
 const DAY_MS = 86_400_000;
 
-/** Every name of the languages learnt so far, by the name in lower case, in the order they were learnt. */
 const byName = new Map<string, DateName[]>();
 const namesIn = new Map<string, readonly DateName[]>();
 let learning: Promise<void> | undefined;
 
-/** Every language a date is read in that Intl has dates for, learnt in slices between other work, so nothing waits. */
 export function learnDateLanguages(): Promise<void> {
   learning ??= learnInSlices();
   return learning;
@@ -63,10 +56,6 @@ async function learnInSlices(): Promise<void> {
   } while (learntASlice(steps));
 }
 
-/**
- * Learn for one slice's time, stopping before a step as long as the longest so far would run past it: false once
- * there's nothing left to learn.
- */
 function learntASlice(steps: Generator<void>): boolean {
   const start = performance.now();
   let longest = 0;
@@ -79,10 +68,7 @@ function learntASlice(steps: Generator<void>): boolean {
   return true;
 }
 
-/**
- * Learning the date languages, a step at a time, each well inside a slice: asking Intl which of a few it has,
- * then each one's forms, a format at a time. Why so small: one ask of Intl can't be split, nor one format.
- */
+/** Steps this small since one ask of Intl can't be split, nor one format. */
 function* learningSteps(): Generator<void> {
   for (let at = 0; at < DATE_LANGUAGES.length; at += LEARN_BATCH) {
     const languages = Intl.DateTimeFormat.supportedLocalesOf(DATE_LANGUAGES.slice(at, at + LEARN_BATCH));
@@ -91,7 +77,6 @@ function* learningSteps(): Generator<void> {
   }
 }
 
-/** Learning the names of `language` and of its regions' forms that Intl has, a step a form and a format. */
 function* learningOf(language: string): Generator<void> {
   for (const form of [language, ...REGIONS.map((region) => `${language}-${region}`)]) {
     const own = form === language || isOwnForm(form);
@@ -100,7 +85,6 @@ function* learningOf(language: string): Generator<void> {
   }
 }
 
-/** Learning the names in `language`, a format at a time, then indexing them by name. */
 function* learningNamesIn(language: string): Generator<void> {
   const named: DateName[] = [];
   for (const width of WIDTHS) {
@@ -118,29 +102,24 @@ function* learningNamesIn(language: string): Generator<void> {
   }
 }
 
-/** Whether Intl has dates of `locale`'s own, rather than its language's. */
 function isOwnForm(locale: string): boolean {
   try {
     return new Intl.DateTimeFormat(locale).resolvedOptions().locale === locale;
   } catch {
-    // A region Intl can't pair with this language's script.
     return false;
   }
 }
 
-/** The names `word` is, of `kind`, in every language learnt so far, in any case, or with a full stop it leaves off. */
 export function namesOf(word: string, kind: NameKind): readonly DateName[] {
   const key = word.normalize("NFC").toLowerCase();
   const stopped = key.endsWith(".") ? [] : (byName.get(`${key}.`) ?? []);
   return [...(byName.get(key) ?? []), ...stopped].filter((name) => name.kind === kind);
 }
 
-/** Whether `word` is the name of a `kind` in some language learnt so far. */
 export function isNameOf(word: string, kind: NameKind): boolean {
   return namesOf(word, kind).length > 0;
 }
 
-/** The twelve months' names in `language`, then its seven weekdays', long then short, as each is written in a date. */
 function namesInLanguage(language: string): readonly DateName[] {
   const cached = namesIn.get(language);
   if (cached !== undefined) return cached;
@@ -149,12 +128,10 @@ function namesInLanguage(language: string): readonly DateName[] {
   return named;
 }
 
-/** The names `namesInDates` finds, where `language` writes them in letters: some write their months as numbers. */
 function namedInDates(language: string, which: { kind: NameKind; width: NameWidth }): DateName[] {
   return namesInDates(language, which).filter((name) => /\p{L}/u.test(name.name));
 }
 
-/** Every month's or weekday's name in `language`, `width` long, as a date writes it: one format, asked twelve or seven times. */
 function namesInDates(language: string, { kind, width }: { kind: NameKind; width: NameWidth }): DateName[] {
   const options: Intl.DateTimeFormatOptions = { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" };
   const format = new Intl.DateTimeFormat(language, { ...options, [kind]: width });
@@ -166,7 +143,6 @@ function namesInDates(language: string, { kind, width }: { kind: NameKind; width
   });
 }
 
-/** The words `language` writes between a date's parts with its months `width` long: "de" in "14 de marzo de 2026". */
 export function wordsBetweenIn(language: string, width: NameWidth): readonly string[] {
   const format = new Intl.DateTimeFormat(language, { day: "numeric", month: width, year: "numeric", timeZone: "UTC" });
   return format
@@ -175,7 +151,6 @@ export function wordsBetweenIn(language: string, width: NameWidth): readonly str
     .flatMap((part) => part.value.toLowerCase().match(/\p{L}+/gu) ?? []);
 }
 
-/** The `kind` numbered `index` named as `word` says, the page's way. */
 export function nameFor(kind: NameKind, index: number, { language, width, letterCase, stopLeftOff }: NameWord): string {
   const own = namesInLanguage(language).find(
     (name) => name.kind === kind && name.index === index && name.width === width,
@@ -184,7 +159,6 @@ export function nameFor(kind: NameKind, index: number, { language, width, letter
   return inCase(stopLeftOff ? name.replace(/\.$/, "") : name, { letterCase, language });
 }
 
-/** `name` in `letterCase`, as `language` sets the case of its letters. */
 export function inCase(name: string, { letterCase, language }: { letterCase: LetterCase; language: string }): string {
   switch (letterCase) {
     case "as-the-language":
@@ -200,7 +174,6 @@ export function inCase(name: string, { letterCase, language }: { letterCase: Let
   }
 }
 
-/** How `written` sets the case of `name`, the language's own spelling of it. */
 export function caseOf(written: string, name: string): LetterCase {
   if (written === name) return "as-the-language";
   if (written === written.toUpperCase()) return "upper";

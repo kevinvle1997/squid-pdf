@@ -1,5 +1,3 @@
-"""What the browser gets for a document: the analysis, in the reader's words."""
-
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -30,22 +28,18 @@ from squidpdf.documents.types import (
     Sentences,
 )
 
-_NO_SPANS = b"[]"  # the spans kept for a file with no text, as a scan
+_NO_SPANS = b"[]"
 
 
 def document_json(
     doc_id: str, *, expires_at: float, kept: KeptAnalysis, language: str
 ) -> bytes:
-    """The document as the browser gets it, as JSON: the kept analysis, said in `language`.
-
-    The spans go out exactly as kept, never read: on a long document they're nearly all of it,
-    and reading and rewriting them held up the server.
-    """
+    """The spans go out as kept, never read: on a long document they're nearly all of it."""
     facts: AnalysisFacts = orjson.loads(kept.facts)
     body: Document = {
         "build": facts["build"],
         "pages": facts["pages"],
-        "spans": [],  # sent as kept, below
+        "spans": [],
         "fonts": [_font_info(font, language) for font in facts["fonts"]],
         "lines": facts["lines"],
         "signed": facts["signed"],
@@ -65,22 +59,17 @@ def document_json(
 
 
 def reply_digest(language: str) -> str:
-    """A digest of the words, fit rules and shape of a document's reply.
-
-    Worked out on every read: a deploy changing any of them, with no new build, is a new body.
-    """
+    """A deploy changing any of them, with no new build, is a new body."""
     rules = orjson.dumps([constants.REPLY_VERSION, _fit_rules()])
     catalog = orjson.dumps([language, words.catalog(language)])
     return xxhash.xxh3_64_hexdigest(rules + catalog)
 
 
 def time_of(epoch_seconds: float) -> str:
-    """A moment as the browser reads it: ISO 8601, in UTC."""
     return datetime.fromtimestamp(epoch_seconds, UTC).isoformat()
 
 
 def _fit_rules() -> FitRules:
-    """The thresholds the browser runs the fit check with: the server's own."""
     return {
         "tolerance_pt": TOLERANCE_PT,
         "room_slack_pt": ROOM_SLACK_PT,
@@ -90,7 +79,6 @@ def _fit_rules() -> FitRules:
 
 
 def _font_info(font: FontFacts, language: str) -> FontInfo:
-    """A font as the browser gets it: why its own copy can't be used, in `language`."""
     why = None if font["why"] is None else Message.from_info(font["why"])
     return {
         "font_object": font["font_object"],
@@ -108,7 +96,6 @@ def _font_info(font: FontFacts, language: str) -> FontInfo:
 
 
 def _sentences_in(language: str) -> Sentences:
-    """The sentences the browser says about the document, in `language`, unfilled."""
     options = {
         name: {
             "label": words.sentence(keys.label, language),
@@ -184,7 +171,6 @@ def _sentences_in(language: str) -> Sentences:
         "join_parts": words.sentence("join_parts", language),
         "join_sentences": words.sentence("join_sentences", language),
         "options": options,
-        # Every way a span can be approximate: the sentences behind a span's `why` code.
         "approximate": {
             reason: words.sentence(reason, language) for reason in APPROXIMATE_REASONS
         },
@@ -193,7 +179,6 @@ def _sentences_in(language: str) -> Sentences:
 
 
 def _counted_in(key: str, language: str) -> CountedSentence:
-    """The sentence under `key`, said with a count, in each form, in `language`."""
     forms = words.forms(key, language)
     return {"one": forms["one"], "other": forms["other"]}
 
@@ -206,18 +191,13 @@ def _notices_in(
     signed: bool,
     language: str,
 ) -> list[DocumentNoticeInfo]:
-    """What may not be what the user expected of this document, in `language`."""
     said: list[Message] = []
-    # A scan has no text layer: say so, rather than show a page nothing on can be edited.
     if not has_text:
         said.append(Message("no_text"))
-    # Taken out when it came in: the file downloaded lacks what the user's had.
     if active_content_dropped:
         said.append(Message("active_content_dropped"))
-    # Taken out when it came in too: the file downloaded lacks some of its properties.
     if plain_xmp_dropped:
         said.append(Message("plain_xmp_dropped"))
-    # Any download from here is a new file, so no signature in it holds: said before the edit.
     if signed:
         said.append(Message("signed_file"))
     return [{"type": message.key, **words.said(message, language)} for message in said]

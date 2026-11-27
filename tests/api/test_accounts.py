@@ -1,5 +1,3 @@
-"""Signing in by a link sent by email; on a server that keeps no accounts, no signing in."""
-
 from __future__ import annotations
 
 import json
@@ -34,21 +32,14 @@ _WEBHOOK_TOKEN = b"the token Brevo's webhook sends, long enough"
 
 @dataclass(slots=True)
 class _NotedMail:
-    """A mail server that only notes each letter it's given."""
-
     letters: list[Letter] = field(default_factory=list)
 
     def send(self, letter: Letter) -> None:
-        """Note the letter."""
         self.letters.append(letter)
 
 
 class _RightAway(Executor):
-    """Mail's threads as these tests run them: at once, in the caller's thread.
-
-    An invite-only link goes out after its reply; run at once, its letter is noted before
-    the test reads it. The test of the wait itself has threads of its own.
-    """
+    """An invite-only link goes out after its reply; run at once, it's noted first."""
 
     def submit[T](self, fn: Callable[..., T], /, *args: object, **kwargs: object) -> Future[T]:
         done: Future[T] = Future()
@@ -67,7 +58,6 @@ def _accounts(
     allowance: Allowance | None = None,
     mail_threads: Executor | None = None,
 ) -> Accounts:
-    """Accounts kept in a fresh table, their letters sent through `mailer`, bounces heard."""
     users = open_users(tmp_path / "users.sqlite3")
     return Accounts(
         users,
@@ -90,10 +80,6 @@ def _keeping_accounts(
     invite_only: bool,
     allowance: Allowance | None = None,
 ) -> _NotedMail:
-    """The app keeping accounts in a fresh table, its letters noted rather than sent.
-
-    With an allowance, each upload is metered against it, as the app does when it starts.
-    """
     noted = _NotedMail()
     accounts = _accounts(tmp_path, noted, invite_only=invite_only, allowance=allowance)
     monkeypatch.setattr(app.state, "accounts", accounts)
@@ -104,18 +90,15 @@ def _keeping_accounts(
 
 @pytest.fixture
 def mail(app: FastAPI, tmp_path, monkeypatch) -> _NotedMail:
-    """The app keeping accounts anyone may sign in to, its letters noted here."""
     return _keeping_accounts(app, tmp_path, monkeypatch, invite_only=False)
 
 
 @pytest.fixture
 def invited_mail(app: FastAPI, tmp_path, monkeypatch) -> _NotedMail:
-    """The app open to invited people only, its letters noted here."""
     return _keeping_accounts(app, tmp_path, monkeypatch, invite_only=True)
 
 
 def _token_in(letter: Letter) -> str:
-    """The token the link in `letter` carries, as the browser reads it from the link."""
     link = next(line for line in letter.body.splitlines() if line.startswith(_SITE))
     assert_true(
         link.startswith(f"{_SITE}/sign-in#"), f"the link opens the sign-in page: {link}"
@@ -165,7 +148,6 @@ def test_a_link_past_its_time_altered_or_not_a_link_signs_no_one_in(
 ):
     reader = browser()
     past = signed(_EMAIL, purpose="link", until=1, secret=_SECRET)
-    # A signed-in cookie is signed with the same secret, for another purpose.
     cookie = signed(_EMAIL, purpose="signed_in", until=2**40, secret=_SECRET)
     reader.post("/api/account/link", json={"email": _EMAIL})
     whole = _token_in(mail.letters[0])
@@ -174,7 +156,6 @@ def test_a_link_past_its_time_altered_or_not_a_link_signs_no_one_in(
         refused = reader.post("/api/account/sign-in", json={"token": token})
         assert_problem(refused, "link_expired", 400)
     assert_equal(reader.get("/api/account").json()["signed_in"], None, "nobody signed in")
-    # A cookie anyone could send, a letter past ASCII in it: read as no one, not a server error.
     reader.cookies.set("__Host-signed-in", "a.\u00e9", domain="testserver")
     assert_equal(reader.get("/api/account").json()["signed_in"], None, "a forged cookie")
 
@@ -182,9 +163,7 @@ def test_a_link_past_its_time_altered_or_not_a_link_signs_no_one_in(
 def test_a_link_signs_in_once_and_uses_up_the_links_sent_before_it(
     mail, browser: Callable[[], TestClient]
 ):
-    """A link left in an inbox, or seen by a mail scanner, signs no second browser in."""
     reader, other = browser(), browser()
-    # Sent before the one the reader uses, as a first attempt whose mail was slow.
     earlier = signed(_EMAIL, purpose="link", until=int(time.time()) + 100, secret=_SECRET)
     reader.post("/api/account/link", json={"email": _EMAIL})
     token = _token_in(mail.letters[0])
@@ -205,7 +184,6 @@ def test_what_cannot_be_an_email_address_is_refused_before_anything_is_sent(
     mail, browser: Callable[[], TestClient]
 ):
     reader = browser()
-    # A comma or a bracket makes a To: header two addresses, or a name and an address.
     several = (
         "a@example.com,b@example.com",
         "a@example.com;b@example.com",
@@ -251,7 +229,6 @@ def test_a_link_sent_through_brevo_goes_as_its_api_asks(
     asked: list[httpx.Request] = []
 
     def brevo(request: httpx.Request) -> httpx.Response:
-        """Brevo, noting each request and sending the letter."""
         asked.append(request)
         return httpx.Response(201, json={"messageId": "<1@smtp-relay.mailin.fr>"})
 
@@ -284,10 +261,7 @@ def test_a_link_sent_through_brevo_goes_as_its_api_asks(
 def test_brevo_refusing_a_link_says_whether_to_wait(
     app: FastAPI, tmp_path, monkeypatch, browser: Callable[[], TestClient], answer, said
 ):
-    """Past its sending limit, waiting a minute won't help, so the sentence says so."""
-
     def brevo(request: httpx.Request) -> httpx.Response:
-        """Brevo, answering `answer`, or failing with it."""
         if isinstance(answer, Exception):
             raise answer
         return answer
@@ -302,10 +276,7 @@ def test_brevo_refusing_a_link_says_whether_to_wait(
 def test_invite_only_a_refused_link_is_said_as_any_address_is(
     app: FastAPI, tmp_path, monkeypatch, browser: Callable[[], TestClient], caplog
 ):
-    """Refused only for the invited, it would tell anyone who is invited."""
-
     def brevo(request: httpx.Request) -> httpx.Response:
-        """Brevo, out of credits to send with."""
         return httpx.Response(402, json={"code": "not_enough_credits"})
 
     mailer = brevo_mailer(
@@ -328,7 +299,6 @@ def test_invite_only_a_refused_link_is_said_as_any_address_is(
 
 
 def test_a_brevo_key_sends_without_smtp_but_never_beside_it(tmp_path, monkeypatch):
-    """Said as the server starts: which way sends, and from what, is the deployer's to say."""
     for name, value in {
         "SQUIDPDF_DATABASE": str(tmp_path / "users.sqlite3"),
         "SQUIDPDF_SECRET": _SECRET.decode(),
@@ -382,10 +352,6 @@ def test_a_hard_bounce_stops_links_to_the_address_until_it_is_invited_again(
 def test_where_anyone_may_sign_in_an_address_with_no_account_that_bounced_gets_no_more_links(
     mail, browser: Callable[[], TestClient], tmp_path
 ):
-    """A mistyped address never signs in, so it never has an account to mark: it's kept apart.
-
-    Kept as a keyed digest, so the file never holds the address of someone who isn't in.
-    """
     reader, brevo = browser(), browser()
     stranger = "mistyped@example.com"
     reader.post("/api/account/link", json={"email": stranger})
@@ -404,7 +370,6 @@ def test_where_anyone_may_sign_in_an_address_with_no_account_that_bounced_gets_n
 def test_an_account_taken_off_keeps_its_bounce_so_its_address_gets_no_more_links(
     mail, app: FastAPI, browser: Callable[[], TestClient]
 ):
-    """Where anyone may sign in, taking it off would otherwise send its address mail again."""
     reader, brevo = browser(), browser()
     _sign_in(reader, mail)
     bearer = {"Authorization": f"Bearer {_WEBHOOK_TOKEN.decode()}"}
@@ -417,7 +382,6 @@ def test_an_account_taken_off_keeps_its_bounce_so_its_address_gets_no_more_links
 
 
 def test_a_table_made_before_bounces_used_links_and_billing_were_kept_opens_with_none(tmp_path):
-    """An account from before the columns added since reads as it had none of them."""
     path = tmp_path / "users.sqlite3"
     with sqlite3.connect(path) as old:
         old.execute(
@@ -432,7 +396,7 @@ def test_a_table_made_before_bounces_used_links_and_billing_were_kept_opens_with
     assert_equal(None if kept is None else kept.bounced_at, None, "never bounced")
     assert_equal(None if kept is None else kept.paid_until, None, "never paid")
     assert_true(open_users(path).spend_link(_EMAIL, until=1), "its first link is unused")
-    open_users(path)  # opened again: the columns it added are there now
+    open_users(path)
 
 
 def test_a_server_with_no_database_offers_no_accounts(browser: Callable[[], TestClient]):
@@ -447,10 +411,9 @@ def test_a_server_with_no_database_offers_no_accounts(browser: Callable[[], Test
 
 
 def test_an_address_past_its_links_a_minute_is_told_to_wait(tmp_path, own_app):
-    """Its own app: every other test asks from the one test address."""
     noted = _NotedMail()
     own_app.app.state.accounts = _accounts(tmp_path, noted)
-    with own_app.started(LINKS_PER_MINUTE=1) as server:  # its start makes the counts
+    with own_app.started(LINKS_PER_MINUTE=1) as server:
         reader = browser_on(server, client=(ONE_ADDRESS, 1))
         neighbour = browser_on(server, client=(OTHER_ADDRESS, 1))
         assert_equal(
@@ -467,21 +430,18 @@ def test_an_address_past_its_links_a_minute_is_told_to_wait(tmp_path, own_app):
 def test_an_inbox_sent_its_links_while_one_works_is_told_to_wait_from_any_address(
     tmp_path, own_app
 ):
-    """Its own app: every other test asks for the one test address."""
     noted = _NotedMail()
     own_app.app.state.accounts = _accounts(tmp_path, noted)
-    with own_app.started(LINKS_PER_INBOX=1) as server:  # its start makes the counts
+    with own_app.started(LINKS_PER_INBOX=1) as server:
         reader = browser_on(server, client=(ONE_ADDRESS, 1))
         neighbour = browser_on(server, client=(OTHER_ADDRESS, 1))
         assert_equal(
             reader.post("/api/account/link", json={"email": _EMAIL}).status_code, 202, "1"
         )
-        # The same inbox, however the address is typed, from another address.
         again = neighbour.post("/api/account/link", json={"email": _EMAIL.upper()})
         assert_problem(again, "rate_limited", 429)
         other_inbox = neighbour.post("/api/account/link", json={"email": "other@example.com"})
         assert_equal(other_inbox.status_code, 202, "another inbox")
-        # What can't be an address is refused as one, and counts nothing.
         assert_problem(
             neighbour.post("/api/account/link", json={"email": "nobody"}), "not_an_email", 422
         )
@@ -495,7 +455,6 @@ def test_an_inbox_sent_its_links_while_one_works_is_told_to_wait_from_any_addres
 def test_a_database_named_without_what_accounts_need_stops_the_start(
     tmp_path, monkeypatch, missing
 ):
-    """Said as the server starts, not on the first sign-in, when someone is waiting."""
     whole = {
         "SQUIDPDF_DATABASE": str(tmp_path / "users.sqlite3"),
         "SQUIDPDF_SECRET": _SECRET.decode(),
@@ -527,7 +486,6 @@ def test_invite_only_a_stranger_opens_nothing_until_invited_and_signed_in(
     assert_equal(state["invite_only"], True, "the landing knows to ask for a sign-in")
     assert_problem(upload(reader, pdf_bytes), "invited_only", 401)
     assert_problem(reader.get("/api/fonts"), "invited_only", 401)
-    # What the landing needs before anyone signs in.
     for open_path in ("/api/health", "/api/terms", "/api/account"):
         assert_equal(reader.get(open_path).status_code, 200, open_path)
     app.state.accounts.users.invite(_EMAIL, now=0, is_unlimited=False, secret=_SECRET)
@@ -541,7 +499,6 @@ def test_invite_only_a_stranger_opens_nothing_until_invited_and_signed_in(
 def test_invite_only_an_address_no_one_invited_gets_no_link_and_hears_what_the_invited_do(
     invited_mail, app: FastAPI, browser: Callable[[], TestClient]
 ):
-    """Whether someone is invited is theirs and the server's to know, no one else's."""
     app.state.accounts.users.invite(_EMAIL, now=0, is_unlimited=False, secret=_SECRET)
     stranger = browser().post("/api/account/link", json={"email": "stranger@example.com"})
     invited = browser().post("/api/account/link", json={"email": _EMAIL})
@@ -553,8 +510,6 @@ def test_invite_only_an_address_no_one_invited_gets_no_link_and_hears_what_the_i
 
 @dataclass(slots=True)
 class _HeldMail:
-    """A mail server that takes each letter only once `open` is set: a slow one, held."""
-
     open: threading.Event = field(default_factory=threading.Event)
     letters: list[Letter] = field(default_factory=list)
 
@@ -566,7 +521,6 @@ class _HeldMail:
 def test_invite_only_a_link_is_answered_before_its_mail_goes_so_the_wait_tells_nothing(
     app: FastAPI, tmp_path, monkeypatch, browser: Callable[[], TestClient]
 ):
-    """Waited for, a slow mail server would tell, by the time taken, who is invited."""
     held = _HeldMail()
     with ThreadPoolExecutor(1) as mail_threads:
         accounts = _accounts(tmp_path, held, invite_only=True, mail_threads=mail_threads)
@@ -582,7 +536,6 @@ def test_invite_only_a_link_is_answered_before_its_mail_goes_so_the_wait_tells_n
 def test_invite_only_a_link_for_an_address_no_one_invited_signs_no_one_in(
     invited_mail, browser: Callable[[], TestClient]
 ):
-    """As a link sent before the server was invite-only would be."""
     token = signed("stranger@example.com", purpose="link", until=2**40, secret=_SECRET)
     refused = browser().post("/api/account/sign-in", json={"token": token})
     assert_problem(refused, "not_invited", 403)
@@ -590,33 +543,26 @@ def test_invite_only_a_link_for_an_address_no_one_invited_signs_no_one_in(
 
 @pytest.fixture
 def metered_mail(app: FastAPI, tmp_path, monkeypatch) -> _NotedMail:
-    """The app opening two documents without an account and three a month with one."""
     allowance = Allowance(free=2, monthly=3)
     return _keeping_accounts(app, tmp_path, monkeypatch, invite_only=False, allowance=allowance)
 
 
 def _documents_left(reader: TestClient) -> dict[str, int] | None:
-    """What the server tells `reader` of the documents its account has left this month."""
     return reader.get("/api/account").json()["signed_in"]["documents_left"]
 
 
 def _files(pdf_bytes: bytes, count: int) -> list[bytes]:
-    """`count` different files that each open: the sample, a comment after its end apiece."""
     return [pdf_bytes + f"\n% file {number}\n".encode() for number in range(count)]
 
 
 def _sign_in(reader: TestClient, mail: _NotedMail, email: str = _EMAIL) -> None:
-    """Sign `reader` in as `email`, by the link the server mails there."""
     reader.post("/api/account/link", json={"email": email})
     signed_in = reader.post("/api/account/sign-in", json={"token": _token_in(mail.letters[-1])})
     assert_equal(signed_in.status_code, 200, "signed in")
 
 
 def _sign_in_a_moment_later(reader: TestClient, email: str = _EMAIL) -> None:
-    """Sign `reader` in as `email` by a link asked for a moment after another browser's.
-
-    Asked for in the same second, it would be the very same link, and used already.
-    """
+    """Asked for in the same second, it would be the very same link, and used already."""
     later = signed(email, purpose="link", until=int(time.time()) + 1000, secret=_SECRET)
     signed_in = reader.post("/api/account/sign-in", json={"token": later})
     assert_equal(signed_in.status_code, 200, "signed in")
@@ -628,7 +574,6 @@ def test_with_no_account_a_browser_opens_its_free_documents_once_each_then_must_
     reader = browser()
     first, second, third = _files(pdf_bytes, 3)
     for opened in (first, first, second, first):
-        # One opened again, as a browser does once the server's hour is up, isn't counted again.
         assert_equal(upload(reader, opened).status_code, 201, "opened")
     refused = upload(reader, third)
     assert_problem(refused, "free_documents_used", 403)
@@ -649,7 +594,6 @@ def test_a_file_that_doesnt_open_costs_none_of_the_allowance(
 def test_signed_in_an_account_opens_its_months_documents_starting_fresh(
     metered_mail, browser: Callable[[], TestClient], pdf_bytes
 ):
-    """Signing up is rewarded: what the browser opened without an account isn't carried over."""
     reader = browser()
     files = _files(pdf_bytes, 6)
     for opened in files[:2]:
@@ -661,7 +605,6 @@ def test_signed_in_an_account_opens_its_months_documents_starting_fresh(
     assert_equal(upload(reader, files[0]).status_code, 201, "one counted, opened again")
     assert_problem(upload(reader, files[3]), "monthly_documents_used", 403)
     assert_equal(_documents_left(reader), {"left": 0, "monthly": 3}, "said, once used")
-    # The same account in another browser has used the same month.
     elsewhere = browser()
     _sign_in_a_moment_later(elsewhere)
     assert_problem(upload(elsewhere, files[4]), "monthly_documents_used", 403)
@@ -679,7 +622,6 @@ def test_an_unlimited_friend_opens_as_many_as_they_like(
 
 
 def test_a_months_count_starts_afresh_in_the_next(tmp_path):
-    """The API can't wait a month, so the table is asked directly."""
     users = open_users(tmp_path / "users.sqlite3")
     user = users.joined(_EMAIL, now=0)
     users.count(user.id, "a", month="2026-10", limit=None)
@@ -691,7 +633,6 @@ def test_a_months_count_starts_afresh_in_the_next(tmp_path):
 
 
 def test_the_count_refuses_a_new_file_past_the_limit_so_two_at_once_cannot_both_pass(tmp_path):
-    """The API can't send two uploads at once without faking it, so the table is asked."""
     users = open_users(tmp_path / "users.sqlite3")
     user = users.joined(_EMAIL, now=0)
     users.count(user.id, "a", month="2026-11", limit=2)
@@ -726,7 +667,6 @@ def test_the_count_refuses_a_new_file_past_the_limit_so_two_at_once_cannot_both_
 def test_an_allowance_set_half_or_without_accounts_stops_the_start(
     tmp_path, monkeypatch, named, refused_for
 ):
-    """Metering asks for an account, so a server keeping none can't meter: said as it starts."""
     accounts_need = {
         "SQUIDPDF_SECRET": _SECRET.decode(),
         "SQUIDPDF_SITE": _SITE,
@@ -771,7 +711,6 @@ def test_invite_only_a_removed_friend_is_let_go_from_every_browser_at_once(
 def test_a_browser_signed_in_to_a_removed_account_counts_as_one_without_any(
     metered_mail, app: FastAPI, browser: Callable[[], TestClient], pdf_bytes
 ):
-    """Never a server error: the meter finds no account, so the browser's own count applies."""
     reader = browser()
     _sign_in(reader, metered_mail)
     app.state.accounts.users.remove(_EMAIL, now=0, secret=_SECRET)
@@ -784,10 +723,6 @@ def test_a_browser_signed_in_to_a_removed_account_counts_as_one_without_any(
 def test_an_account_removed_while_its_upload_is_under_way_has_nothing_counted_and_no_error(
     tmp_path,
 ):
-    """Its request read the account before the removal: what follows finds no row, and goes on.
-
-    The table is asked directly: the API can't stop an upload half way without faking it.
-    """
     users = open_users(tmp_path / "users.sqlite3")
     user = users.joined(_EMAIL, now=0)
     users.count(user.id, "a", month="2026-11", limit=None)
@@ -798,7 +733,6 @@ def test_an_account_removed_while_its_upload_is_under_way_has_nothing_counted_an
 
 
 def test_a_removed_address_is_gone_from_the_file_not_only_the_table(tmp_path):
-    """A deletion leaves its bytes in the file's free space unless they're overwritten."""
     database = tmp_path / "users.sqlite3"
     users = open_users(database)
     users.invite("secret-person@example.com", now=0, is_unlimited=False, secret=_SECRET)

@@ -1,13 +1,12 @@
 import { ToggleButton } from "react-aria-components";
 import styles from "./EyeToggle.module.css";
 
-/** A toggle drawn as an eye: open while what `label` names is shown, struck through while it isn't. */
 export function EyeToggle({
   label,
   isSelected,
   onChange,
 }: {
-  label: string; // what it shows, for a screen reader: the eye alone says nothing
+  label: string;
   isSelected: boolean;
   onChange: (selected: boolean) => void;
 }) {

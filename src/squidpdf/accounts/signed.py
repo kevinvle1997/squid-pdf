@@ -1,8 +1,6 @@
-"""A value signed with the server's secret, for a purpose and until a time, then checked.
+"""Nothing is stored, so the signature is the only proof.
 
-What a sign-in link and the signed-in cookie carry: nothing is stored, so the signature
-is the only proof the server wrote it. The purpose is signed too, so one kind is never
-taken for the other.
+The purpose is signed too, so one kind is never taken for the other.
 """
 
 from __future__ import annotations
@@ -15,28 +13,22 @@ from typing import Literal
 
 import orjson
 
-# What a value is signed for: a link that signs someone in, the cookie that says they are, the
-# cookie listing the files a browser opened without an account, or an address that bounced.
 _Purpose = Literal["link", "signed_in", "counted", "bounced"]
 _SEPARATOR = "."
 
 
 @dataclass(frozen=True, slots=True)
 class Signed:
-    """What a token was signed with: its value, and until when it holds (Unix seconds)."""
-
     value: str
     until: int
 
 
 def signed(value: str, *, purpose: _Purpose, until: int, secret: bytes) -> str:
-    """`value`, good for `purpose` until `until` (Unix seconds), as text safe in a URL."""
     payload = _encoded(orjson.dumps({"value": value, "until": until}))
     return f"{payload}{_SEPARATOR}{_signature(payload, purpose=purpose, secret=secret)}"
 
 
 def read_signed(token: str, *, purpose: _Purpose, now: int, secret: bytes) -> Signed | None:
-    """What `token` was signed with for `purpose`; None if past, altered or not ours."""
     payload, _, signature = token.partition(_SEPARATOR)
     expected = _signature(payload, purpose=purpose, secret=secret)
     # As bytes: compare_digest raises, not answers, for text with a letter past ASCII.
@@ -44,25 +36,21 @@ def read_signed(token: str, *, purpose: _Purpose, now: int, secret: bytes) -> Si
         return None
     try:
         read = orjson.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
-    except ValueError:  # raised for bytes we signed but can't read: an older shape
+    except ValueError:
         return None
-    # Its time is past.
     if read["until"] <= now:
         return None
     return Signed(read["value"], read["until"])
 
 
 def digest_of(value: str, *, purpose: _Purpose, secret: bytes) -> str:
-    """`value` as only `secret` makes it for `purpose`: the same each time, never read back."""
     return _signature(value, purpose=purpose, secret=secret)
 
 
 def _signature(payload: str, *, purpose: _Purpose, secret: bytes) -> str:
-    """`payload`'s HMAC for `purpose`, as text safe in a URL."""
     signing = f"{purpose}{_SEPARATOR}{payload}".encode()
     return _encoded(hmac.digest(secret, signing, hashlib.sha256))
 
 
 def _encoded(data: bytes) -> str:
-    """`data` as URL-safe base64, its padding dropped."""
     return base64.urlsafe_b64encode(data).rstrip(b"=").decode()

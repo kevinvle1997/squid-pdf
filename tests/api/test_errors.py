@@ -1,5 +1,3 @@
-"""Every failure is Problem Details, with a sentence a person can read."""
-
 from __future__ import annotations
 
 import logging
@@ -41,7 +39,6 @@ def test_a_bad_request_is_one_plain_line_not_a_list(browser, pdf_bytes):
 
 
 def test_a_server_error_logs_its_debug_and_never_sends_it(browser, caplog):
-    """A server error's debug can name a file on the server, so only the log gets it."""
     with caplog.at_level(logging.WARNING, logger="squidpdf.api"):
         response = browser().get("/api/crash-naming-a-path")
     assert_problem(response, "server_error", 500)
@@ -53,27 +50,20 @@ def test_a_server_error_logs_its_debug_and_never_sends_it(browser, caplog):
 
 
 def _every(cls: type[Problem]) -> list[type[Problem]]:
-    """`cls` and every subclass under it, however deep."""
     return [cls, *(sub for child in cls.__subclasses__() for sub in _every(child))]
 
 
 def _ours() -> list[type[Problem]]:
-    """Every Problem the app defines: not a test's own, or a library's."""
     # `create_app`'s module imports every feature, so every Problem subclass is defined by now.
     return [cls for cls in _every(Problem) if cls.__module__.startswith("squidpdf.")]
 
 
 def _spec() -> dict:
-    """The OpenAPI the browser's types are written from.
-
-    A fresh app, not the fixture's: that one has a test-only route.
-    """
+    """A fresh app, not the fixture's: that one has a test-only route."""
     return TestClient(create_app(), base_url=BASE_URL).get("/api/openapi.json").json()
 
 
 def test_every_problem_has_its_own_wire_type_and_an_english_sentence():
-    """The browser branches on the type; one with no sentence fails in the error handler."""
-    # The same failure, as far as the browser knows.
     shared = {Gone: NotFound, ServerError: Problem}
     seen: dict[str, type[Problem]] = {}
     for cls in _ours():
@@ -91,7 +81,6 @@ def test_every_problem_type_is_in_the_openapi_so_the_browser_can_branch_on_it():
 
 
 def test_every_route_says_it_can_answer_with_a_problem():
-    # The browser's types come from the OpenAPI, so a Problem must be in it.
     spec = _spec()
     problem = spec["components"]["schemas"]["ProblemInfo"]
     assert_equal(

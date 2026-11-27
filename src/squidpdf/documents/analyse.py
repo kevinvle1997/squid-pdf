@@ -1,9 +1,3 @@
-"""Work the worker pool runs for documents: what the browser needs before the first edit.
-
-Framework-free and handed the store, then paths and numbers, so the pool can pickle it
-and a test can call it directly.
-"""
-
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -100,21 +94,15 @@ def _shares_of(spans_on: list[int], *, most: int, spans_each: int) -> list[range
 
 
 def _take_in(documents: DocumentStore, folder: Path, max_pages: int) -> None:
-    """Refuse a file past `max_pages`; rewrite one without what acts on its own or plain XMP.
-
-    Before the index, so every span id is the rewritten file's. Nothing here needs what
-    goes: a viewer would run what acts, and every later open would read the XMP garbled.
-    """
+    """Before the index, so every span id is the rewritten file's."""
     with documents.open_original(folder) as engine:
         if engine.page_count() > max_pages:
             raise TooManyPages(max_pages)
         active_content_dropped = engine.drop_active_content()
         plain_xmp_dropped = engine.drop_plain_xmp()
         rewritten = active_content_dropped or plain_xmp_dropped
-        # The original stays exactly as it was sent.
         if not rewritten:
             return
-        # Nothing was added, so saving says nothing.
         store.replace_original(folder, engine.save)
     if active_content_dropped:
         store.keep_active_content_dropped(folder)
@@ -226,8 +214,6 @@ def _fonts_of(
     reports: Mapping[str, FidelityReport],
     files: attached.AttachedFiles,
 ) -> list[FontFacts]:
-    """Each font's facts, from the first span in it: by its object and its name."""
-    # Index order: the first span in each font speaks for it.
     first_span_of_font: dict[tuple[int | None, str], Span] = {}
     for span in index:
         first_span_of_font.setdefault((span.font_object, span.font), span)
@@ -250,7 +236,6 @@ def _fonts_of(
 def _document_facts(
     folder: Path, *, signed: bool, fonts: list[FontFacts], lines: list[LineInfo]
 ) -> AnalysisFacts:
-    """What the analysis says of the whole document: its build, pages, fonts and lines."""
     return {
         "build": BUILD,
         "active_content_dropped": store.active_content_dropped(folder),
@@ -266,7 +251,6 @@ def _document_facts(
 
 
 def _line_info(line: Line) -> LineInfo:
-    """A line of more than one span as the browser gets it."""
     return {"span_ids": list(line.span_ids), "room_pt": round(line.room_pt, _ROOM_DP)}
 
 
@@ -278,17 +262,12 @@ def _kept_analysis(facts: AnalysisFacts, spans_json: bytes) -> KeptAnalysis:
 
 
 def _substitute_why(report: FidelityReport) -> MessageInfo | None:
-    """Why a substitute stands in for the span's font, in no language yet; None if none does."""
     if report.state != "substitute" or report.why is None:
         return None
     return report.why.as_info()
 
 
 def _approximate_why(report: FidelityReport) -> ApproximateInfo | None:
-    """How an approximate span would come back unlike itself, in no language.
-
-    None when it isn't approximate.
-    """
     if report.state != "approximate" or report.why is None:
         return None
     return {"code": reason_of(report.why), "params": report.why.params}
@@ -297,11 +276,6 @@ def _approximate_why(report: FidelityReport) -> ApproximateInfo | None:
 def _span_info(
     span: Span, report: FidelityReport, *, room_pt: float, form_field: bool
 ) -> SpanInfo:
-    """One span as the browser gets it, with how well it keeps its own font.
-
-    `room_pt` is how far its line can run (`Engine.rooms`); `form_field` when a
-    form field draws it, not the page.
-    """
     box = span.bbox
     return {
         "id": span.id,

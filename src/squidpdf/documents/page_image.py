@@ -1,5 +1,3 @@
-"""A page of the original as an image, and how big it's drawn; render's strips match it."""
-
 from __future__ import annotations
 
 import asyncio
@@ -17,14 +15,10 @@ from squidpdf.documents.types import Loaded
 
 @dataclass(frozen=True, slots=True, eq=False)
 class PageController:
-    """A page image, from request to reply."""
-
-    workers: Workers  # where it draws, off the server's own thread
-    documents: DocumentStore  # where its document is kept, and what opens it
+    workers: Workers
+    documents: DocumentStore
 
     async def page(self, doc: Loaded, *, page: int, scale: int, build: str) -> Reply[bytes]:
-        """Page `page` as a PNG, at `scale` or less if the page is very large."""
-        # Read and parsed from disk: off the server's thread.
         pages = await asyncio.to_thread(store.load_pages, doc.folder)
         if not is_page(page, len(pages)):
             raise NoSuchPage()
@@ -36,24 +30,17 @@ class PageController:
         return Reply(png, {"Cache-Control": cache})
 
     async def _enqueue_draw_page(self, folder: Path, *, page: int, scale: float) -> bytes:
-        """Draw the page on a worker."""
         task = partial(_draw_page, self.documents, folder, page=page, scale=scale)
         return await self.workers.run(constants.PAGE_IMAGE_TIMEOUT_S, task)
 
 
 def _draw_page(documents: DocumentStore, folder: Path, *, page: int, scale: float) -> bytes:
-    """Draw one page of the original, unrotated. Runs in a worker."""
     with documents.open_original(folder) as engine:
         return engine.page_image(page, scale)
 
 
 def page_scale(page: Page, scale: int) -> float:
-    """`scale`, or less if the page would go over the pixel limit.
-
-    MuPDF rounds each side up to a whole pixel, so the image can be a pixel
-    more a side: the largest scale is where (width s + 1)(height s + 1) meets
-    the limit, solved for s. Always above 0, however thin the page.
-    """
+    """MuPDF rounds each side up a pixel: solves (width s + 1)(height s + 1) = limit for s."""
     width, height = page.width, page.height
     area, rim = width * height, width + height
     most_pixels = constants.MAX_IMAGE_PIXELS - 1
