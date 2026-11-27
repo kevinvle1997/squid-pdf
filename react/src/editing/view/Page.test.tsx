@@ -1979,6 +1979,47 @@ describe("a line of several runs", () => {
     expect(editor.store.get().history.done).toEqual([]);
   });
 
+  /** Compose `words` as an input method does, a part of them first, then commit them. */
+  async function compose(words: string) {
+    const part = words.slice(0, 2);
+    await cdp().send("Input.imeSetComposition", { text: part, selectionStart: 2, selectionEnd: 2 });
+    await cdp().send("Input.insertText", { text: words });
+  }
+
+  /** From the end of the line, back to the end of "spans", and all of it selected. */
+  async function selectBoldWord() {
+    await userEvent.keyboard("{ArrowRight}");
+    for (let step = 0; step < " (one style)".length; step++) await userEvent.keyboard("{ArrowLeft}");
+    await userEvent.keyboard("{Shift>}{ArrowLeft>5/}{/Shift}");
+  }
+
+  test("an input method typing where a run was emptied goes where typing would, the field drawing its runs", async () => {
+    const screen = await draw();
+    const field = await editLine(screen);
+    await selectBoldWord();
+    await userEvent.keyboard("{Backspace}");
+    expect(runsOf(field.element())).toEqual(["Text is grouped into ", "", " (one style)"]);
+    await compose("runs");
+    await userEvent.keyboard("!");
+    const runs = ["Text is grouped into runs!", "", " (one style)"];
+    await expect.poll(() => runsOf(field.element())).toEqual(runs);
+    // Nothing the input method wrote stands outside the runs.
+    expect(field.element().textContent).toBe(runs.join(""));
+    expect(editor.store.get().draft).toMatchObject({ runs });
+  });
+
+  test("an input method typing over a whole run stays in it, and Cmd+Z selects what it replaced", async () => {
+    const screen = await draw();
+    const field = await editLine(screen);
+    await selectBoldWord();
+    await compose("runs");
+    await expect.poll(() => runsOf(field.element())).toEqual(["Text is grouped into ", "runs", " (one style)"]);
+    expect(field.element().textContent).toBe("Text is grouped into runs (one style)");
+    await userEvent.keyboard("{Control>}z{/Control}");
+    await expect.poll(() => runsOf(field.element())).toEqual(["Text is grouped into ", "spans", " (one style)"]);
+    await expect.poll(() => document.getSelection()?.toString()).toBe("spans");
+  });
+
   test("on a touch screen it's set at 16 px, so iOS doesn't zoom, and its runs drawn at the line's size", async () => {
     await emulateTouchScreen();
     const screen = await draw();

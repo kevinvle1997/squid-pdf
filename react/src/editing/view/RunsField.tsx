@@ -101,6 +101,8 @@ export function RunsField({ line, info }: { line: Line; info: PageInfo }) {
     return focusTo !== null && "spanId" in focusTo && focusTo.spanId === line.id ? focusTo : null;
   });
   const selected = useRef<readonly [number, number]>([0, 0]);
+  // What an input method's words go in over, for their undo to select again.
+  const composedOver = useRef<readonly [number, number]>([0, 0]);
   const field = useRef<HTMLDivElement>(null);
   const chip = useRef<HTMLDivElement>(null);
   const placed = useRef(false);
@@ -223,11 +225,12 @@ export function RunsField({ line, info }: { line: Line; info: PageInfo }) {
   }
 
   // An input method's words, once it's done: read back from the runs it typed into.
-  function composed() {
+  function composed(words: string) {
     const element = field.current;
     if (element === null) return;
     const caret = selectionIn(element)?.[1] ?? null;
-    flushSync(() => typeIntoRuns(editor, runsWordsIn(element, line.spans.length), { caret }));
+    const made = { selected: composedOver.current, typed: words };
+    flushSync(() => typeIntoRuns(editor, runsWordsIn(element, line.spans.length), { caret, made }));
     if (caret !== null) selectIn(element, caret, caret);
   }
 
@@ -281,7 +284,10 @@ export function RunsField({ line, info }: { line: Line; info: PageInfo }) {
           event.preventDefault();
           stepField(event.currentTarget, step);
         }}
-        onCompositionEnd={composed}
+        onCompositionStart={(event) => {
+          composedOver.current = selectionIn(event.currentTarget) ?? composedOver.current;
+        }}
+        onCompositionEnd={(event) => composed(event.data)}
         // Only leaving the field ends the typing: the slip goes on with it.
         onBlur={(event) => {
           selected.current = selectionIn(event.currentTarget) ?? selected.current;
