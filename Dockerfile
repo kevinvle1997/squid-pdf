@@ -5,7 +5,7 @@
 FROM python:3.14-slim-bookworm AS base
 # Pinned so "the same environment as CI" doesn't drift between builds. CI reads its uv
 # from this line (.github/actions/uv).
-COPY --from=ghcr.io/astral-sh/uv:0.12.5 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.13.10 /uv /uvx /bin/
 
 # Uploaded PDFs are hostile input, so nothing here runs as root. /data holds the
 # documents for their hour, /accounts the accounts; a volume mounted on either takes its
