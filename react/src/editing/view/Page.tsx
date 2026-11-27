@@ -130,6 +130,7 @@ export const Page = memo(function Page({ index, info, shownNumber }: Props) {
         info={info}
         changes={notes}
         newTexts={newTextNotes}
+        lines={page.layout.lines}
         noteHeightPt={sheet.noteHeightPt}
         pageNumber={shownNumber}
       />
@@ -176,7 +177,7 @@ export const Page = memo(function Page({ index, info, shownNumber }: Props) {
           </SlipLayerContext.Provider>
         )}
       </Sheet>
-      <ChangeList changes={notes} newTexts={newTextNotes} pageNumber={shownNumber} />
+      <ChangeList changes={notes} newTexts={newTextNotes} lines={page.layout.lines} pageNumber={shownNumber} />
     </section>
   );
 });

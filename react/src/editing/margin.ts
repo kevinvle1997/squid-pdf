@@ -2,6 +2,7 @@
 // the line they're about, and nudged down just enough that no two overlap.
 import { NOTE_WORDS_AROUND } from "./constants";
 import { type Editor, putBack } from "./editor";
+import type { Line } from "./lines";
 import { newTextLineOf, takeOutNewText } from "./newText";
 import type { NewTextReading, SpanReading } from "./project";
 
@@ -144,14 +145,49 @@ export interface MarginNote {
   readonly undo: (editor: Editor) => void;
 }
 
-/** A page's margin notes: each changed span's, which a press puts back, then each piece of new text's, which it takes out. */
-export function marginNotesOf(changes: readonly SpanReading[], newTexts: readonly NewTextReading[]): MarginNote[] {
-  const spans = changes.map((change) => ({
-    key: change.span.id,
-    note: noteOf(change),
-    line: change.span.bbox,
-    undo: (editor: Editor) => putBack(editor, change.span.id),
-  }));
+/** A line's one note, for whatever of it changed: what was redacted of its runs, else its words as one line. */
+function lineNoteOf(line: Line, changes: readonly SpanReading[]): NoteWords | null {
+  const redacted = changes.filter((change) => change.redacted !== null).map((change) => noteOf(change));
+  if (redacted.length > 0) {
+    const runs = redacted.flatMap((note) => note.was);
+    const label = `Undo: “${joinedRuns(runs)}” is no longer redacted`;
+    return { label, struck: runs, inserted: null, was: runs, now: "Redacted", cut: UNCUT };
+  }
+  // Only runs left alone, which a line's edit reads too: nothing to say.
+  if (!changes.some((change) => change.replaced)) return null;
+  const readings = new Map(changes.map((change) => [change.span.id, change.text]));
+  const original = line.spans.map((span) => span.text).join("");
+  const now = line.spans.map((span) => readings.get(span.id) ?? span.text).join("");
+  const [first] = line.spans;
+  if (first === undefined) return null;
+  const whole = { span: { ...first, text: original }, text: now, replaced: true, strategy: undefined, redacted: null };
+  return noteOf(whole);
+}
+
+/** Each change's note: one for a span, and one for a line however many of its spans changed. */
+function changeNotesOf(changes: readonly SpanReading[], lines: ReadonlyMap<string, Line>): MarginNote[] {
+  const groups = new Map<string, SpanReading[]>();
+  for (const change of changes) {
+    const key = lines.get(change.span.id)?.id ?? change.span.id;
+    groups.set(key, [...(groups.get(key) ?? []), change]);
+  }
+  return [...groups].flatMap(([key, group]) => {
+    const [first] = group;
+    const line = lines.get(key);
+    const note = line === undefined ? first && noteOf(first) : lineNoteOf(line, group);
+    const box = line?.bbox ?? first?.span.bbox;
+    if (note === null || note === undefined || box === undefined) return [];
+    return [{ key, note, line: box, undo: (editor: Editor) => putBack(editor, key) }];
+  });
+}
+
+/** A page's margin notes: each change's, which a press puts back, then each piece of new text's, which it takes out. */
+export function marginNotesOf(
+  changes: readonly SpanReading[],
+  newTexts: readonly NewTextReading[],
+  lines: ReadonlyMap<string, Line>,
+): MarginNote[] {
+  const spans = changeNotesOf(changes, lines);
   const added = newTexts.map((text) => ({
     key: `new text ${text.newTextId}`,
     note: newTextNoteOf(text),

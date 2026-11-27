@@ -3,7 +3,7 @@ import { renderStrips } from "../api/client";
 import type { FitInfo, Render, Sentences } from "../api/types";
 import { aDoc, aFit, aFont, aRedact, aReplace, aSpan, halfWideGlyphs, PSEUDO_SENTENCES } from "../fixtures";
 import { FIND_DELAY_MS } from "./constants";
-import { change, createEditor, type Editor, type EditorState, undo } from "./editor";
+import { change, createEditor, type Editor, type EditorState, layoutOf, undo } from "./editor";
 import {
   changeAll,
   closeFind,
@@ -511,6 +511,7 @@ describe("find", () => {
         fits: { [line.id]: aFit({ delta_pt: 70 }) },
         fonts: new Map([[line.font, aFont(line.font, { glyphs })]]),
         rules: aDoc().fit,
+        layout: layoutOf(aDoc({ spans: [line] })),
         typingIn: null,
       };
       const matches = new Map([[line.id, matchesIn(reading.text, "klmn", { matchCase: false, wholeWords: false })]]);

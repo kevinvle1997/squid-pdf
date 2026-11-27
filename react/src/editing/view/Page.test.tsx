@@ -1936,6 +1936,28 @@ describe("a line of several runs", () => {
     await expect.element(screen.getByText(/too long for its place/)).toBeVisible();
   });
 
+  test("kept, its runs after the change preview moved along, one margin note, and its press puts the line back", async () => {
+    await page.viewport(1400, 900);
+    const screen = await draw();
+    await editLine(screen);
+    await userEvent.keyboard("{ArrowRight}");
+    for (let step = 0; step < " (one style)".length; step++) await userEvent.keyboard("{ArrowLeft}");
+    await userEvent.keyboard("xx{Enter}");
+    await expect.element(screen.getByRole("button", { name: "Text is grouped into spansxx (one style)" })).toHaveFocus();
+    const previews = () => [...document.querySelectorAll<HTMLElement>("[data-preview]")];
+    // The bold run and the one it moved, 10 pt along; the run before is the page's own.
+    await expect.poll(() => previews().map((each) => each.textContent)).toEqual(["spansxx", " (one style)"]);
+    const layer = previews()[1]?.offsetParent;
+    const leftPt = ((previews()[1]?.offsetLeft ?? 0) / (layer?.clientWidth ?? 1)) * A4.width;
+    expect(leftPt).toBeCloseTo(212, 0);
+    const note = screen.getByRole("button", { name: /^Undo: “Text is grouped into spansxx/ });
+    await expect.element(note).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Undo:/ }).elements()).toHaveLength(1);
+    await userEvent.click(note);
+    await expect.element(screen.getByRole("button", { name: SENTENCE })).toHaveFocus();
+    expect(editor.store.get().reading.edits).toEqual([]);
+  });
+
   test("Escape puts it back as it was, and focus on the line's one mark", async () => {
     const screen = await draw();
     await editLine(screen);

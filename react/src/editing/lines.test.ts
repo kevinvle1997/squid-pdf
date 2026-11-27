@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
-import { aDoc, aSpan } from "../fixtures";
-import { deletedBy, linesBySpan, runsEdited, runsRedrawn, runTypedInto, startsALine } from "./lines";
+import { aBoldSentence, aDoc, aSpan, RULES } from "../fixtures";
+import { deletedBy, lineDrawnAs, linesBySpan, runsEdited, runsRedrawn, runTypedInto, startsALine } from "./lines";
+import { fontsByObject } from "./spanFonts";
 
 // "Text is grouped into", "spans" in bold, "(one style)": one line, and a heading on a line of its own.
 const before = aSpan({ id: "before", text: "Text is grouped into ", bbox: { x0: 72, y0: 100, x1: 160, y1: 112 } });
@@ -112,4 +113,18 @@ test("a delete with only a caret takes the letter, the word or the line before o
   expect(deletedBy("deleteContentBackward", text, [5, 7])).toEqual([5, 7]);
   // A letter outside the basic plane is two units: both go.
   expect(deletedBy("deleteContentBackward", "a 😀", [4, 4])).toEqual([2, 4]);
+});
+
+test("an edit of a run moves those after it by its width, and redraws only the changed run and those it moved", () => {
+  const sentence = aBoldSentence();
+  const line = linesBySpan(aDoc(sentence)).get("bold");
+  if (line === undefined) throw new Error("the sentence is a line");
+  const texts = ["Text is grouped into ", "spansxx", " (one style)"];
+  const fonts = fontsByObject(sentence.fonts);
+  const drawn = lineDrawnAs(line, { texts, fonts, asked: undefined, rules: RULES });
+  expect(drawn?.map(({ moved, redrawn }) => [moved.bbox.x0, redrawn])).toEqual([
+    [72, false],
+    [177, true],
+    [212, true],
+  ]);
 });

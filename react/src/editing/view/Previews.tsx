@@ -1,9 +1,10 @@
 // What the browser draws over a page until the server's render shows it: a span's new words, a
 // redaction's bare paper, the page's own pixels where a span is put back, and the settle as a render lands.
 import { Fragment } from "react";
-import type { FitRules, FontInfo, PageInfo, SpanInfo, Strategy } from "../../api/types";
+import type { FitRules, FontInfo, PageInfo, ReplaceRuns, SpanInfo, Strategy } from "../../api/types";
 import { previewFaceOf } from "../faces";
 import { settingOf } from "../fit";
+import { type Line, lineDrawnAs } from "../lines";
 import { newTextFaceOf } from "../newText";
 import type { PageState } from "../page";
 import { differing } from "../project";
@@ -92,8 +93,19 @@ export function Previews({
   info: PageInfo;
   strips: readonly Strip[] | undefined;
 }) {
-  const previews = differing(page.edits, page.drawnFrom).filter(({ span }) => span.id !== page.typingIn);
-  return previews.map(({ span, text, redacted, strategy }) => {
+  const lineOf = (spanId: string) => page.layout.lines.get(spanId);
+  const previews = differing(page.edits, page.drawnFrom).filter(
+    ({ span }) => (lineOf(span.id)?.id ?? span.id) !== page.typingIn,
+  );
+  // A line edited as one is drawn from its whole layout, once, since any run of it may have moved.
+  const lines = new Map(previews.flatMap(({ span, lineEdit }) => (lineEdit ? [[lineOf(span.id)?.id, lineEdit]] : [])));
+  const alone = previews.filter(({ lineEdit }) => lineEdit === undefined);
+  const lineDrawings = [...lines].flatMap(([lineId, lineEdit]) => {
+    const line = lineId === undefined ? undefined : lineOf(lineId);
+    if (line === undefined) return [];
+    return [<LinePreview key={line.id} line={line} lineEdit={lineEdit} page={page} info={info} strips={strips} />];
+  });
+  const spanDrawings = alone.map(({ span, text, redacted, strategy }) => {
     // A redaction leaves the page bare where its words were, as the download will.
     if (redacted === "whole") {
       return (
@@ -142,6 +154,55 @@ export function Previews({
       />
     );
   });
+  return [...lineDrawings, ...spanDrawings];
+}
+
+/**
+ * A line edited as one, before its render: each run the edit redraws blanked where the page has it, then drawn where
+ * it moves, every blank under every run's words; a run it leaves alone is the page's own, under any older strip.
+ */
+function LinePreview({
+  line,
+  lineEdit,
+  page,
+  info,
+  strips,
+}: {
+  line: Line;
+  lineEdit: ReplaceRuns;
+  page: PageState;
+  info: PageInfo;
+  strips: readonly Strip[] | undefined;
+}) {
+  const texts = lineEdit.runs.map((run) => run.text);
+  const drawn = lineDrawnAs(line, { texts, fonts: page.fonts, asked: lineEdit.strategy, rules: page.rules });
+  if (drawn === null) return null;
+  const redrawn = drawn.filter((run) => run.redrawn);
+  return (
+    <>
+      {drawn.map(({ span, redrawn }) => {
+        if (!redrawn && !isUnderStrip(span.bbox, { strips, info })) return null;
+        if (!redrawn) return <Original key={span.id} box={stripBoxOf(span, info)} info={info} src={page.src} />;
+        return <span key={span.id} className={styles.preview} aria-hidden="true" style={boxOf(span.bbox, info)} />;
+      })}
+      {redrawn.map(({ span, moved, text, scale }) => {
+        const font = fontOf(page.fonts, span);
+        if (font === undefined) return null;
+        const face = previewFaceOf(span, { font, text });
+        return (
+          <span
+            key={`words ${span.id}`}
+            className={styles.preview}
+            aria-hidden="true"
+            data-preview=""
+            style={previewStyleOf(moved, info, { face, scale })}
+          >
+            {text}
+          </span>
+        );
+      })}
+    </>
+  );
 }
 
 /**

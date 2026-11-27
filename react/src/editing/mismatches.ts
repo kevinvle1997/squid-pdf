@@ -4,7 +4,7 @@ import type { SpanReading } from "./project";
 import type { PageFits } from "./render";
 import { type FontsByObject, fontOf, shownNameIn } from "./spanFonts";
 import { substituteOf } from "./substitutes";
-import { liveVerdictOf, type Verdict, verdictOf } from "./verdicts";
+import { isDrawnAgain, liveVerdictOf, type Verdict, verdictOf } from "./verdicts";
 import { type Facts, fill, shownAs } from "./words";
 
 /** A span an edit won't match at, how, and the letters its own font lacks for the words typed there, if those are why. */
@@ -75,7 +75,7 @@ export function mismatchKeyOf(place: MismatchPlace, fonts: FontsByObject): strin
 
 /**
  * `span` as a place an edit won't match, as the bar counts places now; none where it will match. Before
- * any change, every such span in the document, by its own verdict; after, only those changed, by their edit's
+ * any change, every such span in the document, by its own verdict; after, only those drawn again, by their edit's
  * (`verdictOf`): `fit` is the server's once a render of it as it reads now landed, and its letters missing.
  */
 export function placeOf(
@@ -88,7 +88,7 @@ export function placeOf(
   }: { changed: boolean; reading: SpanReading | undefined; fit: FitInfo | undefined; font: FontInfo | undefined },
 ): MismatchPlace | undefined {
   if (!changed) return span.fidelity === "exact" ? undefined : { span, verdict: span, missing: [] };
-  if (reading === undefined || !reading.replaced) return undefined;
+  if (reading === undefined || !isDrawnAgain(reading, fit)) return undefined;
   const live = () => liveVerdictOf(span, { font, text: reading.text });
   const verdict = verdictOf(span, { reading, fit, live });
   return verdict.fidelity === "exact" ? undefined : { span, verdict, missing: fit?.missing ?? [] };

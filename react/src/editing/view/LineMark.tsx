@@ -102,11 +102,9 @@ export const LineMark = memo(function LineMark(props: Props) {
     look.wordsRedacted && styles.wordsRedacted,
     look.unredacted && styles.unredacted,
   );
-  // Each run's mark box, a replacement left long reaching past where it ended, made one.
-  const boxes = line.spans.map((span) =>
-    markBoxOf(span, { replaced: readings.get(span.id)?.replaced ?? false, fit: fits[span.id] }),
-  );
-  const markBox = { ...line.bbox, x1: Math.max(...boxes.map(({ x1 }) => x1)) };
+  // A line left long reaches past where it ended by the whole line's growth: every run redrawn carries it.
+  const fit = line.spans.map((span) => fits[span.id]).find((each) => each !== undefined);
+  const markBox = markBoxOf(line, { replaced: look.changed, fit });
   const reads = line.spans.map((span) => readings.get(span.id)?.text ?? span.text).join("");
   // Words redacted of each run, said as the server says a redaction.
   const redactedWords = line.spans.flatMap((span) => {
