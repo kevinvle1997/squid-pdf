@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import shared from "../../../tests/editing/fit_cases.json";
 import type { SpanInfo } from "../api/types";
 import { aFit, aFont, aSpan, halfWideGlyphs } from "../fixtures";
-import { liveVerdictOf, shortWarningOf, verdictOf } from "./verdicts";
+import { EXACT, liveVerdictOf, shortWarningOf, verdictOf, worstOf } from "./verdicts";
 
 describe("the one verdict", () => {
   // Its copy of the font lacks "€", so judged on its own words it's a similar font's.
@@ -58,4 +58,13 @@ describe("an edit's verdict, worked out as it's typed", () => {
     const font = aFont("LiberationSerif", { substitute, look_alike: SERIF, glyphs: halfWideGlyphs(letters) });
     expect(liveVerdictOf(span, { font, text: typed }).fidelity).toBe(fidelity);
   });
+});
+
+test("a line's edit is said by its runs' verdict furthest from matching, the first where two tie", () => {
+  const different = { ...EXACT, fidelity: "approximate" as const };
+  const similar = { ...EXACT, fidelity: "substitute" as const, substitute: "Liberation Serif Regular" };
+  const alsoSimilar = { ...similar, substitute: "Liberation Sans Regular" };
+  expect(worstOf([EXACT, different, similar, alsoSimilar])).toBe(similar);
+  expect(worstOf([EXACT, different])).toBe(different);
+  expect(worstOf([])).toBe(EXACT);
 });

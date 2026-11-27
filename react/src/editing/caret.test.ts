@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { aSpan, halfWideGlyphs } from "../fixtures";
-import { letterAt, pressOf, selectionAt, wordAround } from "./caret";
+import { letterAt, pressOf, selectionAcross, selectionAt, wordAround } from "./caret";
 
 // Every letter half the size wide: 5 pt each at 10 pt.
 const glyphs = halfWideGlyphs("abcdefghijklmnopqrstuvwxyz ");
@@ -39,5 +39,27 @@ describe("the caret a press puts down", () => {
     expect(wordAround("was here", 4)).toEqual([4, 8]);
     expect(wordAround("was here", 1)).toEqual([0, 3]);
     expect(wordAround("was here", 8)).toEqual([4, 8]);
+  });
+});
+
+describe("the caret a press puts down in a line of runs", () => {
+  // "was " at the line's start, "bold" in another font from 20 pt on, " here" a 5 pt gap after it, at 45 pt.
+  const runs = [
+    { startPt: 0, text: "was ", glyphs, span: TEN_PT },
+    { startPt: 20, text: "bold", glyphs, span: TEN_PT },
+    { startPt: 45, text: " here", glyphs, span: TEN_PT },
+  ];
+
+  test("a click's caret goes in the gap nearest it in the run it pressed, counted across the line", () => {
+    expect(selectionAcross(runs, { atPt: 3, selects: "caret" })).toEqual([1, 1]);
+    // Two letters into the bold run: after "was bo".
+    expect(selectionAcross(runs, { atPt: 31, selects: "caret" })).toEqual([6, 6]);
+    // In the gap before " here": the end of the bold run, where it was pressed past.
+    expect(selectionAcross(runs, { atPt: 42, selects: "caret" })).toEqual([8, 8]);
+    expect(selectionAcross(runs, { atPt: 400, selects: "caret" })).toEqual([13, 13]);
+  });
+
+  test("a double tap selects the word under it, across the runs' words read as one", () => {
+    expect(selectionAcross(runs, { atPt: 22, selects: "word" })).toEqual([4, 8]);
   });
 });

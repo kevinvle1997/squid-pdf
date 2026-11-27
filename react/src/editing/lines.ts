@@ -39,3 +39,47 @@ function unionOf(spans: readonly SpanInfo[]): Box {
 export function startsALine(lines: ReadonlyMap<string, Line>, span: SpanInfo): boolean {
   return (lines.get(span.id)?.id ?? span.id) === span.id;
 }
+
+/**
+ * `runs`' words with `start` to `end` of them all, read as one text, replaced by `typed`: the words typed go into the
+ * run `runTypedInto` says, and whatever the range covers comes out of each run it reaches.
+ */
+export function runsEdited(
+  runs: readonly string[],
+  { start, end, typed }: { start: number; end: number; typed: string },
+): string[] {
+  const into = runTypedInto(runs, start);
+  let runStart = 0;
+  return runs.map((run, index) => {
+    const from = Math.min(Math.max(start - runStart, 0), run.length);
+    const to = Math.min(Math.max(end - runStart, 0), run.length);
+    runStart += run.length;
+    return run.slice(0, from) + (index === into ? typed : "") + run.slice(to);
+  });
+}
+
+/**
+ * The run words typed at `offset` of `runs`, read as one text, go into: the one it falls in; at the boundary between
+ * two, the one before, as every editor does; at the line's start, the first. An emptied run is gone, and takes none.
+ */
+export function runTypedInto(runs: readonly string[], offset: number): number {
+  let runEnd = 0;
+  for (const [index, run] of runs.entries()) {
+    runEnd += run.length;
+    const fallsIn = offset > runEnd - run.length || offset === 0;
+    if (run.length > 0 && offset <= runEnd && fallsIn) return index;
+  }
+  // Every run emptied: the line's first takes what's typed.
+  return 0;
+}
+
+/**
+ * Which of a line's runs an edit redraws, by whether each is `changed`: those from its first change to its last, and on
+ * to the line's end where the change `movesTheRest`. Before any change, every one: any may be, and each says so first.
+ */
+export function runsRedrawn(changed: readonly boolean[], { movesTheRest }: { movesTheRest: boolean }): boolean[] {
+  const first = changed.indexOf(true);
+  if (first < 0) return changed.map(() => true);
+  const last = movesTheRest ? changed.length - 1 : changed.lastIndexOf(true);
+  return changed.map((_, index) => first <= index && index <= last);
+}

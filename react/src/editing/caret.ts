@@ -11,9 +11,9 @@ export interface Press {
 // What sets a span's letters: their widths, and its size and letter spacing.
 type Measure = { glyphs: Record<string, number>; span: Pick<SpanInfo, "size" | "letter_spacing_em"> };
 
-/** A press `pressX` pixels into a span's mark, shown `shownPx` wide, in points from its start: none unlaid. */
+/** A press `pressX` pixels into a span's mark, or a line's, shown `shownPx` wide, in points from its start: none unlaid. */
 export function pressOf(
-  span: SpanInfo,
+  span: Pick<SpanInfo, "bbox">,
   { pressX, shownPx, selects }: { pressX: number; shownPx: number; selects: Press["selects"] },
 ): Press | null {
   return shownPx > 0 ? { atPt: (pressX / shownPx) * (span.bbox.x1 - span.bbox.x0), selects } : null;
@@ -23,6 +23,33 @@ export function pressOf(
 export function selectionAt(text: string, press: Press, measure: Measure): [number, number] {
   if (press.selects === "word") return wordAround(text, letterAt(text, press.atPt, measure));
   const caret = caretAt(text, press.atPt, measure);
+  return [caret, caret];
+}
+
+/** One run of a line, as a press across the line is measured: where its span starts on the line, and its words. */
+export interface RunMeasure extends Measure {
+  readonly startPt: number; // from the line's start
+  readonly text: string;
+}
+
+/** What `press`, from a line's start, selects across its `runs`, as the start and end of their words read as one. */
+export function selectionAcross(runs: readonly RunMeasure[], press: Press): [number, number] {
+  const text = runs.map((run) => run.text).join("");
+  // The run pressed: the last to start at or before the press, else the first.
+  let before = 0;
+  let pressed = runs[0];
+  let offset = 0;
+  for (const run of runs) {
+    if (run.startPt <= press.atPt) {
+      pressed = run;
+      before = offset;
+    }
+    offset += run.text.length;
+  }
+  if (pressed === undefined) return [0, 0];
+  const atPt = press.atPt - pressed.startPt;
+  if (press.selects === "word") return wordAround(text, before + letterAt(pressed.text, atPt, pressed));
+  const caret = before + caretAt(pressed.text, atPt, pressed);
   return [caret, caret];
 }
 
