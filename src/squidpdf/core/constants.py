@@ -35,6 +35,15 @@ ROOM_TOUCH_PT = 0.1  # boxes overlapping by less than this don't touch: a hairli
 # Searched apart, so a frame doesn't widen the search through a chart's many short strokes.
 ROOM_TALL_ART_LINES = 4.0
 
+# A trimmed font's kind, read from its letters where its file and PDF state none. A sans's
+# stems end as wide as they run; an upright serif's feet are twice the stem or more.
+SERIF_FOOT_SPREAD = 1.3
+# An italic serif's capitals and half its lowercase have feet; a sans's one letter at most.
+SERIF_SHARE = 0.4
+SERIF_LETTERS_MIN = 2
+# Two letters can share an advance by chance.
+MONO_LETTERS_MIN = 3
+
 # Sine of the angle, about half a degree: redraws are level, and that drifts 4 pt over a page.
 TURN_TOLERANCE = 0.01
 CONDENSE_LIMIT = 0.05  # a squeeze past this reads as condensed, worse than running long

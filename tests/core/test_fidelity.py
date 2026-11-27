@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
@@ -9,6 +10,7 @@ from typing import Any, cast
 
 import pymupdf
 import pytest
+from fontTools.ttLib import TTFont
 
 from squidpdf.core import (
     APPROXIMATE_REASONS,
@@ -130,7 +132,7 @@ def test_a_font_only_named_is_redrawn_in_its_look_alike_in_its_own_style(
     assert_equal((_text(drawn), drawn["font"]), expected, "what redrew, and in what")
 
 
-def _serif_described_as_plain(path: str) -> str:
+def _serif_described_as_plain(path: str, *, keeps_os2: bool) -> str:
     doc = pymupdf.open()
     page = doc.new_page()
     page.insert_font(fontname="q", fontbuffer=face_bytes(FACES["PT Serif Regular"]))
@@ -142,12 +144,24 @@ def _serif_described_as_plain(path: str) -> str:
         if doc.xref_get_key(xref, "Type")[1] == "/FontDescriptor":
             doc.xref_set_key(xref, "FontName", "/QQQQQQ+Quillon-Book")
             doc.xref_set_key(xref, "Flags", "32")
+            if not keeps_os2:
+                file = int(doc.xref_get_key(xref, "FontFile2")[1].split()[0])
+                doc.update_stream(file, _without_os2(doc.xref_stream(file)))
     doc.save(path)
     return path
 
 
-def test_a_serif_its_pdf_doesnt_call_serif_is_redrawn_in_a_serif(tmp_path):
-    path = _serif_described_as_plain(str(tmp_path / "plain.pdf"))
+def _without_os2(file: bytes) -> bytes:
+    font = TTFont(io.BytesIO(file))
+    del font["OS/2"]
+    out = io.BytesIO()
+    font.save(out)
+    return out.getvalue()
+
+
+@pytest.mark.parametrize("keeps_os2", [True, False], ids=["its PANOSE", "its letters' shapes"])
+def test_a_serif_its_pdf_doesnt_call_serif_is_redrawn_in_a_serif(tmp_path, keeps_os2):
+    path = _serif_described_as_plain(str(tmp_path / "plain.pdf"), keeps_os2=keeps_os2)
     out = str(tmp_path / "redrawn.pdf")
     with open_pdf(path) as engine:
         span = next(iter(engine.index()))

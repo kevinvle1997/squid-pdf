@@ -31,6 +31,7 @@ from squidpdf.core.types import (
     DrawnGlyph,
     Face,
     FontCode,
+    GlyphId,
     LookAlike,
     PageFont,
     Rect,
@@ -344,7 +345,9 @@ class DocumentFonts:
     def _look_alike_of(self, span: Span, font_object: int | None) -> LookAlike:
         descriptor = None if font_object is None else self.driver.font_descriptor(font_object)
         own = self.own(span)
-        file_kind = None if own is None else kind_in_file(own.own.embedded.file)
+        file_kind = (
+            None if own is None else kind_in_file(own.own.embedded.file, _glyphs_of(own))
+        )
         return look_alike(span.font, descriptor, file_kind=file_kind)
 
     def substitute(self, span: Span, text: str) -> Substitute:
@@ -430,3 +433,10 @@ def _within_a_word(letter: DrawnGlyph, following: DrawnGlyph) -> bool:
 def _each_piece(lines: list[list[TextPiece]]) -> Iterator[TextPiece]:
     for line in lines:
         yield from line
+
+
+def _glyphs_of(own: PooledFont) -> dict[str, GlyphId]:
+    coded = own.own.embedded.coded
+    return (
+        {} if coded is None else {letter: code.glyph for letter, code in coded.letters.items()}
+    )
