@@ -83,7 +83,7 @@ export async function persistedDocument(): Promise<Persisted<unknown> | null> {
     const { bytes, name, type, lastModified } = persistedFile;
     return {
       file: new File([bytes], name, { type, lastModified }),
-      doc: withSpanFields(renamed(state.doc)),
+      doc: withSpanFields(withLines(renamed(state.doc))),
       work: state.work,
       until: state.until,
     };
@@ -192,6 +192,12 @@ function withSpanFields(
     turned: span.turned ?? true,
   }));
   return { ...doc, spans };
+}
+
+/** A persisted reading of the document, listing its lines, though stored before documents did: then none, each span alone. */
+// Nothing is stored past the server's hour, so this can go once documents have listed lines that long.
+function withLines(doc: Omit<Document, "lines"> & Partial<Pick<Document, "lines">>): Document {
+  return { ...doc, lines: doc.lines ?? [] };
 }
 
 /** Forget the document persisted here, file and all. */

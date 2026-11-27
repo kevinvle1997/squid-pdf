@@ -5,7 +5,6 @@ import type { components } from "./schema";
 type Schemas = components["schemas"];
 
 // Not read: `expires_at`. Nothing shows the hour, and a document the server lost opens again by itself.
-// Nor `lines` yet: a line's one field reads it (squid-pdf#371).
 export type Document = Schemas["Document"];
 // Not read: `code`, `params` and `type`. Each is shown as its `detail`, the server's sentence.
 export type DocumentNoticeInfo = Schemas["DocumentNoticeInfo"];

@@ -21,6 +21,7 @@ import {
   touching,
 } from "./history";
 import type { FailedImage } from "./images";
+import { type Line, linesBySpan } from "./lines";
 import { type Mismatches, type MismatchPlace, mismatchesOf, placeOf } from "./mismatches";
 import { focusAfterNewText, keptNewTexts, newTextPlaceOf } from "./newText";
 import {
@@ -144,6 +145,7 @@ export interface Layout {
   readonly spans: ReadonlyMap<string, SpanInfo>;
   readonly pages: ReadonlyMap<number, readonly SpanInfo[]>;
   readonly fonts: FontsByObject;
+  readonly lines: ReadonlyMap<string, Line>; // each line of more than one span, by each of its spans
   readonly warnedFonts: ReadonlySet<string>; // by name shown: the fonts an edit warns of, a similar font or no match
   readonly mismatchesAtRest: Mismatches; // before any change, grouped: one object until the document changes
 }
@@ -206,6 +208,7 @@ export function layoutOf(doc: Document): Layout {
   return {
     spans: new Map(doc.spans.map((span) => [span.id, span])),
     pages,
+    lines: linesBySpan(doc),
     fonts,
     warnedFonts: new Set(mismatches.map(({ span }) => shownNameIn(fonts, span))),
     mismatchesAtRest: mismatchesOf(mismatches, { fonts, sentences: doc.sentences }),
