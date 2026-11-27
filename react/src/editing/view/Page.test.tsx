@@ -1943,7 +1943,9 @@ describe("a line of several runs", () => {
     await userEvent.keyboard("{ArrowRight}");
     for (let step = 0; step < " (one style)".length; step++) await userEvent.keyboard("{ArrowLeft}");
     await userEvent.keyboard("xx{Enter}");
-    await expect.element(screen.getByRole("button", { name: "Text is grouped into spansxx (one style)" })).toHaveFocus();
+    await expect
+      .element(screen.getByRole("button", { name: "Text is grouped into spansxx (one style)" }))
+      .toHaveFocus();
     const previews = () => [...document.querySelectorAll<HTMLElement>("[data-preview]")];
     // The bold run and the one it moved, 10 pt along; the run before is the page's own.
     await expect.poll(() => previews().map((each) => each.textContent)).toEqual(["spansxx", " (one style)"]);
@@ -1956,6 +1958,24 @@ describe("a line of several runs", () => {
     await userEvent.click(note);
     await expect.element(screen.getByRole("button", { name: SENTENCE })).toHaveFocus();
     expect(editor.store.get().reading.edits).toEqual([]);
+  });
+
+  test("Cmd+Z in the field undoes its typing a word at a time, and Cmd+Shift+Z redoes it, the history untouched", async () => {
+    const screen = await draw();
+    const field = await editLine(screen);
+    await userEvent.keyboard("{ArrowRight} two");
+    const lastRun = () => runsOf(field.element())[2];
+    await expect.poll(lastRun).toBe(" (one style) two");
+    await userEvent.keyboard("{Control>}z{/Control}");
+    await expect.poll(lastRun).toBe(" (one style) ");
+    await userEvent.keyboard("{Control>}z{/Control}");
+    await expect.poll(lastRun).toBe(" (one style)");
+    await userEvent.keyboard("{Control>}{Shift>}z{/Shift}{/Control}");
+    await expect.poll(lastRun).toBe(" (one style) ");
+    // The caret goes where it was: typing goes on from there.
+    await userEvent.keyboard("!");
+    await expect.poll(lastRun).toBe(" (one style) !");
+    expect(editor.store.get().history.done).toEqual([]);
   });
 
   test("Escape puts it back as it was, and focus on the line's one mark", async () => {

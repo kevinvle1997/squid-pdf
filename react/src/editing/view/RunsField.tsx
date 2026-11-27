@@ -9,10 +9,10 @@ import { deletedBy, type Line, runsEdited } from "../lines";
 import { textIn } from "../project";
 import { fontOf } from "../spanFonts";
 import { shallowEqual } from "../store";
-import { asOneLine, fieldFocused, lineNoteOf, spanDraftOf, troublesIn, typeIntoRuns } from "../typing";
+import { asOneLine, fieldFocused, lineNoteOf, spanDraftOf, stepTyping, troublesIn, typeIntoRuns } from "../typing";
 import { Chip } from "./Chip";
 import { SlipLayerContext, useEditor, useEditorState } from "./context";
-import { fieldKeyDown } from "./fieldKeys";
+import { fieldKeyDown, typingStepOf } from "./fieldKeys";
 import { boxOf, points, runTextStyle } from "./geometry";
 import { useLeaveTyping } from "./leaveTyping";
 import { rangeEditedIn, runsWordsIn, selectIn, selectionIn, takesPlainTextOnly } from "./lineSelection";
@@ -78,6 +78,19 @@ export function RunsField({ line, info }: { line: Line; info: PageInfo }) {
   const slipLayer = useContext(SlipLayerContext);
   const leave = useLeaveTyping();
 
+  const stepField = useCallback(
+    (element: HTMLElement, step: "undo" | "redo") => {
+      const selected = selectionIn(element) ?? ([0, 0] as const);
+      let to: readonly [number, number] | null = null;
+      flushSync(() => {
+        to = stepTyping(editor, step, { selected });
+      });
+      const stepped = to as readonly [number, number] | null;
+      if (stepped !== null) selectIn(element, ...stepped);
+    },
+    [editor],
+  );
+
   // Each change the browser would make goes through the line's runs instead, and the caret goes where it ends.
   const beforeInput = useCallback(
     (event: InputEvent) => {
@@ -87,8 +100,11 @@ export function RunsField({ line, info }: { line: Line; info: PageInfo }) {
       event.preventDefault();
       // One line: a break is nothing here, and Enter keeps the edit (`fieldKeyDown`).
       if (event.inputType === "insertParagraph" || event.inputType === "insertLineBreak") return;
-      // The browser's own undo would undo words it never typed: Escape puts the line back instead.
-      if (event.inputType.startsWith("history")) return;
+      // Undo or redo from the browser's menu: the field's own, as its keys are (`typingStepOf`).
+      if (event.inputType === "historyUndo" || event.inputType === "historyRedo") {
+        stepField(target, event.inputType === "historyUndo" ? "undo" : "redo");
+        return;
+      }
       const draft = spanDraftOf(editor.store.get());
       const edited = rangeEditedIn(target, event);
       if (draft?.runs == null || edited === null) return;
@@ -97,12 +113,12 @@ export function RunsField({ line, info }: { line: Line; info: PageInfo }) {
       // A delete with only a caret names no range in every browser: what its key takes is worked out here.
       const [from, to] = inserts ? edited : deletedBy(event.inputType, draft.runs.join(""), edited);
       const caret = from + words.length;
-      flushSync(() =>
-        typeIntoRuns(editor, runsEdited(draft.runs ?? [], { start: from, end: to, typed: words }), { caret }),
-      );
+      const made = { selected: edited, typed: words };
+      const runs = runsEdited(draft.runs, { start: from, end: to, typed: words });
+      flushSync(() => typeIntoRuns(editor, runs, { caret, made }));
       selectIn(target, caret, caret);
     },
-    [editor],
+    [editor, stepField],
   );
 
   // The field as it's drawn: it hears every change before the browser makes it, and takes focus at once.
@@ -171,7 +187,15 @@ export function RunsField({ line, info }: { line: Line; info: PageInfo }) {
         data-span-field=""
         className={trouble !== "" ? styles.troubleField : styles.field}
         onFocus={place}
-        onKeyDown={(event) => fieldKeyDown(editor, event, { value: undefined })}
+        onKeyDown={(event) => {
+          const step = typingStepOf(event);
+          if (step === null) {
+            fieldKeyDown(editor, event, { value: undefined });
+            return;
+          }
+          event.preventDefault();
+          stepField(event.currentTarget, step);
+        }}
         onCompositionEnd={composed}
         // Only leaving the field ends the typing: the slip goes on with it.
         onBlur={(event) => {
