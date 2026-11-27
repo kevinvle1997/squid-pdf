@@ -406,6 +406,24 @@ def test_a_new_workers_start_doesnt_count_toward_the_timeout():
     assert_true(worker_pid != os.getpid(), "the task ran in a worker")
 
 
+# Asked in the worker by a builtin: a function of this module's would import the module, and
+# the web framework with it.
+_WEB_FRAMEWORK_IMPORTED = partial(
+    eval, "sorted({'fastapi', 'starlette', 'pydantic'} & set(__import__('sys').modules))"
+)
+
+
+def test_a_worker_never_imports_the_web_framework():
+    """It runs PDF jobs only, so it starts on what they import, without FastAPI's time."""
+
+    async def asked_in_a_new_worker() -> list[str]:
+        async with _own_pool() as pool:  # its own: spawned now, so it ran only its start
+            return await pool.run(_ENOUGH_S, _WEB_FRAMEWORK_IMPORTED)
+
+    imported = asyncio.run(asked_in_a_new_worker())
+    assert_equal(imported, [], "the web framework's packages a new worker imported")
+
+
 def _log_a_line() -> None:
     """In a worker: one line, as Google's fetch would write one there."""
     # Named under the package, as every module is, so the server's handler writes it.
