@@ -1,11 +1,13 @@
 import { describe, expect, test } from "vitest";
 import shared from "../../../tests/editing/fit_cases.json";
+import type { Strategy } from "../api/types";
 import { aFont, aSpan, halfWideGlyphs, RULES, SENTENCES as sentences } from "../fixtures";
 import {
   fitOf,
   lineFitOf,
   missingIn,
   optionsFor,
+  runsLaidOut,
   setAs,
   settingOf,
   troublesOf,
@@ -166,6 +168,27 @@ describe("a line is too long only past its room, as the server says", () => {
     const expected = too_long_percent === null ? [] : [fill(sentences.too_long, { percent: String(too_long_percent) })];
     expect(troublesOf(fit, { ...TROUBLE_WORDING, rules: shared.rules })).toEqual(expected);
     expect(optionsFor(delta_pt, { originalPt: original_pt, roomPt: room_pt, rules: shared.rules })).toEqual(options);
+  });
+});
+
+describe("a line edited as one, on the server's own cases", () => {
+  test.each(shared.line_cases)("$what", (line) => {
+    const runs = line.runs.map((run) => ({
+      x: run.x,
+      originalPt: run.original_pt,
+      typedPt: run.typed_pt,
+      changed: run.changed,
+    }));
+    const laidOut = runsLaidOut(runs, { roomPt: line.room_pt, asked: line.strategy as Strategy, rules: shared.rules });
+    expect([laidOut.fit.originalPt, laidOut.fit.deltaPt, laidOut.fit.options]).toEqual([
+      line.original_pt,
+      line.delta_pt,
+      line.options,
+    ]);
+    const percent = line.too_long_percent;
+    const expected = percent === null ? [] : [fill(sentences.too_long, { percent: String(percent) })];
+    expect(troublesOf(laidOut.fit, { ...TROUBLE_WORDING, rules: shared.rules })).toEqual(expected);
+    expect(laidOut.starts.map((start) => start.toFixed(4))).toEqual(line.starts.map((start) => start.toFixed(4)));
   });
 });
 
