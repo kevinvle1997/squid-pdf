@@ -462,7 +462,9 @@ test("typing previews in a similar font, says a trouble once, and Tab goes on to
   await expect(preview).toHaveCount(0);
 });
 
-test("a line with a bold word is one mark, and its one field types into each run in its own face", async ({ page }) => {
+test("a line with a bold word is edited in one field, each run in its own face, and exports with the word still bold", async ({
+  page,
+}) => {
   await open(page, boldSentence());
   const sentence = "Text is grouped into spans (one style).";
   await page.getByRole("button", { name: sentence }).focus();
@@ -479,4 +481,16 @@ test("a line with a bold word is one mark, and its one field types into each run
   const faces = await runs.evaluateAll((each) => each.map((run) => getComputedStyle(run).fontFamily));
   expect(faces[1]).not.toBe(faces[0]);
   expect(await seriousProblems(page)).toEqual([]);
+
+  await field.press("Enter");
+  await expect(page.locator("img[data-strip]")).toHaveCount(1);
+  const downloading = page.waitForEvent("download");
+  await page.keyboard.press("ControlOrMeta+s");
+  const { spans } = await reread(page, await bytesOf(await downloading));
+  // The bold word's new text in a span of its own, in its own font, the words either side still regular.
+  const fontsOf = (text: string) => spans.filter((span) => span.text === text).map((span) => span.font);
+  expect(fontsOf("spans!")).toEqual([expect.stringMatching(/Bold/)]);
+  for (const regular of ["Text is grouped into ", " (one style)."]) {
+    expect(fontsOf(regular)).toEqual([expect.not.stringMatching(/Bold/)]);
+  }
 });
