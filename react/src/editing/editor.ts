@@ -528,23 +528,31 @@ function keptChanges(reading: Reading): SpanReading[] {
 }
 
 /**
- * How many spans an edit changes, and pieces of new text, on the pages the download keeps: until one does, the bar
- * forecasts, a page's delete or not.
+ * How many changes edits make of spans, and pieces of new text, on the pages the download keeps: until one does,
+ * the bar forecasts, a page's delete or not.
  */
 export function changedWordsCount(state: EditorState): number {
-  return keptChanges(state.reading).length + keptNewTexts(state.reading).length;
+  const changedSpans = keptChanges(state.reading).map(({ span }) => span.id);
+  return lineCount(state.layout, changedSpans) + keptNewTexts(state.reading).length;
 }
 
-/** How many changes the bar counts: each span an edit changes, replaced or redacted, each piece of new text, and each page left out, but none on it. */
+/** How many of the margin's changes `spanIds` make: one a line, however many of its spans changed or were drawn again. */
+function lineCount(layout: Pick<Layout, "lines">, spanIds: readonly string[]): number {
+  return new Set(spanIds.map((id) => layout.lines.get(id)?.id ?? id)).size;
+}
+
+/** How many changes the bar counts: each line or lone span changed, each piece of new text, and each page left out, but none on it. */
 export function changedCount(state: EditorState): number {
   return changedWordsCount(state) + state.reading.deleted.size;
 }
 
-/** How many changed spans won't match: once one is in its own font, `different`, and all "will look different". */
+/** How many changes won't match: once one is in its own font, `different`, and all "will look different". */
 export function warnedCount(state: EditorState): { count: number; different: boolean } {
   const places = changedMismatches(state);
   const different = places.some(({ verdict }) => verdict.fidelity === "approximate");
-  return { count: places.length, different };
+  const spanIds = places.map(({ span }) => span.id).filter((id) => state.reading.spans.has(id));
+  const newTextCount = places.length - spanIds.length;
+  return { count: lineCount(state.layout, spanIds) + newTextCount, different };
 }
 
 /**
@@ -576,20 +584,23 @@ export function atRestSentence({ count, reasons }: Mismatches, sentences: Senten
 }
 
 /** How many changed spans the server drew past their room, left long as typed: each warned on its mark, and counted in the bar. */
-function runLongCount({ reading, drawn }: Pick<EditorState, "reading" | "drawn">): number {
+function runLongCount({ reading, drawn, layout }: Pick<EditorState, "reading" | "drawn" | "layout">): number {
   const long = keptChanges(reading).filter(({ span, replaced }) => {
     const fit = drawn.fits.get(span.page)?.[span.id];
     return replaced && fit?.message_parts.some((part) => part.code === "too_long") === true;
   });
   // A line runs long as one, however many of its runs changed.
-  return new Set(long.map((each) => each.lineEdit ?? each)).size;
+  return lineCount(
+    layout,
+    long.map(({ span }) => span.id),
+  );
 }
 
 /**
  * The bar's count of the changes left long past their room, in the server's words: nothing when none is, or where a
  * reading persisted by an earlier build lacks it.
  */
-export function runLongSentence(state: Pick<EditorState, "reading" | "drawn" | "doc">): string {
+export function runLongSentence(state: Pick<EditorState, "reading" | "drawn" | "doc" | "layout">): string {
   const count = runLongCount(state);
   if (count === 0) return "";
   return fillCounted(state.doc.sentences.changes_too_long, count);
