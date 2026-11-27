@@ -32,7 +32,7 @@ import { redact } from "../redaction";
 import { loadShippedFaces } from "../shippedFaces";
 import { edit, finish, stepWayOut, typeInto } from "../typing";
 import { EditorContext } from "./context";
-import { onBarePaper } from "./keys";
+import { ALT, onBarePaper } from "./keys";
 import { Page } from "./Page";
 
 // What's persisted in this browser is the App's to test, in the browser's real storage.
@@ -1924,7 +1924,9 @@ describe("a line of several runs", () => {
     const field = await editLine(screen);
     await userEvent.keyboard("{ArrowRight}{Backspace}");
     expect(runsOf(field.element())).toEqual(["Text is grouped into ", "spans", " (one style"]);
-    await userEvent.keyboard("{Alt>}{Backspace}{/Alt}");
+    // A word's delete is Option+Backspace on a Mac, Ctrl+Backspace elsewhere, as CI's Linux is.
+    const wordKey = ALT === "⌥" ? "Alt" : "Control";
+    await userEvent.keyboard(`{${wordKey}>}{Backspace}{/${wordKey}}`);
     expect(runsOf(field.element())).toEqual(["Text is grouped into ", "spans", " (one "]);
   });
 
