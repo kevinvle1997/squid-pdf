@@ -1,20 +1,20 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { deleteFont, ProblemError, putFont, renderStrips, upload } from "../api/client";
 import type { Document, Render } from "../api/types";
-import { aDoc, aFont, aProblem, aSpan, PSEUDO_SENTENCES, SENTENCES } from "../fixtures";
+import { aBoldSentence, aDoc, aFont, aProblem, aSpan, PSEUDO_SENTENCES, SENTENCES } from "../fixtures";
 import { createEditor, type Editor } from "./editor";
 import {
   attachDropped,
   attachFont,
   copiesByName,
+  copyOfferedFor,
   detachFont,
   drawnByOf,
   type FontCopies,
-  offersCopy,
   readableName,
 } from "./fonts";
 import { noticeLines } from "./notices";
-import { edit, finish, typeInto } from "./typing";
+import { edit, finish, typeInto, typeIntoRuns } from "./typing";
 import { fill } from "./words";
 
 vi.mock(import("../api/client"), async (original) => ({
@@ -229,15 +229,24 @@ describe("a file dropped on the field", () => {
 });
 
 describe("the offer of the user's copy while typing", () => {
+  test("in a line, is of the font of the run typed in, which lacks the letter", () => {
+    const sentence = aBoldSentence();
+    editor = createEditor(new File(["%PDF-"], "letter.pdf"), aDoc({ ...sentence }), 2);
+    edit(editor, "before", null);
+    typeIntoRuns(editor, ["Text is grouped into ", "spansQ", " (one style)"]);
+
+    expect(copyOfferedFor(editor.store.get())).toBe("Times-Bold");
+  });
+
   test("is made only when a letter typed is one the font can't draw", () => {
     edit(editor, "s1", null);
     typeInto(editor, "Hi");
-    const fits = offersCopy(editor.store.get());
+    const fits = copyOfferedFor(editor.store.get());
     typeInto(editor, "Hi Y");
-    const lacksY = offersCopy(editor.store.get());
+    const lacksY = copyOfferedFor(editor.store.get());
 
-    expect(fits).toBe(false);
-    expect(lacksY).toBe(true);
+    expect(fits).toBeNull();
+    expect(lacksY).toBe("Arial");
   });
 });
 

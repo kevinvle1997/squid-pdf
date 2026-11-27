@@ -7,6 +7,7 @@ import { announcing, type Editor, type EditorState, type Layout, layoutOf } from
 import { addOwnFace, removeOwnFace } from "./faces";
 import { missingIn } from "./fit";
 import type { FontNotice } from "./notices";
+import { fontOf } from "./spanFonts";
 import { draftSpanOf } from "./typing";
 import { fill } from "./words";
 import { persistWork } from "./workPersistence";
@@ -162,12 +163,25 @@ export function fontFocused(editor: Editor): void {
   editor.store.set({ focusFont: null });
 }
 
-/** Whether the field offers the user's copy: a letter typed is one no copy of the font draws. */
-export function offersCopy(state: EditorState): boolean {
+/**
+ * The font the field offers the user's copy of: one a letter typed in it is drawn by no copy of, in a line the first
+ * such run's. None otherwise.
+ */
+export function copyOfferedFor(state: EditorState): string | null {
   const typing = draftSpanOf(state);
-  // A form field draws it, or the user's copy is in already: another can't help.
-  if (typing === undefined || typing.span.form_field || typing.font.attached) return false;
-  return missingIn(typing.draft.text, typing.font.glyphs).length > 0;
+  // A form field draws it, not the page: no copy helps.
+  if (typing === undefined || typing.span.form_field) return null;
+  const { draft, span, font } = typing;
+  const line = draft.runs === null ? undefined : state.layout.lines.get(draft.spanId);
+  const runs = line?.spans.map((run, index) => ({ run, text: draft.runs?.[index] ?? "" })) ?? [
+    { run: span, text: draft.text },
+  ];
+  const lacking = runs.find(({ run, text }) => {
+    const runFont = run === span ? font : fontOf(state.layout.fonts, run);
+    // The user's copy is in already: another can't help.
+    return runFont !== undefined && !runFont.attached && missingIn(text, runFont.glyphs).length > 0;
+  });
+  return lacking?.run.font ?? null;
 }
 
 /** The server judged every span again: its marks and fits take over, and every edited page is drawn again. */

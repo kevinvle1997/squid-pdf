@@ -8,7 +8,7 @@ import { Choices } from "../../ui/Choices";
 import { Num } from "../../ui/Num";
 import { Warn } from "../../ui/Warn";
 import type { Setting } from "../fit";
-import { attachFont, FONT_FILES, offersCopy, readableName } from "../fonts";
+import { attachFont, copyOfferedFor, FONT_FILES, readableName } from "../fonts";
 import type { EditableValue } from "../formattedValues";
 import { editNote, type Note } from "../marks";
 import { setWarningMuted } from "../mutedWarnings";
@@ -47,7 +47,7 @@ export function Chip({ span, fieldEndPt, info, trouble, verdict, setting, value,
   const shown = useEditorState((state) => shownNameIn(state.layout.fonts, span));
   // What an edit here warns of, in full, as typing starts: until the user mutes its font's warning.
   const muted = useEditorState((state) => state.mutedFonts.has(shown));
-  const offered = useEditorState(offersCopy);
+  const offered = useEditorState(copyOfferedFor);
   const attaching = useEditorState((state) => state.attaching !== null);
   // A signed document's, until its first edit: no mute, since that edit ends it.
   const signature = useEditorState(signatureWarningOf);
@@ -121,7 +121,7 @@ export function Chip({ span, fieldEndPt, info, trouble, verdict, setting, value,
       )}
       {value !== undefined && <ValueEditor value={value} field={field} />}
       <span className={styles.actions}>
-        {offered && (
+        {offered !== null && (
           // A pointer's shortcut to the Fonts list, the keyboard's way: focus stays in the field.
           <span className={styles.offer}>
             Have this font?
@@ -129,7 +129,7 @@ export function Chip({ span, fieldEndPt, info, trouble, verdict, setting, value,
               acceptedFileTypes={FONT_FILES}
               onSelect={(files) => {
                 const file = files?.[0];
-                if (file !== undefined) void attachFont(editor, span.font, file);
+                if (file !== undefined) void attachFont(editor, offered, file);
               }}
             >
               <Button keepFocus isDisabled={attaching}>
