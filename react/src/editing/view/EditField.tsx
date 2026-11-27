@@ -2,7 +2,6 @@ import {
   type DragEvent,
   type DragEventHandler,
   type FocusEvent,
-  type KeyboardEvent,
   useCallback,
   useContext,
   useEffect,
@@ -25,11 +24,11 @@ import { redactedRangesOf, textIn } from "../project";
 import { redactedSentences } from "../redaction";
 import { fontOf } from "../spanFonts";
 import { shallowEqual } from "../store";
-import { enter, fieldFocused, finish, spanDraftOf, stepWayOut, troublesIn, typeInto } from "../typing";
-import { openValueEditor } from "../valueEditor";
+import { fieldFocused, spanDraftOf, troublesIn, typeInto } from "../typing";
 import { Chip } from "./Chip";
 import { SlipLayerContext, useEditor, useEditorState } from "./context";
 import styles from "./EditField.module.css";
+import { fieldKeyDown } from "./fieldKeys";
 import { boxOf, fieldPartOf, fieldScaleOf, fieldWidthPt, points, spanTextStyle } from "./geometry";
 import { useLeaveTyping } from "./leaveTyping";
 
@@ -143,24 +142,6 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
     fieldFocused(editor);
   }
 
-  function onKeyDown(event: KeyboardEvent<HTMLInputElement>) {
-    // Alt+Down opens a picker, as it does in any field that has one.
-    if (event.key === "ArrowDown" && event.altKey && openValueEditor(editor, value)) {
-      event.preventDefault();
-      return;
-    }
-    // Up and Down choose how a long line fits; while it fits, they're the field's own.
-    const step = { ArrowUp: -1, ArrowDown: 1 } as const;
-    if ((event.key === "ArrowUp" || event.key === "ArrowDown") && stepWayOut(editor, step[event.key])) {
-      event.preventDefault();
-      return;
-    }
-    if (event.key !== "Enter" && event.key !== "Escape") return;
-    event.preventDefault();
-    if (event.key === "Enter") enter(editor);
-    else finish(editor, false, { returnFocus: true });
-  }
-
   // Its size by CSS variables, which a touch screen's stylesheet sets it from (EditField.module.css).
   const { fontSize, height, ...where } = spanTextStyle(span, info, face);
   const widthPt = fieldWidthPt(span, { text, face, glyphs });
@@ -186,7 +167,7 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
           className={trouble !== "" ? styles.troubleInput : styles.input}
           spellCheck={false}
           autoComplete="off"
-          onKeyDown={onKeyDown}
+          onKeyDown={(event) => fieldKeyDown(editor, event, { value })}
           // Only leaving the field ends the typing: the value's editor in the slip goes on with it.
           onBlur={(event) => {
             const to = event.relatedTarget;

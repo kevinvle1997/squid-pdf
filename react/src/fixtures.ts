@@ -328,7 +328,8 @@ export function aBoldSentence(): Pick<Document, "spans" | "lines" | "fonts"> {
     run("after", { text: " (one style)", font: "Times-Roman", x0: 202 }),
   ];
   const lines = [{ span_ids: spans.map(({ id }) => id), room_pt: 20 }];
-  return { spans, lines, fonts: [aFont("Times-Roman", { glyphs }), aFont("Times-Bold", { glyphs })] };
+  const bold = aFont("Times-Bold", { glyphs, look_alike: "Liberation Serif Bold" });
+  return { spans, lines, fonts: [aFont("Times-Roman", { glyphs }), bold] };
 }
 
 /** An edit that replaces a span's words. */

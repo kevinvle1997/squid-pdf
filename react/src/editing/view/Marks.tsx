@@ -6,21 +6,23 @@ import type { PageInfo } from "../../api/types";
 import { classes } from "../../ui/classes";
 import { Tooltip } from "../../ui/Tooltip";
 import { tintsOn } from "../find";
-import { lookOf } from "../marks";
+import { lineLookOf, lookOf } from "../marks";
 import type { Match } from "../matching";
 import { shownAmong } from "../mismatches";
 import { shownNewTextsAmong } from "../newText";
 import { inPageOrder, type PageState, placedOnPage, spanIn } from "../page";
-import type { SpanReading } from "../project";
+import type { Redacted, SpanReading } from "../project";
 import { undoQuestionOf } from "../redaction";
 import { landedFits, type PageFits } from "../render";
 import { fontOf } from "../spanFonts";
 import { EditField } from "./EditField";
 import { boxOf, markBoxOf, newTextBoxIn } from "./geometry";
+import { LineMark } from "./LineMark";
 import styles from "./Marks.module.css";
 import { NewTextField } from "./NewTextField";
 import { RestingNewText } from "./NewTextMark";
 import { createNotes, isShowing, type Notes } from "./notes";
+import { RunsField } from "./RunsField";
 import { SpanMark } from "./SpanMark";
 import { UndoRedaction } from "./UndoRedaction";
 
@@ -42,6 +44,29 @@ export function Marks({ page, info }: { page: PageState; info: PageInfo }) {
         if (placed === "field") return <NewTextField key="field" info={info} />;
         if (placed !== undefined) {
           return <RestingNewText key={placed.newTextId} text={placed} page={page} info={info} notes={notes} />;
+        }
+        const line = page.layout.lines.get(span.id);
+        // A line of several runs is one mark, or one field, where its first span stands.
+        if (line !== undefined) {
+          if (line.id !== span.id) return null;
+          if (line.id === page.typingIn) return <RunsField key={line.id} line={line} info={info} />;
+          const sentTo = page.focusTo;
+          const focusTo = sentTo !== null && line.spans.some(({ id }) => id === sentTo.spanId) ? sentTo : null;
+          return (
+            <LineMark
+              key={line.id}
+              line={line}
+              info={info}
+              readings={readings}
+              fonts={page.fonts}
+              fits={fits}
+              redactions={page.redactions}
+              sentences={page.sentences}
+              focusTo={focusTo}
+              notes={notes}
+              noteId={noteId}
+            />
+          );
         }
         return span.id === page.typingIn ? (
           <EditField key={span.id} span={span} info={info} />
@@ -84,8 +109,8 @@ function Shown({
   const { shownMismatches: shown, changed, fonts, layout } = page;
   if (shown.size === 0) return null;
   const spans = shownAmong(page.spans, { shown, changed, readings, fits, fonts })
-    // Being typed into: the field says how it won't match.
-    .filter((span) => span.id !== page.typingIn)
+    // Being typed into, alone or in its line: the field says how it won't match.
+    .filter((span) => (layout.lines.get(span.id)?.id ?? span.id) !== page.typingIn)
     .map((span) => {
       const replaced = readings.get(span.id)?.replaced ?? false;
       return { key: span.id, box: markBoxOf(span, { replaced, fit: fits[span.id] }) };
@@ -138,14 +163,19 @@ function PageNote({
   // New text's note is its own mark's to draw.
   const span = last === null ? undefined : spanIn(page, last.markId);
   if (last === null || span === undefined) return null;
-  const { note } = lookOf({
-    span,
-    font: fontOf(page.fonts, span),
-    reading: readings.get(span.id),
-    fit: fits[span.id],
-    redaction: page.redactions[span.id],
-    sentences: page.sentences,
-  });
+  const line = page.layout.lines.get(span.id);
+  const { sentences, redactions, fonts } = page;
+  const { note } =
+    line === undefined
+      ? lookOf({
+          span,
+          font: fontOf(fonts, span),
+          reading: readings.get(span.id),
+          fit: fits[span.id],
+          redaction: redactions[span.id],
+          sentences,
+        })
+      : lineLookOf({ spans: line.spans, fonts, readings, fits, redactions, sentences });
   if (note === null) return null;
   return (
     <Tooltip
@@ -176,7 +206,12 @@ function UndoRedactionAt({
   readings: ReadonlyMap<string, SpanReading>;
 }) {
   const span = spanIn(page, spanId);
-  const redacted = readings.get(spanId)?.redacted ?? null;
-  if (span === undefined || redacted === null) return null;
+  if (span === undefined) return null;
+  // A line asks for every span of it redacted: of all of one, as a span redacted whole asks.
+  const spans = page.layout.lines.get(spanId)?.spans ?? [span];
+  const redactions = spans.map(({ id }) => readings.get(id)?.redacted ?? null);
+  const whole = redactions.includes("whole");
+  const redacted: Redacted | undefined = whole ? "whole" : (redactions.find((each) => each !== null) ?? undefined);
+  if (redacted === undefined) return null;
   return <UndoRedaction span={span} info={info} question={undoQuestionOf(page.sentences, redacted)} />;
 }

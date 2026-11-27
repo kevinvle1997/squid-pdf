@@ -9,6 +9,7 @@ import { ProblemError, pageImage, pageUrl, renderStrips } from "../../api/client
 import type { Document, ImageInfo, PageInfo, Render } from "../../api/types";
 import {
   A4,
+  aBoldSentence,
   aDoc,
   aFit,
   aFont,
@@ -1858,5 +1859,88 @@ describe("a page", () => {
     const tip = screen.getByRole("tooltip").element().getBoundingClientRect();
     const underIt = document.elementFromPoint(at.x, tip.bottom + 4);
     expect(underIt?.closest("[role=tooltip]")).toBeNull();
+  });
+});
+
+describe("a line of several runs", () => {
+  const SENTENCE = "Text is grouped into spans (one style)";
+
+  beforeEach(() => {
+    openDocument(aDoc(aBoldSentence()));
+  });
+
+  /** The line's field, opened from the keyboard on its one mark, every word selected. */
+  async function editLine(screen: Awaited<ReturnType<typeof draw>>) {
+    const mark = screen.getByRole("button", { name: SENTENCE });
+    await expect.element(mark).toBeInTheDocument();
+    mark.element().focus();
+    await userEvent.keyboard("{Enter}");
+    const field = screen.getByRole("textbox", { name: `Change “${SENTENCE}”` });
+    await expect.element(field).toHaveFocus();
+    return field;
+  }
+
+  /** The words each run of the line's field holds, in order. */
+  function runsOf(field: Element): string[] {
+    return [...field.querySelectorAll("[data-run]")].map((run) => run.textContent ?? "");
+  }
+
+  test("is one mark named for its words, and Enter opens one field, each run in its own face", async () => {
+    const screen = await draw();
+    const field = await editLine(screen);
+    expect(screen.getByRole("button", { name: "spans" }).query()).toBeNull();
+    expect(runsOf(field.element())).toEqual(["Text is grouped into ", "spans", " (one style)"]);
+    const [regular, bold] = [...field.element().querySelectorAll<HTMLElement>("[data-run]")];
+    expect(regular?.style.fontFamily).not.toBe(bold?.style.fontFamily);
+  });
+
+  test("words typed at the end of the bold run go into it, and those after it stay their own", async () => {
+    const screen = await draw();
+    const field = await editLine(screen);
+    // From the end of the line, back past " (one style)" to the end of "spans".
+    await userEvent.keyboard("{ArrowRight}");
+    for (let step = 0; step < " (one style)".length; step++) await userEvent.keyboard("{ArrowLeft}");
+    await userEvent.keyboard("!");
+    expect(runsOf(field.element())).toEqual(["Text is grouped into ", "spans!", " (one style)"]);
+    expect(editor.store.get().draft).toMatchObject({ runs: ["Text is grouped into ", "spans!", " (one style)"] });
+  });
+
+  test("a click opens the field with the caret where it pressed, in the run it pressed", async () => {
+    const screen = await draw();
+    const mark = screen.getByRole("button", { name: SENTENCE });
+    await expect.element(mark).toBeInTheDocument();
+    // "spans" runs from 177 pt to 202 pt: two letters in, at 188 pt of the line's 72 to 262.
+    const box = mark.element().getBoundingClientRect();
+    const at = { x: box.left + ((188 - 72) / (262 - 72)) * box.width, y: box.top + box.height / 2 };
+    await pressMouse(at);
+    await expect.element(screen.getByRole("textbox", { name: `Change “${SENTENCE}”` })).toHaveFocus();
+    await userEvent.keyboard("X");
+    expect(editor.store.get().draft).toMatchObject({ runs: ["Text is grouped into ", "spXans", " (one style)"] });
+  });
+
+  test("Backspace takes out the letter before the caret, and a word's delete a run's word, the rest closing up", async () => {
+    const screen = await draw();
+    const field = await editLine(screen);
+    await userEvent.keyboard("{ArrowRight}{Backspace}");
+    expect(runsOf(field.element())).toEqual(["Text is grouped into ", "spans", " (one style"]);
+    await userEvent.keyboard("{Alt>}{Backspace}{/Alt}");
+    expect(runsOf(field.element())).toEqual(["Text is grouped into ", "spans", " (one "]);
+  });
+
+  test("typed past the whole line's room it's too long, and the room's end is marked", async () => {
+    const screen = await draw();
+    await editLine(screen);
+    // Five letters of 5 pt past the line's 20 pt of room.
+    await userEvent.keyboard("{ArrowRight}");
+    await userEvent.keyboard("abcde");
+    await expect.element(screen.getByText(/too long for its place/)).toBeVisible();
+  });
+
+  test("Escape puts it back as it was, and focus on the line's one mark", async () => {
+    const screen = await draw();
+    await editLine(screen);
+    await userEvent.keyboard("{ArrowRight}xyz{Escape}");
+    await expect.element(screen.getByRole("button", { name: SENTENCE })).toHaveFocus();
+    expect(editor.store.get().draft).toBeNull();
   });
 });
