@@ -1,10 +1,22 @@
-import { type FocusEvent, useCallback, useContext, useEffect, useRef, useState } from "react";
+import {
+  type DragEvent,
+  type DragEventHandler,
+  type FocusEvent,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import { isFileDropItem, useDrop } from "react-aria";
 import { createPortal, flushSync } from "react-dom";
 import type { PageInfo } from "../../api/types";
 import { selectionAcross } from "../caret";
+import { carriesFiles } from "../dropped";
 import { focusMoved } from "../editor";
 import { addFaces, DEFAULT_FACE, previewFaceOf } from "../faces";
 import { lineFitOf, runsPast, type Setting, setAs, wayDrawn, waysOffered } from "../fit";
+import { attachDropped } from "../fonts";
 import { caretRunValueIn, type EditableValue, lineValueIn, runExtents } from "../formattedValues";
 import { deletedBy, type Line, lineDrawnAs, runsEdited } from "../lines";
 import { textIn } from "../project";
@@ -16,7 +28,7 @@ import { SlipLayerContext, useEditor, useEditorState } from "./context";
 import { fieldKeyDown, typingStepOf } from "./fieldKeys";
 import { boxOf, fieldPartOf, fieldScaleOf, points, runTextStyle } from "./geometry";
 import { useLeaveTyping } from "./leaveTyping";
-import { rangeEditedIn, runsWordsIn, selectIn, selectionIn, takesPlainTextOnly } from "./lineSelection";
+import { rangeEditedIn, runsWordsIn, runUnder, selectIn, selectionIn, takesPlainTextOnly } from "./lineSelection";
 import styles from "./RunsField.module.css";
 
 const NO_RUNS: readonly string[] = [];
@@ -110,6 +122,21 @@ export function RunsField({ line, info }: { line: Line; info: PageInfo }) {
     },
     [editor],
   );
+
+  // A font file dropped on a run is the user's copy of that run's font.
+  const { dropProps } = useDrop({
+    ref: field,
+    onDrop: (event) => {
+      const element = field.current;
+      const font = element === null ? undefined : line.spans[runUnder(element, event.x)]?.font;
+      const dropped = event.items.filter(isFileDropItem).map((item) => item.getFile());
+      if (font !== undefined) void attachDropped(editor, font, dropped);
+    },
+  });
+  // Text dragged here is the field's own to take, as typing is: useDrop would swallow it.
+  const filesOnly = (handler?: DragEventHandler<HTMLDivElement>) => (event: DragEvent<HTMLDivElement>) => {
+    if (carriesFiles(event.dataTransfer)) handler?.(event);
+  };
 
   // Each change the browser would make goes through the line's runs instead, and the caret goes where it ends.
   const beforeInput = useCallback(
@@ -220,9 +247,15 @@ export function RunsField({ line, info }: { line: Line; info: PageInfo }) {
   const widthPt = line.bbox.x1 - line.bbox.x0 + Math.max(fit?.deltaPt ?? 0, 0);
   return (
     <>
-      {/* biome-ignore lint/a11y/useSemanticElements: an input holds one font; a line's runs each keep their own */}
+      {/* biome-ignore lint/a11y/useSemanticElements: see `role` below */}
       <div
+        {...dropProps}
+        onDragEnter={filesOnly(dropProps.onDragEnter)}
+        onDragOver={filesOnly(dropProps.onDragOver)}
+        onDragLeave={filesOnly(dropProps.onDragLeave)}
+        onDrop={filesOnly(dropProps.onDrop)}
         ref={watch}
+        // Hand-rolled because React Aria has no editable-text field: an input holds one font, and each run keeps its own.
         role="textbox"
         tabIndex={0}
         aria-label={`Change “${start}”`}

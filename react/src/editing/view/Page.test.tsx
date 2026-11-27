@@ -5,7 +5,7 @@ import { render } from "vitest-browser-react";
 import "@fontsource/figtree/600.css";
 import "../../styles/tokens.css";
 import "../../styles/base.css";
-import { ProblemError, pageImage, pageUrl, renderStrips } from "../../api/client";
+import { ProblemError, pageImage, pageUrl, putFont, renderStrips } from "../../api/client";
 import type { Document, ImageInfo, PageInfo, Render } from "../../api/types";
 import {
   A4,
@@ -49,6 +49,7 @@ vi.mock(import("../../api/client"), async (original) => ({
   stillThere: vi.fn(async () => true),
   pageImage: vi.fn(async () => undefined),
   fontList: vi.fn(async () => aFontList()),
+  putFont: vi.fn(() => new Promise<never>(() => undefined)),
 }));
 
 // The page draws its margin each time it's drawn itself, so counting the margin counts the page.
@@ -2015,6 +2016,27 @@ describe("a line of several runs", () => {
       .toBeVisible();
     await userEvent.keyboard("{Escape}");
     await expect.element(field).toHaveFocus();
+  });
+
+  test("a font file dropped on a run is the user's copy of that run's font", async () => {
+    const screen = await draw();
+    const field = (await editLine(screen)).element();
+    const [, bold] = field.querySelectorAll<HTMLElement>("[data-run]");
+    const box = bold?.getBoundingClientRect();
+    if (box === undefined) throw new Error("no bold run");
+    // A file dragged from the desktop has an entry in the file system; one built here has none.
+    const entry = vi.spyOn(DataTransferItem.prototype, "webkitGetAsEntry");
+    entry.mockReturnValue({ isFile: true } as FileSystemEntry);
+    const font = new File(["a font"], "times-bold.ttf");
+    const dropped = new DataTransfer();
+    dropped.items.add(font);
+    dropped.effectAllowed = "copy";
+    const at = { clientX: box.left + box.width / 2, clientY: box.top + box.height / 2 };
+    for (const type of ["dragenter", "dragover", "drop"]) {
+      field.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: dropped, ...at }));
+    }
+    await vi.waitFor(() => expect(putFont).toHaveBeenCalledWith(expect.anything(), "Times-Bold", font));
+    entry.mockRestore();
   });
 
   test("Escape puts it back as it was, and focus on the line's one mark", async () => {

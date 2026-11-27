@@ -85,3 +85,17 @@ export function runsWordsIn(field: HTMLElement, count: number): string[] {
   for (const run of runsIn(field)) words[Number(run.dataset.run)] = run.textContent ?? "";
   return words;
 }
+
+/** Which run of the field lies under `xPx` from its left edge, else the nearest: where something dropped on it landed. */
+export function runUnder(field: HTMLElement, xPx: number): number {
+  const left = field.getBoundingClientRect().left + xPx;
+  const away = (run: HTMLElement) => {
+    const box = run.getBoundingClientRect();
+    return Math.max(box.left - left, left - box.right, 0);
+  };
+  const nearest = runsIn(field).reduce<HTMLElement | undefined>(
+    (best, run) => (best === undefined || away(run) < away(best) ? run : best),
+    undefined,
+  );
+  return Number(nearest?.dataset.run ?? 0);
+}
