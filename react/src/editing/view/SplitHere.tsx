@@ -5,10 +5,6 @@ import { useEditor, useEditorState } from "./context";
 import { sheetWidthOf } from "./geometry";
 import styles from "./SplitHere.module.css";
 
-/**
- * Between two pages shown: download the document as two files, split here. Under the sheet of `info`, the page
- * above, `after` by its number in the original and `shownNumber` among the pages shown.
- */
 export function SplitHere({ after, shownNumber, info }: { after: number; shownNumber: number; info: PageInfo }) {
   const editor = useEditor();
   const exporting = useEditorState((state) => state.exporting);
@@ -27,7 +23,6 @@ export function SplitHere({ after, shownNumber, info }: { after: number; shownNu
   );
 }
 
-/** A pair of scissors, its blades open along the cut: drawn at its own size, so the stroke stays 1.5px. */
 function Scissors() {
   return (
     <svg

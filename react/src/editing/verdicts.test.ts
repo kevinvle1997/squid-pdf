@@ -5,7 +5,6 @@ import { aFit, aFont, aSpan, halfWideGlyphs } from "../fixtures";
 import { EXACT, liveVerdictOf, shortWarningOf, verdictOf, worstOf } from "./verdicts";
 
 describe("the one verdict", () => {
-  // Its copy of the font lacks "€", so judged on its own words it's a similar font's.
   const lacking = aSpan({
     id: "l",
     text: "Total 14 €",
@@ -33,7 +32,6 @@ const REASONS: readonly NonNullable<SpanInfo["why"]>["code"][] = [
   "undrawable_letters",
 ];
 
-/** `said`, as the one of `known` it names: a case naming one the browser doesn't know fails here. */
 function oneOf<T extends string>(known: readonly T[], said: string): T {
   const found = known.find((each) => each === said);
   if (found === undefined) throw new Error(`${said} is none of ${known.join(", ")}`);
@@ -41,10 +39,9 @@ function oneOf<T extends string>(known: readonly T[], said: string): T {
 }
 
 describe("an edit's verdict, worked out as it's typed", () => {
-  const SERIF = "Liberation Serif Regular"; // the face the server's cases store a copy of, and its look-alike
+  const SERIF = "Liberation Serif Regular";
 
   test.each(shared.verdicts)("$what", ({ text, lacking, stored, span: judged, typed, fidelity }) => {
-    // The span as the server sends it, and its font's letters: every one the cases type but those its copy lacks.
     const substitute = judged.fidelity === "substitute" ? SERIF : null;
     const span = aSpan({
       id: "case",

@@ -1,5 +1,3 @@
-// Every key the editor answers to, opened from the bar or with ? (decisions/frontend.md, The keyboard
-// path is complete). Not drawn on a touch screen, which has no keys.
 import { useSyncExternalStore } from "react";
 import { Dialog, DialogTrigger, Heading, Popover } from "react-aria-components";
 import { Button } from "../../ui/Button";
@@ -11,7 +9,6 @@ import { useEditor, useEditorState } from "./context";
 import { ALT, COMMAND } from "./keys";
 import styles from "./Shortcuts.module.css";
 
-/** What each key does, in the order the work goes: find the words, edit them, check them, and send the file. */
 const KEYS: readonly { what: string; keys: readonly string[] }[] = [
   { what: "Find, and change every place found", keys: [`${COMMAND}F`] },
   { what: "The next place found, or the one before", keys: [`${COMMAND}G`, `${COMMAND}Shift G`] },
@@ -28,7 +25,6 @@ const KEYS: readonly { what: string; keys: readonly string[] }[] = [
   { what: "This list", keys: ["?"] },
 ];
 
-/** The list's button in the bar, a keyboard drawn, and the list it opens. */
 export function Shortcuts() {
   const editor = useEditor();
   const open = useEditorState((state) => state.shortcutsOpen);
@@ -64,7 +60,6 @@ export function Shortcuts() {
   );
 }
 
-/** A keyboard, drawn at its own size so the stroke stays 1.5px, as the wordmark's and the theme's are. */
 function KeyboardMark() {
   return (
     <svg

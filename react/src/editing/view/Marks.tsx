@@ -1,5 +1,3 @@
-// What a page's spans are drawn as when it's near: a mark over each, the field, the note their marks share,
-// find's tint, the mismatches the bar's list shows, and the prompt before a redaction is undone.
 import { useId, useMemo, useState, useSyncExternalStore } from "react";
 import { useFocusVisible } from "react-aria";
 import type { PageInfo } from "../../api/types";
@@ -26,12 +24,10 @@ import { RunsField } from "./RunsField";
 import { SpanMark } from "./SpanMark";
 import { UndoRedaction } from "./UndoRedaction";
 
-/** A mark over every span and new text, or the field being typed into, and the notes they share: one at a time. */
 export function Marks({ page, info }: { page: PageState; info: PageInfo }) {
   const [notes] = useState(createNotes);
   const noteId = useId();
   const readings = useMemo(() => new Map(page.edits?.spans.map((reading) => [reading.span.id, reading])), [page.edits]);
-  // A fit for words the span no longer reads says nothing of these: until its render lands, they're worked out here.
   const fits = useMemo(
     () => landedFits(page.fits, { now: page.edits, drawnFrom: page.drawnFrom }),
     [page.fits, page.edits, page.drawnFrom],
@@ -94,7 +90,6 @@ export function Marks({ page, info }: { page: PageState; info: PageInfo }) {
   );
 }
 
-/** Where an edit won't match, in the rows of the bar's list whose eye is on: each place, as long as it's drawn. */
 function Shown({
   page,
   info,
@@ -104,7 +99,7 @@ function Shown({
   page: PageState;
   info: PageInfo;
   readings: ReadonlyMap<string, SpanReading>;
-  fits: PageFits; // each as its span reads now, once drawn so
+  fits: PageFits;
 }) {
   const { shownMismatches: shown, changed, fonts, layout } = page;
   if (shown.size === 0) return null;
@@ -123,7 +118,6 @@ function Shown({
   ));
 }
 
-/** The words find found, tinted as the change they're about to be: only those words, not their whole line; the place gone to ringed. */
 function Found({
   page,
   info,
@@ -144,7 +138,6 @@ function Found({
   ));
 }
 
-/** The note of the span the page's marks say, over its mark; kept while it closes, for its animation. */
 function PageNote({
   notes,
   id,
@@ -156,11 +149,10 @@ function PageNote({
   id: string;
   page: PageState;
   readings: ReadonlyMap<string, SpanReading>;
-  fits: PageFits; // each as its span reads now, once drawn so
+  fits: PageFits;
 }) {
   const { shown, last } = useSyncExternalStore(notes.store.subscribe, notes.store.get);
   const { isFocusVisible } = useFocusVisible();
-  // New text's note is its own mark's to draw.
   const span = last === null ? undefined : spanIn(page, last.markId);
   if (last === null || span === undefined) return null;
   const line = page.layout.lines.get(span.id);
@@ -193,7 +185,6 @@ function PageNote({
   );
 }
 
-/** The prompt beside a redacted span the user asked to edit, while it's still redacted. */
 function UndoRedactionAt({
   spanId,
   page,

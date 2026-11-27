@@ -1,8 +1,4 @@
-"""Assertion helpers that leave a human-readable message on failure.
-
-A bare `assert` over `all(...)` or `any(...)` fails as just `assert False`. Every check in
-this suite goes through one of these, so a failure says what was expected and what it found.
-"""
+"""A bare `assert` over `all(...)` fails as just `assert False`: these say what was found."""
 
 from __future__ import annotations
 
@@ -17,52 +13,39 @@ if TYPE_CHECKING:
 
 
 def assert_true(condition: bool, message: str) -> None:
-    """Assert `condition` holds; `message` says what was expected."""
     assert condition, message
 
 
 def assert_false(condition: bool, message: str) -> None:
-    """Assert `condition` does not hold; `message` says what was expected."""
     assert not condition, message
 
 
 def assert_equal(actual: object, expected: object, label: str) -> None:
-    """Assert `actual == expected`; name what was being compared."""
     assert actual == expected, f"{label}: expected {expected!r}, got {actual!r}"
 
 
 def assert_in(item: object, container: Container, label: str) -> None:
-    """Assert `item` is in `container`; name what was being checked."""
     assert item in container, f"{label}: {item!r} not found in {container!r}"
 
 
 def assert_not_in(item: object, container: Container, label: str) -> None:
-    """Assert `item` is not in `container`; name what was being checked."""
     assert item not in container, f"{label}: {item!r} unexpectedly found in {container!r}"
 
 
 def assert_at_most(value: float, most: float, label: str) -> None:
-    """Assert `value <= most`; name what was being measured."""
     assert value <= most, f"{label}: expected at most {most!r}, got {value!r}"
 
 
 def assert_at_least(value: float, least: float, label: str) -> None:
-    """Assert `value >= least`; name what was being measured."""
     assert value >= least, f"{label}: expected at least {least!r}, got {value!r}"
 
 
 def assert_close(actual: float, expected: float, within: float, label: str) -> None:
-    """Assert `actual` is no further than `within` from `expected`; name what was measured."""
     off = abs(actual - expected)
     assert off <= within, f"{label}: expected {expected!r} within {within!r}, got {actual!r}"
 
 
 def assert_every_field_filled(holder: DataclassInstance, fresh: object, label: str) -> None:
-    """Assert no field of `holder` is as `fresh` has it; name each one that is.
-
-    A reset test fills every field before it forgets, so a field added later
-    and left unfilled fails here, not silently past the forget it should test.
-    """
     unfilled = [
         f.name for f in fields(holder) if getattr(holder, f.name) == getattr(fresh, f.name)
     ]
@@ -74,13 +57,11 @@ def assert_all[T](
     predicate: Callable[[T], bool],
     describe: Callable[[T], str] = repr,
 ) -> None:
-    """Assert `predicate` holds for every item; name the ones that don't."""
     bad = [describe(i) for i in items if not predicate(i)]
     assert not bad, f"failed for: {', '.join(bad)}"
 
 
 def assert_problem(response: Response, problem_type: str, status: int) -> None:
-    """Assert `response` is a Problem of `problem_type` and `status`; show what came back."""
     body = response.text
     assert response.status_code == status, (
         f"status: expected {status}, got {response.status_code}: {body}"

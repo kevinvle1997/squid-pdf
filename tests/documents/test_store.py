@@ -1,5 +1,3 @@
-"""A document is a folder: what's kept comes back the same, and idle ones go."""
-
 from __future__ import annotations
 
 import asyncio
@@ -41,21 +39,19 @@ from tests.helpers import (
 )
 
 _PATIENCE_S = 10  # waited for a second pass; a slow machine needs far less
-_RACES = 20  # deletes raced against a writer; before the fix, most left a folder
+_RACES = 20
 _WRITER_HEAD_START_S = 0.001  # lets the writer be mid-write when the delete starts
 
 
 def test_an_id_that_climbs_out_of_the_store_finds_nothing(tmp_path):
-    """The router refuses a slash before the store sees it; this is the store's own guard."""
-    FOLDER_STORE.create("owner")  # the store's folder, where a climb would start
+    FOLDER_STORE.create("owner")
     outside = tmp_path / "outside"
     outside.mkdir()
-    (outside / "owner").write_text("anyone")  # shaped like a document
+    (outside / "owner").write_text("anyone")
     assert_equal(FOLDER_STORE.find("../outside"), None, "a lookup that climbs out of the store")
 
 
 def test_the_hour_a_document_is_kept_idle_is_the_one_the_landing_promises():
-    """The landing says it in words, before there's a document to send the hour with."""
     promise = (
         "seconds a document is kept idle: the landing (react/src/documents/view/Drop.tsx)"
         " promises an hour, in words decisions/frontend.md (The look) chose, so change them too"
@@ -66,7 +62,6 @@ def test_the_hour_a_document_is_kept_idle_is_the_one_the_landing_promises():
 def test_the_sweeper_deletes_only_documents_idle_past_the_hour():
     _, idle = FOLDER_STORE.create("owner")
     _, fresh = FOLDER_STORE.create("owner")
-    # Not documents: folders of someone else's that share the data folder.
     other = store.root() / "backups"
     other.mkdir()
     others_trash = store.root() / ".trash-backups"
@@ -82,7 +77,6 @@ def test_the_sweeper_deletes_only_documents_idle_past_the_hour():
 
 
 def test_a_failed_sweep_is_logged_and_sweeping_carries_on(monkeypatch, caplog):
-    """Stopping would keep every document on disk from then on."""
     passes = 0
 
     def fails_the_first_time() -> None:
@@ -94,7 +88,6 @@ def test_a_failed_sweep_is_logged_and_sweeping_carries_on(monkeypatch, caplog):
     monkeypatch.setattr(constants, "SWEEP_EVERY_S", 0)
 
     async def sweep_until_a_second_pass() -> None:
-        """Sweep until a pass runs after the failed one, or patience runs out."""
         sweeping = asyncio.create_task(
             documents.sweep_forever(StoreWith(sweeps=fails_the_first_time))
         )
@@ -112,14 +105,12 @@ def test_a_failed_sweep_is_logged_and_sweeping_carries_on(monkeypatch, caplog):
 @pytest.mark.parametrize(
     ("failure", "raised"),
     [
-        # Full, not broken: the reader is told the server is full, not of a bug.
         (OSError(errno.ENOSPC, os.strerror(errno.ENOSPC)), ServerFull),
         (OSError(errno.EIO, os.strerror(errno.EIO)), OSError),
     ],
     ids=["the disk full", "the disk broken"],
 )
 def test_a_save_cut_short_keeps_what_was_there_whole(monkeypatch, failure, raised):
-    """A reader must see the old file or the new one, never half: half reads as broken JSON."""
     _, folder = FOLDER_STORE.create("owner")
     first = KeptAnalysis(b'{"worked": "out"}', b"[]", "its-digest")
     store.save_analysis(folder, "a-build", first, attached=attached.attached_files(folder).key)
@@ -141,7 +132,6 @@ def test_a_save_cut_short_keeps_what_was_there_whole(monkeypatch, failure, raise
 
 
 def test_touching_a_document_deleted_meanwhile_says_it_is_gone():
-    """Found, then deleted by its owner or the sweep before its hour restarts."""
     _, folder = FOLDER_STORE.create("owner")
     FOLDER_STORE.delete(folder)
     with pytest.raises(Gone):
@@ -149,10 +139,6 @@ def test_touching_a_document_deleted_meanwhile_says_it_is_gone():
 
 
 def test_a_document_deleted_while_a_worker_writes_leaves_nothing_behind():
-    """A cancelled upload's worker can still be writing when the folder is deleted.
-
-    A file landing mid-delete used to keep the folder on disk, its owner file gone.
-    """
     for _ in range(_RACES):
         _, folder = FOLDER_STORE.create("owner")
         writing = threading.Event()
@@ -168,28 +154,22 @@ def test_a_document_deleted_while_a_worker_writes_leaves_nothing_behind():
 
 
 def _write_until_gone(folder: Path, writing: threading.Event, stop: threading.Event) -> None:
-    """Save the index over and over, as analysis does, until the folder goes."""
     writing.set()
     while not stop.is_set():
         try:
             store.save_index(folder, index_of([]))
-        except Gone:  # deleted under it: the worker's request ends there
+        except Gone:
             return
 
 
 def test_the_sweeper_clears_what_a_delete_cut_short_left():
-    """A delete moves the folder aside, then empties it; a crash between leaves it there.
-
-    So does a delete from before they were moved aside: a folder named like a
-    document with no owner file, which the sweep takes once it is idle too.
-    """
     _, trashed = FOLDER_STORE.create("owner")
     cut_short = store.root() / f".trash-{trashed.name}"
     trashed.rename(cut_short)
     _, emptied = FOLDER_STORE.create("owner")
     (emptied / "owner").unlink()
     _, being_made = FOLDER_STORE.create("owner")
-    (being_made / "owner").unlink()  # as create leaves it, before it writes the owner
+    (being_made / "owner").unlink()
     past = time.time() - IDLE_S - 1
     os.utime(emptied, (past, past))
     FOLDER_STORE.sweep()
@@ -199,7 +179,6 @@ def test_the_sweeper_clears_what_a_delete_cut_short_left():
 
 
 def test_writing_into_a_document_deleted_meanwhile_says_it_is_gone(engine):
-    """A worker found it, then its owner deleted it: analysis ends Gone, not a 500."""
     _, folder = FOLDER_STORE.create("owner")
     FOLDER_STORE.delete(folder)
     with pytest.raises(Gone):
@@ -214,10 +193,9 @@ def test_writing_into_a_document_deleted_meanwhile_says_it_is_gone(engine):
 
 
 def test_a_worker_reads_an_index_once(engine, kept_indexes):
-    """Every render and export needs it, and parsing it was most of a render's time."""
     _, folder = FOLDER_STORE.create("owner")
     store.save_index(folder, engine.index())
-    kept_indexes.forget()  # as a worker that didn't save it: from its file
+    kept_indexes.forget()
     first = store.require_index(folder)
     assert_true(store.require_index(folder) is first, "the index was read from disk again")
 
@@ -225,17 +203,13 @@ def test_a_worker_reads_an_index_once(engine, kept_indexes):
 def test_a_worker_keeps_the_indexes_in_use_until_their_files_pass_its_bound(
     engine, monkeypatch, kept_indexes
 ):
-    """Renders of several documents take turns on each worker; past the bound, memory wins.
-
-    The bound fits two files: a third drops the one used longest ago, and no more.
-    """
     index = engine.index()
     _, first = FOLDER_STORE.create("owner")
     _, second = FOLDER_STORE.create("owner")
     _, third = FOLDER_STORE.create("owner")
     for folder in (first, second, third):
-        store.save_index(folder, index)  # the same index, so each file is the same size
-    kept_indexes.forget()  # as a worker that saved none of them: each from its file
+        store.save_index(folder, index)
+    kept_indexes.forget()
     monkeypatch.setattr(constants, "KEPT_INDEX_BYTES", 2 * len(index_as_json(index)))
 
     first_read = store.require_index(first)
@@ -247,7 +221,6 @@ def test_a_worker_keeps_the_indexes_in_use_until_their_files_pass_its_bound(
 
 
 def test_a_kept_index_never_outlives_its_file(engine):
-    """Saved again, the new one is read; deleted, there is none."""
     _, folder = FOLDER_STORE.create("owner")
     store.save_index(folder, engine.index())
     store.require_index(folder)
@@ -261,11 +234,6 @@ def test_a_kept_index_never_outlives_its_file(engine):
 
 
 def test_every_field_of_a_kept_span_and_page_comes_back_as_it_was(kept_indexes):
-    """A span's id and facts never change, so what's kept must read back whole.
-
-    Every field is off a blank one's, so one added later and left at its default fails here.
-    Two fragments, since a merged span is redrawn from them.
-    """
     first_fragment = Fragment("Total ", Rect(10.0, 20.0, 40.0, 32.0), (10.0, 30.0))
     second_fragment = Fragment("due", Rect(40.5, 20.0, 60.0, 32.0), (40.5, 30.0))
     span = Span(
@@ -293,7 +261,7 @@ def test_every_field_of_a_kept_span_and_page_comes_back_as_it_was(kept_indexes):
     _, folder = FOLDER_STORE.create("owner")
 
     store.save_index(folder, index_of([span]))
-    kept_indexes.forget()  # as a worker that didn't save it: from its file
+    kept_indexes.forget()
     store.save_pages(folder, [page])
 
     assert_equal(list(store.require_index(folder)), [span], "the spans read back")
@@ -301,7 +269,6 @@ def test_every_field_of_a_kept_span_and_page_comes_back_as_it_was(kept_indexes):
 
 
 def test_every_room_kept_reads_back_to_the_last_bit():
-    """A render fits an edit in the room upload worked out, so it must read back exactly."""
     _, folder = FOLDER_STORE.create("owner")
     rooms = {"a1b2c3d4e5f6": 1 / 3, "b2c3d4e5f6a1": 0.1 + 0.2, "c3d4e5f6a1b2": 0.0}
     lines = [Line(("a1b2c3d4e5f6", "b2c3d4e5f6a1"), 2 / 3)]
@@ -313,8 +280,7 @@ def test_every_room_kept_reads_back_to_the_last_bit():
 
 
 def test_kept_indexes_that_forget_equal_fresh_ones(engine, tmp_path, kept_indexes):
-    """What a worker keeps between requests: forgotten, nothing of any index stays."""
-    store.save_index(tmp_path, engine.index())  # kept by the worker that saved it
+    store.save_index(tmp_path, engine.index())
     assert_every_field_filled(kept_indexes, _KeptIndexes(), "the record once it keeps an index")
 
     kept_indexes.forget()

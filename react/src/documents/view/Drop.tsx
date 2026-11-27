@@ -18,23 +18,22 @@ const PLURAL = new Intl.PluralRules("en");
 
 interface Props {
   landing: Landing;
-  termsHref: string | null; // where the service's terms are read, once the server says it has them
-  persisted: Persisted<unknown> | null; // offered while the landing waits
-  forgetFailed: string | null; // why "Delete it now" left it there, in words for the user
-  signedInAs: string | null; // the address this browser is signed in as, on a server that keeps accounts
-  documentsLeft: DocumentsLeft | null; // this month's the account has left, where a limit applies to it
-  paidUntil: number | null; // the account has no document limit until then, Unix seconds, its month paid
-  payment: { sentence: string; failed: boolean } | null; // what paying, or coming back from it, came to
-  goingToStripe: boolean; // the server is asked for Stripe's page, so its buttons wait
-  onPay: (() => void) | null; // offered where the server takes payment and the account has a limit to lift
-  onManageBilling: (() => void) | null; // offered where the account has billing in Stripe's portal
+  termsHref: string | null;
+  persisted: Persisted<unknown> | null;
+  forgetFailed: string | null;
+  signedInAs: string | null;
+  documentsLeft: DocumentsLeft | null;
+  paidUntil: number | null;
+  payment: { sentence: string; failed: boolean } | null;
+  goingToStripe: boolean;
+  onPay: (() => void) | null;
+  onManageBilling: (() => void) | null;
   onSignOut: () => void;
   onChoose: (file: File) => void;
-  onReopen: () => void; // the document persisted here opens again, with its changes
-  onForget: () => void; // the document persisted here is deleted from this browser
+  onReopen: () => void;
+  onForget: () => void;
 }
 
-/** The landing: the whole window takes a dropped PDF, a sheet says so, and what becomes of it is told under the sheet. No sign-in unless the server asks for one. */
 export function Drop({
   landing,
   termsHref,
@@ -108,7 +107,6 @@ export function Drop({
         {signedInAs !== null && (
           <p className={styles.signedIn}>
             <span>Signed in as {signedInAs}</span>
-            {/* Past the month's, the status says so already. */}
             {documentsLeft !== null && landing.kind !== "month used" && <LeftThisMonth {...documentsLeft} />}
             {paidUntil !== null && <span>No document limit until {DAY.format(paidUntil * 1000)}</span>}
             {onManageBilling !== null && (
@@ -116,7 +114,6 @@ export function Drop({
                 Manage billing
               </Button>
             )}
-            {/* Quiet: the sheet's one action is choosing a PDF. */}
             {/* Its line goes once signed out, so focus goes on to the sheet's one action, never to body. */}
             <Button
               variant="quiet"
@@ -134,7 +131,6 @@ export function Drop({
   );
 }
 
-/** How many of this month's documents are left: "2 of 3 documents left this month". */
 function LeftThisMonth({ left, monthly }: DocumentsLeft) {
   const documents = PLURAL.select(monthly) === "one" ? "document" : "documents";
   return (
@@ -144,7 +140,6 @@ function LeftThisMonth({ left, monthly }: DocumentsLeft) {
   );
 }
 
-/** What becomes of the file, told first and largest under the sheet with the code that does it and any terms, then what the tool does, in two facts. */
 function Facts({ termsHref }: { termsHref: string | null }) {
   return (
     <div className={styles.facts}>
@@ -177,7 +172,6 @@ function Facts({ termsHref }: { termsHref: string | null }) {
   );
 }
 
-/** One fact: a few words, and a line under them. */
 function Fact({ title, children }: { title: string; children: string }) {
   return (
     <li className={styles.fact}>
@@ -187,7 +181,7 @@ function Fact({ title, children }: { title: string; children: string }) {
   );
 }
 
-/** How far a file on its way has got: sending it, then the server reading it. A quick open shows nothing. */
+/** A quick open shows nothing. */
 function Progress({ name, sent, total }: { name: string; sent: number; total: number }) {
   const share = shareSent({ sent, total });
   if (share === null) return <AfterDelay>Reading the text of {name}</AfterDelay>;

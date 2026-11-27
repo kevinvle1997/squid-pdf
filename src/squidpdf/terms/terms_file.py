@@ -1,8 +1,4 @@
-"""The terms file a deployment names, read as the page shows it, or refused with where and why.
-
-A title after "# ", maybe a line under it saying when the terms last changed, then paragraphs
-a blank line apart, each opening with its lead in bold. An address after a lead becomes a link.
-"""
+"""A title after "# ", maybe a last-changed line, then paragraphs each led in bold."""
 
 from __future__ import annotations
 
@@ -15,34 +11,28 @@ from pathlib import Path
 from squidpdf.core import Message, words
 from squidpdf.terms.types import Terms, TermsParagraph, TermsPiece
 
-# The file the deployment's terms are in (env.example); unset or empty, it has none.
 _TERMS_FILE = "SQUIDPDF_TERMS"
-_TITLE = "# "  # what opens the title's line, as Markdown opens a heading
-_MOST_TITLE_LINES = 2  # the title, and the line saying when the terms last changed
+_TITLE = "# "
+_MOST_TITLE_LINES = 2
 # An ATX heading's closing #s, which Markdown drops: # Terms # is titled Terms.
 _CLOSING_HASHES = re.compile(r"\s+#+$")
-# A paragraph's first line: its lead in bold, then the rest. **Who runs this.** squid-pdf at ...
 _LEAD = re.compile(r"\*\*(?P<lead>[^*]*)\*\*(?P<rest>.*)")
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
 
 
 @dataclass(frozen=True, slots=True)
 class _Unshowable:
-    """Markdown the page can't show as Markdown draws it, and the sentence refusing it."""
-
     drawn: re.Pattern[str]
-    refusal: str  # its sentence's key in core/app/words, given the file and the line
+    refusal: str
 
 
-# What opens a line Markdown draws as other than words, each anchored at the line's start.
 _QUOTE = _Unshowable(re.compile(r"^>"), "terms_quote")
 _RULE = _Unshowable(
     re.compile(r"^(?:=+|-+|(?:-[ \t]*){3,}|(?:\*[ \t]*){3,}|(?:_[ \t]*){3,})$"), "terms_rule"
 )
 _HEADING = _Unshowable(re.compile(r"^#{1,6}(?:\s|$)"), "terms_heading")
 _TABLE = _Unshowable(re.compile(r"^\||^[-:\s]+\|[-:|\s]*$"), "terms_table")
-# First match wins in both: a quotation's > is named before what it quotes; - - - is a rule.
-# Where a block starts, a paragraph's first line or the title's next, any number opens a list.
+# First match wins: a quotation's > is named before what it quotes; - - - is a rule.
 _BLOCK_STARTS = (
     _QUOTE,
     _RULE,
@@ -58,8 +48,7 @@ _INTERRUPTIONS = (
     _HEADING,
     _TABLE,
 )
-# What Markdown draws inside a line. First match wins: a link holds what the rows below look
-# for, and an address in < > reads as a tag too.
+# First match wins: a link holds what the rows below look for; an address in < > reads as a tag.
 _IN_LINES = (
     _Unshowable(
         re.compile(r"\[[^\]]*\][(\[]|^\[[^\]]+\]:|<[a-z][a-z0-9+.-]*:", re.IGNORECASE),
@@ -77,54 +66,43 @@ _IN_LINES = (
 
 @dataclass(frozen=True, slots=True)
 class _ReadFailure:
-    """A way reading the terms file fails, and the sentence refusing it."""
-
     raised: type[OSError]
-    refusal: str  # its sentence's key in core/app/words, given the file and the system's why
+    refusal: str
 
 
 # First match wins, so OSError, the others' superclass, comes last.
 _READ_FAILURES = (
-    _ReadFailure(FileNotFoundError, "terms_missing"),  # nothing at the path
+    _ReadFailure(FileNotFoundError, "terms_missing"),
     # A folder, as Docker makes at a missing path.
     _ReadFailure(IsADirectoryError, "terms_folder"),
-    _ReadFailure(PermissionError, "terms_not_permitted"),  # the app's user may not read it
-    # A file where a folder should be, or the disk failed.
+    _ReadFailure(PermissionError, "terms_not_permitted"),
     _ReadFailure(OSError, "terms_unreadable"),
 )
 
 
 class TermsUnreadable(Exception):
-    """Why the page can't show a terms file, said with the file and the line."""
-
     def __init__(self, reason: Message) -> None:
-        """`reason` names a sentence in `core.app.words`, put into words here."""
         super().__init__(words.render(reason))
         self.reason = reason
 
 
 @dataclass(frozen=True, slots=True)
 class _Block:
-    """Lines with no blank line between them, and the number of the first, from 1."""
-
     first: int
     lines: tuple[str, ...]
 
 
 def named_terms_file() -> Path | None:
-    """The file `SQUIDPDF_TERMS` names; None where it names none, as a self-hosted copy's."""
-    named = os.environ.get(_TERMS_FILE)  # .get: a self-hosted copy names none
+    named = os.environ.get(_TERMS_FILE)
     return Path(named) if named else None
 
 
 def deployed_terms() -> Terms | None:
-    """The terms in the file `SQUIDPDF_TERMS` names; None where it names none."""
     path = named_terms_file()
     return None if path is None else terms_in(path)
 
 
 def terms_in(path: Path) -> Terms:
-    """The terms the file at `path` holds; TermsUnreadable when the page can't show them."""
     blocks = _blocks_in(_written_in(path))
     if not blocks:
         raise _refused("terms_no_title", path, 1)
@@ -138,35 +116,31 @@ def terms_in(path: Path) -> Terms:
 
 
 def _refused(key: str, path: Path, line: int) -> TermsUnreadable:
-    """The refusal the sentence `key` says of line `line` of the file at `path`."""
     return TermsUnreadable(Message(key, {"path": str(path), "line": line}))
 
 
 def _written_in(path: Path) -> str:
-    """The file's text, a byte-order mark left out, as Notepad saves one."""
     try:
         written = path.read_bytes()
-    except OSError as failed:  # read_bytes: the file isn't there, or can't be read
+    except OSError as failed:
         refusal = next(row.refusal for row in _READ_FAILURES if isinstance(failed, row.raised))
         why = failed.strerror or str(failed)
         raise TermsUnreadable(Message(refusal, {"path": str(path), "why": why})) from None
     try:
         return written.decode("utf-8-sig")
-    except UnicodeDecodeError as failed:  # decode: bytes that aren't UTF-8, at `start`
+    except UnicodeDecodeError as failed:
         raise _refused(
             "terms_not_utf8", path, written.count(b"\n", 0, failed.start) + 1
         ) from None
 
 
 def _blocks_in(written: str) -> list[_Block]:
-    """The file's runs of lines, split at blank lines."""
     blocks: list[_Block] = []
     lines: list[str] = []
     for number, line in enumerate([*written.splitlines(), ""], start=1):
         if line.strip():
             lines.append(line.strip())
             continue
-        # A blank line ends the run before it, if there is one.
         if lines:
             blocks.append(_Block(number - len(lines), tuple(lines)))
         lines = []
@@ -174,7 +148,6 @@ def _blocks_in(written: str) -> list[_Block]:
 
 
 def _title_in(block: _Block, path: Path) -> tuple[str, str | None]:
-    """The title, and the line under it saying when the terms last changed, if there is one."""
     title_line, *rest = block.lines
     if _QUOTE.drawn.search(title_line):
         raise _refused("terms_quote", path, block.first)
@@ -191,19 +164,15 @@ def _title_in(block: _Block, path: Path) -> tuple[str, str | None]:
 
 
 def _refuse_as_last_changed(text: str, *, path: Path, line: int) -> None:
-    """Refuse a line under the title that isn't plain words saying when the terms changed."""
     drawn = _refusal_in(text, _BLOCK_STARTS)
-    # Neither of this line's own ways fixes a quotation or a rule, so each has its own sentence.
     if drawn in (_QUOTE.refusal, _RULE.refusal):
         raise _refused(drawn, path, line)
-    # A list or a heading here may be meant as either: this line's own sentence says both ways.
     if drawn is not None:
         raise _refused("terms_date_formatted", path, line)
     _refuse_formatted(text, path=path, line=line, own="terms_date_formatted")
 
 
 def _refuse_formatted(text: str, *, path: Path, line: int, own: str) -> None:
-    """Refuse what Markdown draws inside `text`: bold, italic or code in the `own` sentence."""
     drawn = _refusal_in(text, _IN_LINES)
     if drawn == "terms_emphasis":
         raise _refused(own, path, line)
@@ -212,7 +181,6 @@ def _refuse_formatted(text: str, *, path: Path, line: int, own: str) -> None:
 
 
 def _paragraph_in(block: _Block, path: Path) -> TermsParagraph:
-    """A paragraph's lead, and the rest in pieces, its lines joined by a space."""
     first_line, *continuing = block.lines
     _refuse_drawn(first_line, _BLOCK_STARTS, path=path, line=block.first)
     for number, line in enumerate(continuing, start=block.first + 1):
@@ -236,21 +204,18 @@ def _paragraph_in(block: _Block, path: Path) -> TermsParagraph:
 def _refuse_drawn(
     text: str, unshowable: tuple[_Unshowable, ...], *, path: Path, line: int
 ) -> None:
-    """Refuse what Markdown would draw from `text`, line `line`, by the rows of `unshowable`."""
     drawn = _refusal_in(text, unshowable)
     if drawn is not None:
         raise _refused(drawn, path, line)
 
 
 def _refusal_in(text: str, unshowable: tuple[_Unshowable, ...]) -> str | None:
-    """The key of the sentence refusing what Markdown would draw from `text`, if anything."""
     return next((row.refusal for row in unshowable if row.drawn.search(text)), None)
 
 
 def _refuse_a_lead_said_twice(
     paragraphs: list[TermsParagraph], blocks: list[_Block], path: Path
 ) -> None:
-    """Refuse a lead a paragraph before already opens with."""
     seen: set[str] = set()
     for paragraph, block in zip(paragraphs, blocks, strict=True):
         if paragraph["lead"] in seen:
@@ -264,7 +229,6 @@ def _refuse_a_lead_said_twice(
 
 
 def _pieces_of(text: str) -> Iterator[TermsPiece]:
-    """`text` as words, and the email addresses in it."""
     shown_to = 0
     for address in _EMAIL.finditer(text):
         if address.start() > shown_to:

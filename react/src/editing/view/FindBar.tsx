@@ -26,19 +26,16 @@ import { useEditor, useEditorState } from "./context";
 import styles from "./FindBar.module.css";
 import { COMMAND } from "./keys";
 
-/** Find and replace, under the bar while it's open: the count says how many places will look different first. */
 export function FindBar() {
   const open = useEditorState((state) => state.find.open);
   return open ? <FindFields /> : null;
 }
 
-/** The open find bar's fields: closed, nothing of it is drawn, and nothing found is counted. */
 function FindFields() {
   const editor = useEditor();
   const find = useEditorState((state) => state.find);
   const count = useEditorState(findCount, shallowEqual);
   const sentences = useEditorState((state) => state.doc.sentences);
-  // Each open puts focus in "Find", its words selected, even when the bar is open already.
   const focusFind = useCallback(
     (input: HTMLInputElement | null) => {
       if (find.opened === 0) return;
@@ -55,14 +52,12 @@ function FindFields() {
     [find.changedAll],
   );
   const closeOnEscape = onEscape(() => closeFind(editor, { fromInside: true }));
-  // In "Find", Enter goes to the next place found and Shift+Enter the one before, as every editor's find does.
   const stepOnEnter = (event: { key: string; shiftKey: boolean; continuePropagation(): void }) => {
     if (event.key === "Enter") stepFind(editor, event.shiftKey ? -1 : 1);
     else closeOnEscape(event);
   };
   const searched = find.searched !== "" && find.searched === find.query;
   const at = useEditorState(placeAt);
-  // Change all follows the count beside it: shown, with words to change to, and a place it changes.
   const changeToTyped = find.judgedReplacement !== "";
   const placesChanged = count.places - count.leftAsTheyAre;
   const canChange = searched && changeToTyped && placesChanged > 0;
@@ -136,7 +131,6 @@ function FindFields() {
   );
 }
 
-/** A chevron, drawn: down for the next place, up for the one before. The button's name says which. */
 function Chevron({ up = false }: { up?: boolean }) {
   return (
     <svg
@@ -155,13 +149,10 @@ function Chevron({ up = false }: { up?: boolean }) {
   );
 }
 
-/** What Change all did, and the key that puts it back: nothing where a reading persisted by an earlier build lacks it. */
 function ChangedWords({ changed, sentences }: { changed: number; sentences: Sentences }) {
   const sentence = changedSentence(changed, sentences);
-  // The key's hint leads from the sentence: alone, it would say nothing of what it puts back.
   if (sentence === "") return null;
   return (
-    // Its own box, so a line it wraps onto starts under its words, not under the steps.
     <span className={styles.words}>
       {sentence}
       <span className={styles.undoKey}>
@@ -172,7 +163,6 @@ function ChangedWords({ changed, sentences }: { changed: number; sentences: Sent
   );
 }
 
-/** The count, its warning in --warn: what will look different is a warning, never a change. Nothing, if it lacks its words. */
 function Counted({ count, sentences }: { count: FindCount; sentences: Sentences }) {
   const { plain, warned } = countShown(count, sentences);
   if (plain === "" && warned === "") return null;

@@ -4,7 +4,6 @@ import { forgetAtUntil, type Persistence, stopForgetting } from "./workPersisten
 
 afterEach(() => vi.useRealTimers());
 
-/** What's persisted of an open document, the server keeping it another `ms`. */
 function persistedFor(ms: number): Persistence {
   return { file: true, history: EMPTY_HISTORY, until: Date.now() + ms, forgetting: null };
 }

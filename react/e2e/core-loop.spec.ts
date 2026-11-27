@@ -1,5 +1,3 @@
-// The core loop, end to end against the real API: drop, see every span marked, edit in
-// place, the server's render settles in, undo puts it back, and Cmd+S downloads the file.
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import AxeBuilder from "@axe-core/playwright";
@@ -11,7 +9,6 @@ import { test } from "./policy";
 const SAMPLE = fileURLToPath(new URL("../../fixtures/sample.pdf", import.meta.url));
 const LINE = "This agreement is made on 14 March 2026 between";
 
-/** A file to open: a path, or its bytes and name. */
 type Upload = Parameters<FileChooser["setFiles"]>[0];
 
 async function open(page: Page, file: Upload = SAMPLE) {
@@ -76,7 +73,6 @@ function pdfOf(name: string, objects: readonly string[]): Upload {
   return { name, mimeType: "application/pdf", buffer: Buffer.from(pdf, "latin1") };
 }
 
-/** A PDF read back as any upload is. */
 async function reread(page: Page, pdf: Uint8Array): Promise<Document> {
   return page.evaluate(
     async (sent) => {
@@ -91,12 +87,10 @@ async function reread(page: Page, pdf: Uint8Array): Promise<Document> {
   );
 }
 
-/** A download's bytes. */
 async function bytesOf(download: Download): Promise<Uint8Array> {
   return readFile(await download.path());
 }
 
-/** A document's words, a span's after another's. */
 function wordsOf(doc: Document): string {
   return doc.spans.map((span) => span.text).join(" ");
 }
@@ -106,7 +100,6 @@ async function seriousProblems(page: Page) {
   return violations.filter((found) => found.impact === "serious" || found.impact === "critical");
 }
 
-/** Open the field on a span from the keyboard, as Enter does; `exact` once a margin note names its words too. */
 async function startEdit(page: Page, { line = LINE, exact = false } = {}): Promise<Locator> {
   await page.getByRole("button", { name: line, exact }).focus();
   await page.keyboard.press("Enter");
@@ -136,14 +129,12 @@ test("an opened PDF shows its pages, with every span marked", async ({ page }) =
 
 test("a span in a similar font says so as its edit starts, until its font's warning is muted", async ({ page }) => {
   await open(page);
-  // At rest it says nothing: the bar's count speaks for the whole document.
   await page.mouse.move(0, 0);
   const heading = page.getByRole("button", { name: "SERVICES AGREEMENT" });
   await heading.hover();
   await expect(page.getByRole("tooltip")).toHaveCount(0);
   await heading.focus();
   await page.keyboard.press("Enter");
-  // On the page, beside the field: the live region says it too, for a screen reader.
   const note = page.getByRole("region", { name: "Page 1" }).getByText(/Edits here use Liberation Serif Bold/);
   await expect(note).toBeVisible();
   await page.getByRole("button", { name: "Don't show again for this font" }).click();
@@ -205,7 +196,6 @@ test("a render lost to the network is asked for again when the connection comes 
   const unreachable = "Couldn't reach the server.";
   await expect(page.getByRole("paragraph").filter({ hasText: unreachable })).toBeVisible();
   await expect(page.getByRole("status")).toContainText(unreachable);
-  // Until then the browser's own drawing of the edit stays up, over the original.
   await expect(page.locator("[data-preview]")).toHaveCount(1);
 
   await page.unroute("**/render");
@@ -263,11 +253,9 @@ test("a date changed through the calendar downloads in the file's own font, and 
   // Page 2's line is in a subset of the file's own font, which drew only the digits it printed.
   const line = "Delivery begins 14 March 2026 and runs eighteen months.";
   const field = await startEdit(page, { line });
-  // Offered once the languages behind dates are learnt, in the background as the field opened.
   await expect(page.getByRole("button", { name: "Date" })).toBeVisible();
   await field.press("Alt+ArrowDown");
   await expect(page.getByRole("button", { name: /March 14, 2026/ })).toBeFocused();
-  // Before the pick, a day it can't write says why.
   await page.getByRole("button", { name: /March 17, 2026/ }).hover();
   await expect(page.locator("[data-slip]").getByText("no 7 in this font", { exact: true })).toBeVisible();
   expect(await seriousProblems(page)).toEqual([]);
@@ -287,7 +275,6 @@ test("a date changed through the calendar downloads in the file's own font, and 
   ];
   const original = before.spans.find((span) => span.text === line);
   const edited = after.spans.find((span) => span.text === changed);
-  // Drawn again from the file's own program, which names itself as PostScript does: NimbusRoman-Regular.
   const letters = (name = "") => name.replace(/^[A-Z]{6}\+/, "").replace(/[^A-Za-z]/g, "");
   expect(letters(edited?.font)).toBe(letters(original?.font));
   expect(edited?.fidelity).toBe("exact");
@@ -295,11 +282,9 @@ test("a date changed through the calendar downloads in the file's own font, and 
 
 test("a typed signature in Caveat Bold exports, and the reopened file draws it in that face", async ({ page }) => {
   await open(page);
-  // The sheet, first: the layer its slips hang from, after it, has its shape too.
   const shape = page.getByRole("region", { name: "Page 1" }).locator("[style*='aspect-ratio']");
   const sheet = await shape.first().boundingBox();
   if (sheet === null) throw new Error("the first page is drawn");
-  // Bare paper, under the page's last line.
   await page.mouse.dblclick(sheet.x + sheet.width * 0.3, sheet.y + sheet.height * 0.4);
   const field = page.getByRole("textbox", { name: "New text" });
   await expect(field).toBeFocused();
@@ -321,12 +306,10 @@ test("Cmd+Delete redacts a line, and the file downloaded no longer has its words
   await page.getByRole("button", { name: LINE }).focus();
   await page.keyboard.press("ControlOrMeta+Backspace");
   await expect(page.getByRole("button", { name: `${LINE} (redacted)` })).toBeFocused();
-  // The server drew it, its words gone from the strip as they'll be from the file.
   await expect(page.locator("img[data-strip]")).toHaveCount(1);
 
   const downloading = page.waitForEvent("download");
   await page.keyboard.press("ControlOrMeta+s");
-  // Read back as any upload is: the line's words aren't in the file's text at all.
   const redacted = await reread(page, await bytesOf(await downloading));
   expect(redacted.spans.length).toBeGreaterThan(0);
   expect(wordsOf(redacted)).not.toContain("This agreement is made");
@@ -353,7 +336,6 @@ test("Words selected in a line's field are all Cmd+Delete redacts, and the file 
   const words = wordsOf(await reread(page, await bytesOf(await downloading)));
   expect(words).toContain("This agreement is made on");
   expect(words).toContain("between Wescott");
-  // Only the second page's own date is left: the line's went.
   expect(words.split(date)).toHaveLength(2);
 });
 
@@ -366,7 +348,6 @@ test("Split here downloads two files, each with only its pages, and the edit in 
   await expect.poll(() => downloads.length).toBe(2);
   const [first, second] = downloads as [Download, Download];
   expect([first.suggestedFilename(), second.suggestedFilename()]).toEqual(["sample, page 1.pdf", "sample, page 2.pdf"]);
-  // One page apiece, and the edit only where its page went.
   const [before, after] = [await reread(page, await bytesOf(first)), await reread(page, await bytesOf(second))];
   expect([before.pages.length, after.pages.length]).toEqual([1, 1]);
   expect(wordsOf(before)).toContain("9 June 2026");
@@ -437,7 +418,6 @@ test("Cmd+S while still typing exports the edit being typed", async ({ page }) =
 
 test("typing previews in a similar font, says a trouble once, and Tab goes on to the next span", async ({ page }) => {
   await open(page);
-  // Held, so the browser's preview stays up to be looked at.
   let release: () => void = () => undefined;
   const held = new Promise<void>((resolve) => (release = resolve));
   await page.route("**/render", async (route) => {
@@ -446,7 +426,6 @@ test("typing previews in a similar font, says a trouble once, and Tab goes on to
   });
   const field = await startEdit(page);
   await field.evaluate((input: HTMLInputElement) => input.setSelectionRange(input.value.length, input.value.length));
-  // Each letter makes it longer; the number on screen ticks, what's announced doesn't.
   await field.pressSequentially("xxx");
   await expect(page.getByRole("status")).toHaveText(
     "about 3% too long for its place: shorten it, or it runs into what's beside it; Up or Down chooses how it fits",

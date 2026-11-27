@@ -20,7 +20,6 @@ const substituted = aSpan({
 });
 
 type Marked = Parameters<typeof lookOf>[0];
-/** What a mark shows, with all it isn't given unknown: a span's font, its reading, the server's verdicts. */
 const lookAt = (marked: Pick<Marked, "span"> & Partial<Marked>) =>
   lookOf({ font: undefined, reading: undefined, fit: undefined, redaction: undefined, sentences, ...marked });
 
@@ -63,7 +62,6 @@ describe("what a span's mark shows, and an edit in it as typing starts", () => {
   });
 
   test("the span's own fidelity is what's told, not its font's first span's", () => {
-    // The font's own copy draws its first span, so the font names no similar face; this span's doesn't.
     expect(editNote(substituted, { verdict: substituted, font: aFont("Arial"), sentences, muted: false })).toEqual({
       warn: true,
       sentence: "Edits here use Liberation Sans Regular, which may be a different width from the original.",
@@ -85,7 +83,6 @@ describe("what a span's mark shows, and an edit in it as typing starts", () => {
       trouble: true,
       note: { warn: true, sentence: "2.0 pt too long, so it was shrunk", why: null },
     });
-    // Put back, before its page is drawn again: the old verdict no longer applies.
     expect(lookAt({ span, font: ownFont, fit })).toMatchObject({
       trouble: false,
       note: null,
@@ -128,7 +125,6 @@ describe("what a span's mark shows, and an edit in it as typing starts", () => {
 });
 
 describe("an edit's own verdict, after the edit", () => {
-  // Its copy of the font lacks "€", so judged on its own words it's a similar font's; the copy draws every other letter.
   const lacking = aSpan({
     id: "s4",
     text: "Total 14 €",

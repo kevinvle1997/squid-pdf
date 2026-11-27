@@ -5,7 +5,6 @@
   display: grid; grid-template-columns: 1fr auto; align-items: center;
   gap: var(--s1) var(--s3);
 }
-/* A line between fonts, as inside any slip, with a step of space on either side of it. */
 .font + .font { padding-block-start: var(--s3); border-block-start: 1px solid var(--rule-soft); }
 .name { font-weight: 600; overflow-wrap: anywhere; }
 .drawnBy { grid-column: 1; font-size: var(--fs-sm); color: var(--ink-lo); line-height: 1.5; }

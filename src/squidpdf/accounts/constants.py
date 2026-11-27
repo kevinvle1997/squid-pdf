@@ -1,44 +1,30 @@
-"""How long a sign-in lasts, how long its link works, what a link may be sent to, and counts."""
-
 from __future__ import annotations
 
-# A link works this long: enough to switch to the mail app and back. Signed, never stored,
-# it can't be taken back once sent, so its life is the only bound on a link left in an inbox.
+# Enough to switch to the mail app and back; never stored, so its life is a link's only bound.
 LINK_VALID_S = 15 * 60
-# A browser stays signed in this long without asking again: a month, so someone who fixes
-# a document every few weeks finds themself still signed in.
+# A month, so someone who fixes a document every few weeks is still signed in.
 SIGNED_IN_S = 30 * 24 * 60 * 60
-# The files a browser opened without an account are kept counted this long: a year, past
-# which someone back with no account is as good as new.
+# A year, past which someone back with no account is as good as new.
 COUNTED_KEPT_S = 365 * 24 * 60 * 60
-# How long the mailer has to answer, each step: a hung one holds a thread, not the app.
+# Per step: a hung mailer holds a thread, not the app.
 MAIL_TIMEOUT_S = 20
-# Letters sent at once. A link waits its turn behind them, so a hung mail server holds
-# these alone, never the threads the server's disk work shares: a few, as links are rare.
+# A few, as links are rare: a hung mail server holds these alone, never the disk threads.
 MAIL_THREADS = 2
-# Stripe charges a renewal up to an hour after the paid month ends: paid time runs twice that
-# past it, so the charge and its webhook land first. A failed one gets no more.
+# Stripe charges a renewal up to an hour after the month ends: twice that lets the webhook land.
 RENEWAL_LEEWAY_S = 2 * 60 * 60
-# Stripe answers in the shape of this version, pinned so a change in Stripe's dashboard changes
-# nothing here. In it, a subscription's paid period is its items'.
+# Pinned, so Stripe's dashboard changes nothing here; in it, a paid period is its items'.
 STRIPE_API_VERSION = "2025-03-31.basil"
-# How long Stripe has to answer, each step: far past a healthy answer, and short enough that
-# every try fits in under a minute. A hung one holds a billing thread, not the app.
+# Far past a healthy answer, short enough that every try fits in under a minute.
 STRIPE_TIMEOUT_S = 10
-# Calls to Stripe at once. A webhook waits its turn behind them, so a hung Stripe holds these
-# alone, never the threads every upload and read share: a few, as payments are rare.
+# A few, as payments are rare: a hung Stripe holds these alone, never the upload threads.
 BILLING_THREADS = 4
-# Tries at one call before saying payments can't be reached: three, as Stripe's own libraries
-# try a call. Each sends the same request, its idempotency key too, so none does a thing twice.
+# Three, as Stripe's own libraries try; each try sends the same idempotency key.
 STRIPE_ATTEMPTS = 3
-# The wait before the second try, as Stripe's own libraries wait, doubled before each after it
-# and cut by up to half at random, so retries from many requests don't land together.
+# As Stripe's own libraries wait, doubled each try and cut by up to half at random.
 STRIPE_FIRST_WAIT_S = 0.5
-# How long a checkout's page takes payment: Stripe's least. An old tab, finished later, would
-# start a second subscription.
+# Stripe's least: an old tab, finished later, would start a second subscription.
 CHECKOUT_VALID_S = 30 * 60
-# How old a webhook's signature may be, as Stripe's own libraries allow: a copy of an old one,
-# sent again by anyone, is refused.
+# As Stripe's own libraries allow, so an old one sent again is refused.
 STRIPE_SIGNATURE_AGE_S = 5 * 60
 # Longest address a mail server takes (RFC 5321's path, less its brackets).
 MAX_EMAIL_CHARS = 254

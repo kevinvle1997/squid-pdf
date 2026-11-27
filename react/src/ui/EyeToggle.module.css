@@ -1,4 +1,3 @@
-/* A quiet button, as a bar's tools are, holding only its eye: ink while on, fainter while off, never blue. */
 .eye {
   composes: button quiet from "./Button.module.css";
   padding: var(--s1);

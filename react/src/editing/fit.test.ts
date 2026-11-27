@@ -17,14 +17,12 @@ import {
 } from "./fit";
 import { fill } from "./words";
 
-// Every letter half the size wide, so a width is easy to work out: 10 letters at 10 pt is 50 pt.
 const HALF = 500;
 const glyphs = {
   ...halfWideGlyphs("abcdefghijklmnopqrstuvwxyz0123456789 "),
-  ".": 300, // 3 pt at 10 pt: less than the tolerance
+  ".": 300,
 };
 const font = aFont("Times-Roman", { glyphs });
-// What a trouble is worded with: the rules, the server's sentences, and how a line with a missing letter is drawn.
 const drawnIn = (switched: readonly string[], leftOut: readonly string[] = []) => ({
   face: "Liberation Serif Regular",
   switched,
@@ -35,8 +33,7 @@ const span = aSpan({ id: "s1", text: "abcdefghij", bbox: { x0: 0, y0: 0, x1: 50,
 
 describe("a missing letter", () => {
   test("is a space too, as the server judges it, when the font has none of that kind", () => {
-    // The server sends a plain space in `glyphs` wherever it draws one, a page's gap in a font with none
-    // included (core/plan.py, `widths`): one not there, or a no-break space not mapped, is missing.
+    // The server sends a plain space in `glyphs` wherever it draws one: one not there, or a no-break space not mapped, is missing.
     expect(missingIn("a a", { a: HALF, "\u00a0": HALF })).toEqual([" "]);
     expect(missingIn("a\u00a0a", { a: HALF, " ": HALF })).toEqual(["\u00a0"]);
     expect(missingIn("a a", { a: HALF, " ": HALF })).toEqual([]);
@@ -49,7 +46,6 @@ describe("the fit check", () => {
   });
 
   test("a span's letter spacing sets each letter that much further, as the server measures it", () => {
-    // 0.1 em at 10 pt is a point past each letter: two more letters run 10 pt for their widths, 2 for spacing.
     const spaced = aSpan({ id: "s", text: "abcdefghij", size: 10, letter_spacing_em: 0.1 });
     expect(fitOf(spaced, { font, text: "abcdefghijkl", rules: RULES }).deltaPt).toBe(12);
   });
@@ -67,7 +63,6 @@ describe("the fit check", () => {
   });
 
   test("too long says how much, as a share of the line, and what to do, in the server's sentence", () => {
-    // 5 pt past a 50 pt line.
     const fit = fitOf(span, { font, text: "abcdefghijk", rules: RULES });
     expect(troublesOf(fit, TROUBLE_WORDING)).toEqual([
       "about 10% too long for its place: shorten it, or it runs into what's beside it",
@@ -85,7 +80,6 @@ describe("the fit check", () => {
     ]);
   });
 
-  // The server's own case, test_a_letter_typed_in_two_pieces_is_the_one_the_font_has (tests/core/test_coverage.py).
   test("a letter typed in two pieces is the one the font has, as the server spells it", () => {
     const keptWhole = { ...glyphs, C: HALF, Z: HALF, é: HALF, ü: HALF };
     const inPieces = "Café in Zürich".normalize("NFD");
@@ -93,9 +87,7 @@ describe("the fit check", () => {
     expect(
       fitOf(span, { font: aFont("Times-Roman", { glyphs: keptWhole }), text: inPieces, rules: RULES }).missing,
     ).toEqual([]);
-    // Kept in pieces, a letter typed whole is drawn in pieces too.
     expect(missingIn("é", { ...glyphs, "\u0301": 0 })).toEqual([]);
-    // Neither: the letter it lacks is named whole, as the faces we ship draw it.
     expect(missingIn(inPieces, glyphs)).toEqual(["C", "é", "Z", "ü"]);
   });
 
@@ -104,16 +96,13 @@ describe("the fit check", () => {
   });
 
   test("the ways out follow the server's floor and limit", () => {
-    // 5 pt past 100 pt: shrinking to 95% is above the floor, squeezing 5% is at the limit.
     expect(optionsFor(5, { originalPt: 100, roomPt: 0, rules: RULES })).toEqual(["shrink", "condense", "as-is"]);
-    // 20 pt past 100 pt: 83% is under the floor, 20% past the limit: only leave it long.
     expect(optionsFor(20, { originalPt: 100, roomPt: 0, rules: RULES })).toEqual(["as-is"]);
     expect(optionsFor(3, { originalPt: 100, roomPt: 0, rules: RULES })).toEqual([]);
   });
 });
 
 describe("a way out", () => {
-  // 5 pt past a 100 pt line: every way out is offered.
   const long = aSpan({ id: "s2", text: "abcdefghijklmnopqrst", bbox: { x0: 0, y0: 0, x1: 100, y1: 12 } });
   const fit = fitOf(long, { font, text: "abcdefghijklmnopqrstu", rules: RULES });
 
@@ -125,7 +114,6 @@ describe("a way out", () => {
   });
 
   test("ends the line where the original did: smaller letters, or narrower ones", () => {
-    // 105 pt set to end at 100.
     expect(setAs("shrink", fit)).toEqual({ size: 100 / 105, scaleX: 1 });
     expect(setAs("condense", fit)).toEqual({ size: 1, scaleX: 100 / 105 });
     expect(setAs("as-is", fit)).toEqual({ size: 1, scaleX: 1 });
@@ -161,7 +149,6 @@ describe("a way out", () => {
   });
 });
 
-// The cases the server's fit check is tested on too (tests/editing/test_fit.py): the same verdict.
 describe("a line is too long only past its room, as the server says", () => {
   test.each(shared.cases)("$what", ({ original_pt, delta_pt, room_pt, too_long_percent, options }) => {
     const fit = { originalPt: original_pt, deltaPt: delta_pt, roomPt: room_pt, missing: [], options: [] };

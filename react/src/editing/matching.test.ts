@@ -3,7 +3,6 @@ import { type FindOptions, matchesIn, replacedIn } from "./matching";
 
 describe("matching", () => {
   const ANY = { matchCase: false, wholeWords: false };
-  /** `text` with what reads `find` changed `to`, as "Find" matches with `options`. */
   const replaced = (text: string, { find, to, ...options }: { find: string; to: string } & Partial<FindOptions>) =>
     replacedIn(text, matchesIn(text, find, { ...ANY, ...options }), to);
 
@@ -22,7 +21,6 @@ describe("matching", () => {
 
   test("a change is spelled as the page spelled what it replaces: its spaces, quotes and dashes, where all were one kind", () => {
     expect(replaced("from 2019\u20132020", { find: "2019-2020", to: "2020-2021" })).toBe("from 2020\u20132021");
-    // A no-break space and a plain one in what was found: nothing to say which the change wants.
     expect(replaced("14\u00a0March 2026", { find: "14 March 2026", to: "2 April 2027" })).toBe("2 April 2027");
     expect(replaced("the Client\u2019s", { find: "Client\u2019s", to: "Customer's" })).toBe("the Customer\u2019s");
   });
@@ -41,7 +39,6 @@ describe("matching", () => {
 
   test("a ligature reads as its letters, and is only ever changed whole", () => {
     expect(replaced("\ufb01nance", { find: "finance", to: "funds" })).toBe("funds");
-    // Half of one would leave the other letter's half behind.
     expect(matchesIn("\ufb01nance", "f", ANY)).toEqual([]);
   });
 

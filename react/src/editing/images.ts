@@ -1,25 +1,20 @@
-// A page image the browser couldn't load: why, on its page in the server's words, and asked for again on a
-// backoff and when the connection returns. A document the server lost opens again first: every page's address changes.
 import { pageImage } from "../api/client";
 import { sentenceOf } from "../bugs";
 import { IMAGE_RETRY_FIRST_MS, IMAGE_RETRY_MOST_MS } from "./constants";
 import { announcing, type Editor } from "./editor";
 import { warn } from "./notices";
 
-/** A page whose image failed, until it loads. */
 export interface FailedImage {
-  readonly tries: number; // how often it's been asked for again: the image is drawn anew for each
-  readonly failed: string | null; // why, in the server's words; null when it answered after all
+  readonly tries: number;
+  readonly failed: string | null;
 }
 
-/** A page's image failed to load, for any reason: find out why, say it on the page, and ask again later. */
 export async function imageFailed(editor: Editor, page: number): Promise<void> {
   const { reopener } = editor;
   const before = reopener.doc;
   try {
     await reopener.check();
   } catch (error) {
-    // Lost, and it couldn't open again: said in the bar, where reopening is.
     const text = sentenceOf(error);
     const { notices } = editor.store.get();
     editor.store.set({ notices: { ...notices, reopen: warn(text) }, announcement: announcing(text) });
@@ -36,7 +31,6 @@ export async function imageFailed(editor: Editor, page: number): Promise<void> {
   }
 }
 
-/** A page's image loaded: nothing more to say of it, and nothing to ask again. */
 export function imageLoaded(editor: Editor, page: number): void {
   const { images } = editor.store.get();
   if (!images.has(page)) return;
@@ -47,12 +41,10 @@ export function imageLoaded(editor: Editor, page: number): void {
   editor.store.set({ images: rest });
 }
 
-/** The connection came back: every page whose image failed is asked for at once. */
 export function retryImages(editor: Editor): void {
   for (const page of editor.store.get().images.keys()) askAgain(editor, page);
 }
 
-/** Say why on the page, heard unless another page says it already, and ask again after a wait that grows. */
 function failedOnPage(editor: Editor, page: number, why: string | null): void {
   const { images } = editor.store.get();
   const image = images.get(page) ?? { tries: 0, failed: null };
@@ -70,7 +62,6 @@ function failedOnPage(editor: Editor, page: number, why: string | null): void {
   );
 }
 
-/** Draw the page's image anew, so the browser asks for it again. */
 function askAgain(editor: Editor, page: number): void {
   clearTimeout(editor.retries.get(page));
   editor.retries.delete(page);

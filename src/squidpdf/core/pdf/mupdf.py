@@ -1,9 +1,4 @@
-"""The one driver there is: PyMuPDF.
-
-Only primitives here (see `core.pdf.driver`): the hard-to-read MuPDF calls come
-from `core.pdf.lowlevel`, whose `PdfFile` the driver holds, and the everyday ones are below.
-Only `core.engine` opens the driver: nothing outside `core` learns that MuPDF is underneath.
-"""
+"""Only `core.engine` opens the driver: nothing outside `core` learns MuPDF is underneath."""
 
 from __future__ import annotations
 
@@ -60,35 +55,28 @@ from squidpdf.core.types import (
 )
 
 _PDF_DP = 4  # decimals written into a content stream, far below a device pixel
-# A narrowing matrix as PyMuPDF writes one: to 5 decimals, and a number nearer 0 than 1e-4 as 0.
+# As PyMuPDF writes a narrowing matrix: to 5 decimals, and nearer 0 than 1e-4 as 0.
 _MATRIX_DP = 5
 _NEAR_ZERO = 1e-4
-_NOT_NARROWED = (
-    "1 0 0 1 0 0 cm\n"  # the narrowing of a run at its own width, which moves nothing
-)
-_BYTE_MAX = 255  # the top of one color channel in 0xRRGGBB
+_NOT_NARROWED = "1 0 0 1 0 0 cm\n"
+_BYTE_MAX = 255
 _KEEP_PROTECTION = 0  # pymupdf.PDF_ENCRYPT_KEEP, which its type stubs leave out
-_TRAILER = -1  # what PyMuPDF's object calls take for the file's trailer
-# A file's ID with both parts empty: MuPDF keeps the first part as it is and writes the second.
+_TRAILER = -1
+# Both parts empty: MuPDF keeps the first part as it is and writes the second.
 _EMPTY_ID = "[<> <>]"
-_FALSE = ("bool", "false")  # a false entry, as PyMuPDF's object calls read one
+_FALSE = ("bool", "false")
 _CRYPT_FILTERS_FROM = (
     4  # the first protection version (V) with crypt filters, and EncryptMetadata
 )
-# The bytes a PDF name holds as they are: printable, and none that ends a name or
-# starts an escape. Any other is written #xx.
 _PRINTABLE = range(0x21, 0x7F)
 _ENDS_OR_ESCAPES_A_NAME = b"()<>[]{}/%#"
 
-# Where a font description keeps the font file, by the kind of file it is.
 _FONT_FILES = ("FontFile2", "FontFile3")
 
 # Read text without images: decoding them took most of the time.
 _TEXT_FLAGS = pymupdf.TEXTFLAGS_DICT & ~pymupdf.TEXT_PRESERVE_IMAGES
-# The letters as drawn, each by its glyph: a marked content's text in their place aside.
 _DRAWN_FLAGS = _TEXT_FLAGS | pymupdf.TEXT_IGNORE_ACTUALTEXT
 
-# A font's kind, as the file names it, in our words. A multiple-master font is a Type 1.
 _KINDS: dict[str, FontKind] = {
     "TrueType": "truetype",
     "Type0": "type0",
@@ -96,15 +84,9 @@ _KINDS: dict[str, FontKind] = {
     "MMType1": "type1",
     "Type3": "type3",
 }
-# The object PyMuPDF lists a font written in place under: none.
 _IN_PLACE = 0
-# The name MuPDF's text gives a Type3 font with no /Name, by its object.
 _UNNAMED_TYPE3 = "Type3 ({font_object} 0 R)"
-# The name such a font written in place goes by instead, as its text names every one alike,
-# and a resource name is never shown.
 _UNNAMED_TYPE3_IN_PLACE = "Type3 (no name)"
-# How a font's program is stored, as PyMuPDF names it, in our words. "cid" is a CFF
-# whose shapes are numbered, not named.
 _FILE_TYPES: dict[str, FontFileType] = {
     "ttf": "truetype",
     "otf": "opentype",
@@ -112,105 +94,82 @@ _FILE_TYPES: dict[str, FontFileType] = {
     "cid": "cff",
     "pfa": "type1",
 }
-# The encoding of a two-byte font set across whose codes are its CIDs, as PyMuPDF names it.
 _IDENTITY_ACROSS = "Identity-H"
 
-# What MuPDF's list of a page's drawing calls names a picture or shading; paths come apart.
 _PICTURE_KINDS = ("fill-image", "fill-imgmask", "fill-shade")
 
-# The kinds of form field that show their value as text, as PyMuPDF names them.
 _TEXT_FIELD_KINDS = ("Text", "ComboBox", "ListBox")
 
-_STRIP_PAD_PT = 0.1  # how far an erased strip reaches past the points it runs through
-# Where an erased strip runs: this share of each letter's height up from its baseline.
+_STRIP_PAD_PT = 0.1
 # Every font's glyph boxes reach just above the baseline; few reach the next line's.
 _STRIP_LIFTS = (0.05, 0.2)
 
-# The catalog entry for the file's tags: the reading order a screen reader follows.
 _TAGS_KEY = "StructTreeRoot"
 
-# MuPDF's failures, matched in order with `isinstance`, and the first match wins: its own
-# errors all derive from one, so the narrower ones go first.
+# The first match wins, and MuPDF's own errors all derive from one: narrower ones first.
 MUPDF_FAILURES = (
-    Failure(raised=MUPDF_TOO_HEAVY, problem=TooHeavy),  # past a limit of MuPDF's own
-    # Out of memory, or a file it can't open: only its words tell which.
+    Failure(raised=MUPDF_TOO_HEAVY, problem=TooHeavy),
     Failure(raised=MUPDF_SYSTEM_ERRORS, problem=machine_failure),
-    Failure(raised=MUPDF_OWN_ERRORS, problem=Damaged),  # anything else it couldn't make out
+    Failure(raised=MUPDF_OWN_ERRORS, problem=Damaged),
 )
 
-# The library and its version, for `core.engine`'s BUILD.
 DRIVER_BUILD = f"mupdf-{pymupdf.mupdf_version}"
 
 
 @dataclass(frozen=True, slots=True, eq=False)
 class _MuPDFFont:
-    """A font file MuPDF has opened, made by `_mupdf_font`. Implements `FontProgram`."""
-
     font: pymupdf.Font
-    # Each letter's width in ems, by its code point, read once: a fit check measures
-    # the same few letters thousands of times.
+    # Read once: a fit check measures the same few letters thousands of times.
     width_in_ems: Callable[[int], float] = field(repr=False)
 
     def listed_letters(self) -> list[int]:
-        """Every code point MuPDF says the font maps; a trimmed font lists more."""
         return list(self.font.valid_codepoints())
 
     def advance(self, ch: str) -> float:
-        """How far `ch` moves the pen, in ems."""
         return self.width_in_ems(ord(ch))
 
     def maps(self, ch: str) -> bool:
-        """Whether the font has a glyph of its own for `ch`, even an empty one."""
         return self.glyph_of(ch) != 0
 
     def glyph_of(self, ch: str) -> GlyphId:
-        """The glyph that draws `ch`; 0, the shape for a missing letter, when it has none."""
         return GlyphId(self.font.has_glyph(ord(ch)))
 
     def width(self, text: str, size: float) -> float:
-        """How wide `text` is at `size` points: what MuPDF's `text_length` says, quicker."""
         return sum(map(self.width_in_ems, map(ord, text))) * size
 
 
 def _mupdf_font(font_file: bytes) -> _MuPDFFont:
-    """`font_file` opened in MuPDF, to measure with. Raises MuPDF's error if it isn't a font."""
     font = pymupdf.Font(fontbuffer=font_file)
     return _MuPDFFont(font, cache(font.glyph_advance))
 
 
 def open_face(font_file: bytes) -> FontProgram:
-    """A face we ship, opened from its file anew: kept by nobody once its reader is done."""
     return _mupdf_font(font_file)
 
 
 @cache
 def _kept_face(face: Face) -> FontProgram:
-    """A face we ship, opened once per process: it measures what `add_font` draws."""
     return _mupdf_font(face_bytes(face))
 
 
 def open_driver(path: str) -> PdfDriver:
-    """The PDF at `path`, open in MuPDF, only ever as a PDF.
-
-    Raises FileNotFoundError when it's gone, Encrypted behind a password, and
-    Damaged when it isn't a PDF anyone could show.
-    """
+    """Raises FileNotFoundError, Encrypted behind a password, or Damaged if it isn't a PDF."""
     try:
         # Left to sniff, MuPDF opens a PNG as a document.
         doc = pymupdf.open(path, filetype="pdf")
-    except pymupdf.FileNotFoundError as exc:  # gone: Python's own error, which callers catch
+    except pymupdf.FileNotFoundError as exc:
         raise FileNotFoundError(path) from exc
-    except pymupdf.FileDataError as exc:  # garbage, truncated or empty
+    except pymupdf.FileDataError as exc:
         raise Damaged from exc
-    if doc.needs_pass:  # it opens, but every page is locked behind a password
+    if doc.needs_pass:
         doc.close()
         raise Encrypted
     try:
         page_count = len(doc)
-    except MUPDF_ERRORS as exc:  # its page list can't even be counted
+    except MUPDF_ERRORS as exc:
         doc.close()
         raise Damaged(debug=f"{type(exc).__name__}: {exc}") from None
-    if page_count == 0:  # no page to show or edit: not a document anyone made
+    if page_count == 0:
         doc.close()
         raise Damaged(debug="no pages")
     file = pdf_file(doc)
@@ -221,23 +180,17 @@ def open_driver(path: str) -> PdfDriver:
 
 @dataclass(slots=True)
 class _ChangedPages:
-    """What the driver did to each page, by its object, whose number survives renumbering."""
-
     pages: dict[int, _ChangedPage] = field(default_factory=dict)
 
     def page(self, page_object: int) -> _ChangedPage:
-        """What the driver did to page `page_object` so far, kept from the first change on."""
         return self.pages.setdefault(page_object, _ChangedPage())
 
 
 @dataclass(slots=True)
 class _OpenedPrograms:
-    """Each font `write_text` wrote in, opened from the file it stores, by its object: a few."""
-
     programs: dict[int, _MuPDFFont] = field(default_factory=dict)
 
     def program(self, font_object: int, make: Callable[[], _MuPDFFont]) -> _MuPDFFont:
-        """Font `font_object`'s file, opened by `make` the first time it's asked for."""
         if font_object not in self.programs:
             self.programs[font_object] = make()
         return self.programs[font_object]
@@ -245,39 +198,26 @@ class _OpenedPrograms:
 
 @dataclass(frozen=True, slots=True, eq=False)
 class _MuPDFDriver:
-    """A PDF open in MuPDF. Implements `core.pdf.driver.PdfDriver`. Made by `open_driver`."""
-
     doc: pymupdf.Document
-    file: PdfFile  # the same document, for the calls MuPDF's low-level API makes
+    file: PdfFile
     changed: _ChangedPages = field(default_factory=_ChangedPages, repr=False)
     programs: _OpenedPrograms = field(default_factory=_OpenedPrograms, repr=False)
 
     def page_count(self) -> int:
-        """How many pages the document has, without reading any of them."""
         return len(self.doc)
 
     def pages(self) -> list[Page]:
-        """Each page's size, unrotated like the span boxes, and the turn it asks for.
-
-        Raises Damaged when the file counts pages it doesn't have.
-        """
         try:
             pages = [self.doc[pno] for pno in range(len(self.doc))]
-        except (*MUPDF_ERRORS, IndexError) as exc:  # its page list says pages it doesn't hold
+        except (*MUPDF_ERRORS, IndexError) as exc:
             raise Damaged(debug=f"{type(exc).__name__}: {exc}") from None
-        # MuPDF reads /Rotate, a clockwise turn, as a quarter turn: 0, 90, 180 or 270.
         return [Page(p.cropbox.width, p.cropbox.height, p.rotation) for p in pages]
 
     def page_image(self, page: int, scale: float) -> bytes:
-        """The page unrotated as a PNG, `scale` pixels per point."""
         return png_of(_drawn(self.doc[page], scale))
 
     def box_images(self, page: int, scale: float, boxes: list[Rect]) -> list[bytes]:
-        """Each box of the page unrotated as a PNG, `scale` pixels per point.
-
-        Cut from the whole page, drawn as `page_image` draws it: a clip changes how MuPDF
-        draws pictures, shadings and the paths it cuts, which would show a seam.
-        """
+        """Cut from the whole page: a clip changes how MuPDF draws pictures, showing a seam."""
         drawn = _drawn(self.doc[page], scale)
         to_pixels = pymupdf.Matrix(scale, scale)
         return [
@@ -286,11 +226,7 @@ class _MuPDFDriver:
         ]
 
     def text_lines(self, page: int) -> list[list[TextPiece]]:
-        """Each line of text on the page, split into the pieces it is drawn in.
-
-        MuPDF's text names a piece's font only by name (`core.pdf.text_fonts`), so two fonts on
-        one page whose text reads one name both give the first one's object.
-        """
+        """Text names a font only by name: two fonts read as one name give the first."""
         blocks = self.doc[page].get_text("dict", flags=_TEXT_FLAGS)["blocks"]
         fonts = self.fonts(page)
         by_name = page_text_fonts(fonts)
@@ -309,9 +245,7 @@ class _MuPDFDriver:
         ]
 
     def _by_embedded_name(self, fonts: list[PageFont]) -> dict[str, PageFont]:
-        """The stored ones of `fonts` by the name inside each file, as their text reads it."""
         by_name: dict[str, PageFont] = {}
-        # The library's order: the first by a name wins.
         for font in fonts:
             embedded = (
                 self.file.fonts.text_font_name(font.font_object) if font.is_embedded else None
@@ -321,36 +255,24 @@ class _MuPDFDriver:
         return by_name
 
     def text_in(self, page: int, boxes: list[Rect]) -> list[str]:
-        """The letters inside each box on the page, in reading order.
-
-        A letter counts when its middle is inside, so one that grazes the edge doesn't.
-        """
         letters = self._letters(page, near=boxes)
         return ["".join(letter.text for letter in letters.inside(box)) for box in boxes]
 
     def letters_in(self, page: int, boxes: list[Rect]) -> list[list[PlacedLetter]]:
-        """The letters drawn with their middle in each box, where each is, in reading order."""
         letters = self._letters(page, near=boxes, flags=_DRAWN_FLAGS)
         return [[_placed(letter) for letter in letters.inside(box)] for box in boxes]
 
     def drawn_glyphs(self, page: int) -> list[DrawnGlyph]:
-        """Each letter the page's own drawing writes, on it or off it, and the shape picked."""
         return self.file.glyphs.drawn(page)
 
     def drawn_glyph_boxes(self, page: int) -> list[Rect] | None:
-        """The box each of `drawn_glyphs` takes as drawn, in its order; None if unread."""
         try:
             boxes = self.file.glyphs.boxes(page)
-        # The library's own failure, or one of the device's that it reports as its own.
         except MUPDF_OWN_ERRORS:
             return None
         return [Rect(*box) for box in boxes]
 
     def drawn_boxes(self, page: int) -> list[Rect]:
-        """The box around each thing the page draws but text: lines, shapes and pictures.
-
-        A path is boxed piece by piece, so a grid drawn as one path still has its lines.
-        """
         pdf_page = self.doc[page]
         pieces = [
             _box_of(piece, ink=_ink_of(drawing))
@@ -363,16 +285,9 @@ class _MuPDFDriver:
         return pieces + pictures
 
     def link_boxes(self, page: int) -> list[Rect]:
-        """The area of each link on the page, as shown, whatever it does."""
         return self.file.redaction.link_boxes(page)
 
     def form_fields(self, page: int) -> list[FormField]:
-        """Each form field on the page that shows text, and the value it shows.
-
-        A field draws its value itself, not the page. A check box, a button, a
-        signature or an empty field shows no value, so it isn't listed.
-        """
-        # No form in the file at all, as in most: no page need be asked.
         if not self.doc.is_form_pdf:
             return []
         return [
@@ -384,35 +299,25 @@ class _MuPDFDriver:
     def _letters(
         self, page: int, *, near: list[Rect], flags: int = _TEXT_FLAGS
     ) -> _PageLetters:
-        """The letters of each line on the page whose box meets one of `near`, to find by place.
-
-        A line's box holds each of its letters' boxes, so a line left out has none inside them.
-        """
         blocks = self.doc[page].get_text("rawdict", flags=flags)["blocks"]
         lines = (line for line in _each_line(blocks) if _meets_any(line["bbox"], near))
         return _page_letters(list(_each_letter(lines)))
 
     def fonts(self, page: int) -> list[PageFont]:
-        """Each font the page uses that's an object of its own, forms included."""
         return self._fonts_of(self._listed_fonts(page))
 
     def _listed_fonts(self, page: int) -> list[_ListedFont]:
-        """Every font the page uses, forms included, as PyMuPDF lists it, in place or not."""
         return [_ListedFont(*listed) for listed in self.doc[page].get_fonts(full=True)]
 
     def _fonts_of(self, listed: list[_ListedFont]) -> list[PageFont]:
-        """Each of `listed` that's an object, in our words: one written in place has none."""
         return [self._page_font(font) for font in listed if not font.written_in_place]
 
     def _page_font(self, listed: _ListedFont) -> PageFont:
-        """A font PyMuPDF listed, in our words; a Type3 by the name its text reads."""
         kind = listed.kind
         return PageFont(
             font_object=listed.font_object,
             name=listed.name if kind != "Type3" else self._type3_name(listed.font_object),
-            # .get: a font with no kind, or one the PDF format has no name for.
             kind=_KINDS.get(kind, "other"),
-            # .get: "n/a" when only named, or stored in a way MuPDF can't name.
             file_type=_FILE_TYPES.get(listed.file_type, "none"),
             resource=listed.resource,
             codes_are_cids=listed.encoding == _IDENTITY_ACROSS,
@@ -420,30 +325,21 @@ class _MuPDFDriver:
         )
 
     def _type3_name(self, font_object: int) -> str:
-        """A Type3 font's name as its text reads it: its /Name, never the /BaseFont listed."""
         value_type, value = self.doc.xref_get_key(font_object, "Name")
-        # No /Name, which a Type3 font needn't have.
         if value_type != "name":
             return _UNNAMED_TYPE3.format(font_object=font_object)
         return value.removeprefix("/")
 
     def font_bytes(self, font_object: int) -> bytes:
-        """The font file stored in the PDF. Raises DriverError when MuPDF can't read it out."""
         try:
             _name, _ext, _kind, buffer = self.doc.extract_font(font_object)
-        except MUPDF_ERRORS as exc:  # MuPDF can't read the font's stream out
+        except MUPDF_ERRORS as exc:
             raise DriverError(Message("font_unreadable"), debug=str(exc)) from exc
-        # Stored, but empty: nothing to draw with.
         if not buffer:
             raise DriverError(Message("font_unreadable"), debug=f"font {font_object} is empty")
         return buffer
 
     def font_descriptor(self, font_object: int) -> FontDescriptor | None:
-        """What the font's description says about how it looks; None when it has none.
-
-        A font only named by one of the 14 standard names often has none. A
-        two-byte (Type0) font keeps it on the font inside it.
-        """
         owner = self._describing_font(font_object)
         if owner is None:
             return None
@@ -461,91 +357,58 @@ class _MuPDFDriver:
         )
 
     def _describing_font(self, font_object: int) -> int | None:
-        """Where the font's description lives: the font itself, or a Type0's inner font.
-
-        None when a Type0's inner font isn't an object of its own in the file.
-        """
         value_type, _value = self.doc.xref_get_key(font_object, "DescendantFonts")
-        # A simple font describes itself.
         if value_type not in ("array", PDF_REFERENCE):
             return font_object
         return self.file.fonts.inner_font(font_object)
 
     def _number(self, xref: int, key: str) -> float | None:
-        """A number in object `xref` at `key`, or None when it isn't there or isn't a number."""
         value_type, value = self.doc.xref_get_key(xref, key)
-        # PyMuPDF calls a number with a fraction (a PDF's real) a "float".
         if value_type not in ("int", "float"):
             return None
         return float(value)
 
     def font_codes(self, font_object: int, code_bytes: int) -> list[FontCode] | None:
-        """Each code the font has a letter for, lowest first; None without a letter list.
-
-        Read from MuPDF's own record of the font. Raises DriverError when MuPDF
-        can't load it.
-        """
         return self.file.fonts.font_codes(font_object, code_bytes)
 
     def listed_widths(self, font_object: int) -> dict[str, float] | None:
-        """Each letter the font's width list gives a width, per 1000 em; None without a list.
-
-        Read from MuPDF's own record of the font. Raises DriverError when MuPDF
-        can't load it.
-        """
         return self.file.fonts.listed_widths(font_object)
 
     def open_font(self, font_file: bytes) -> _MuPDFFont:
-        """Open a font file to measure with. Raises DriverError when it isn't one."""
         # No bytes at all: MuPDF would open its own Noto Serif in their place.
         if not font_file:
             raise DriverError(Message("font_unreadable"), debug="no bytes")
         try:
             return _mupdf_font(font_file)
-        except MUPDF_ERRORS as exc:  # MuPDF can't read the bytes as a font
+        except MUPDF_ERRORS as exc:
             raise DriverError(Message("font_unreadable"), debug=str(exc)) from exc
 
     def face_font(self, face: Face) -> FontProgram:
-        """A face we ship, opened to measure with: it measures what `add_font` draws."""
         return _kept_face(face)
 
     def add_font(self, page: int, font_file: bytes, *, resource: str) -> FontResource:
-        """Add a font to the page under the resource name `resource`, or one like it if taken.
-
-        Then `resource` numbered past any the page has: MuPDF, given a name the
-        page uses, hands back the font already there. Raises DriverError when
-        MuPDF won't add it.
-        """
+        """Numbered past any taken: given a name in use, MuPDF hands back the font there."""
         free_name = self._free_name(page, resource)
         pdf_page = self.doc[page]
         try:
             font_object = pdf_page.insert_font(fontname=free_name, fontbuffer=font_file)
-        except MUPDF_ERRORS as exc:  # the bytes opened as a font, but the page won't take them
+        except MUPDF_ERRORS as exc:
             raise DriverError(Message("font_not_added"), debug=str(exc)) from exc
         self._changed_page(page).keep_named(free_name, font_object)
         return FontResource(free_name, font_object)
 
     def _changed_page(self, page: int) -> _ChangedPage:
-        """What this driver did to the page so far, kept from the first change on."""
         return self.changed.page(self.doc[page].xref)
 
     def erase_text(self, page: int, boxes: list[Rect]) -> list[str]:
-        """Delete the letters whose middle is inside each box, for real.
-
-        Each box is erased as a thin strip above its letters' baselines, since a redaction
-        takes every letter its box touches, and a letter's box can reach the lines around it.
-        A box with letters left is then erased whole, so old text is never left under new.
-        """
-        # As drawn: a marked content's text lies over its glyphs evenly, not where each is.
+        """A thin strip above the baselines first: a letter's box can reach the lines around."""
         letters = self._letters(page, near=boxes, flags=_DRAWN_FLAGS)
         with self.file.redaction.links_kept(page):
-            # No letter's middle inside: erase the whole box, as nothing else would.
             self.file.redaction.redact(
                 page, [_strip_along(letters.inside(box)) or box for box in boxes]
             )
             left = self.text_in(page, boxes)
             missed = [box for box, text in zip(boxes, left, strict=True) if text.strip()]
-            # Read again only after a second erase: most boxes are clear after the first.
             if missed:
                 self.file.redaction.redact(page, missed)
                 left = self.text_in(page, boxes)
@@ -556,35 +419,27 @@ class _MuPDFDriver:
     def drop_links(
         self, page: int, boxes: list[Rect], *, holding: Callable[[str], bool] | None = None
     ) -> None:
-        """Delete every link whose area overlaps one of `boxes`; with `holding`, if it holds."""
         self.file.redaction.drop_links(page, boxes, holding=holding)
 
     def hidden_copies(self, page: int) -> list[str]:
-        """Every hidden copy on the page, as text, and each string MuPDF may miss."""
         return self.file.page_hidden_copies.read(page)
 
     def rewrite_hidden_copies(self, page: int, rewritten: Callable[[str], str]) -> None:
-        """Put `rewritten(hidden_copy)` for each hidden copy on the page; one blanked goes."""
         self.file.page_hidden_copies.rewrite(page, rewritten)
 
     def document_hidden_copies(self, holding: Callable[[str], bool]) -> list[HiddenCopy]:
-        """Each of the document's own hidden copies that `holding` is true of, and where."""
         return self.file.document_hidden_copies.read(holding)
 
     def rewrite_document_hidden_copies(self, rewritten: Callable[[str], str]) -> None:
-        """Put `rewritten(copy)` for the document's hidden copies; one left blank goes."""
         self.file.document_hidden_copies.rewrite(rewritten)
 
     def is_signed(self) -> bool:
-        """Whether the document holds a signature, or anything `drop_signatures` deletes."""
         return self.file.signatures.is_signed()
 
     def holds_signature(self) -> bool:
-        """Whether a form field or the file's permissions hold a signature."""
         return self.file.signatures.holds_signature()
 
     def drop_signatures(self) -> None:
-        """Delete every signature, and what the file keeps only to check one."""
         self.file.signatures.drop()
 
     def write_codes(
@@ -600,12 +455,7 @@ class _MuPDFDriver:
         turn_ccw: QuarterTurn,
         letter_spacing: float,
     ) -> None:
-        """Write each run's codes in its font, from `origin` on, on top of the page.
-
-        One text object: each run switches to its font, and the pen moves on by
-        that font's widths. PyMuPDF's writers only take letters, so it's written
-        out here.
-        """
+        """PyMuPDF's writers only take letters, so it's written out here."""
         start = self.file.additions.to_pdf_space(page, origin)
         resources = self._resources_of(page, {run.font_object for run in runs})
         shown = " ".join(
@@ -618,20 +468,14 @@ class _MuPDFDriver:
         self._add_content(page, stream.encode())
 
     def _codes_paint_at(self, page: int, opacity: float) -> str:
-        """The graphics state `write_codes` paints at `opacity`, after a space; or none."""
-        # Solid: the page's own state paints it.
         if opacity >= SOLID:
             return ""
         return f" /{self.file.additions.add_opacity(page, opacity)} gs"
 
     def _resources_of(self, page: int, font_objects: set[int]) -> dict[int, str]:
-        """The page's resource name for each font in `font_objects`, giving one to any it lacks.
-
-        It lacks one when erasing dropped the font, or when it's another page's copy.
-        """
+        """It lacks one when erasing dropped the font, or when it's another page's copy."""
         named: dict[int, str] = {}
         for font in self.fonts(page):
-            # The first resource name the page lists a font under, in MuPDF's order.
             if not font.in_form:
                 named.setdefault(font.font_object, font.resource)
         for font_object in sorted(font_objects - named.keys()):
@@ -642,8 +486,6 @@ class _MuPDFDriver:
         return named
 
     def _free_name(self, page: int, name: str) -> str:
-        """`name`, or `name` numbered past any resource name the page already uses."""
-        # Those written in place too, which `fonts` leaves out: their names are taken.
         taken = {font.resource for font in self._listed_fonts(page)}
         candidates = chain([name], (f"{name}{n}" for n in count(2)))
         return next(candidate for candidate in candidates if candidate not in taken)
@@ -660,19 +502,12 @@ class _MuPDFDriver:
         turn_ccw: QuarterTurn,
         letter_spacing: float,
     ) -> None:
-        """Write each run from its origin, in its font, on top of the page, in order.
-
-        Each run's font is one `add_font` added. `scale_x` narrows a run from its own start, and
-        `turn_ccw` turns it about its origin. Written to the byte as PyMuPDF's `insert_text`
-        writes it, but for `letter_spacing`.
-        """
+        """Written to the byte as PyMuPDF's `insert_text` does, but for `letter_spacing`."""
         written = [run for run in runs if run.text]
-        # Empty new text.
         if not written:
             return
         pdf_page = self.doc[page]
-        # Where the page's own coordinates start in the PDF's: the crop box's corner, down
-        # from the paper's top. Not `to_pdf_space`, whose numbers differ in the last bit.
+        # Not `to_pdf_space`, whose numbers differ in the last bit.
         paper_top, corner = pdf_page.mediabox.y1, pdf_page.cropbox_position
         font_objects = self._changed_page(page).named
         style = _RunStyle(
@@ -690,44 +525,31 @@ class _MuPDFDriver:
         self._add_content(page, stream.encode())
 
     def _paint_at(self, page: int, opacity: float) -> str:
-        """The graphics state that paints at `opacity`, as a drawing sets it; none if solid."""
-        # Solid: the page's own state paints it.
         if opacity >= SOLID:
             return ""
         return f"/{self.file.additions.add_opacity_as_pymupdf(page, opacity)} gs\n"
 
     def _glyph_codes(self, font_object: int, text: str) -> str:
-        """`text` in font `font_object`'s codes: four hex digits a letter, its glyph's number.
-
-        `add_font` adds a font whose codes are its glyphs' numbers.
-        """
+        """`add_font` adds a font whose codes are its glyphs' numbers."""
         program = self._program_of(font_object)
         return "".join(f"{program.glyph_of(ch):04x}" for ch in text)
 
     def _program_of(self, font_object: int) -> _MuPDFFont:
-        """Font `font_object`'s file, opened to look its letters up in; opened once."""
         return self.programs.program(
             font_object, lambda: _mupdf_font(self.font_bytes(font_object))
         )
 
     def keep_pages(self, pages: list[int]) -> None:
-        """Keep only `pages`, in that order; links, bookmarks and fields on the rest go too."""
         self.doc.select(pages)
 
     def turn_page(self, page: int, turn_cw: QuarterTurn) -> None:
-        """Set the turn `page` asks for, clockwise, in place of the one it had."""
         self.doc[page].set_rotation(turn_cw)
 
     def drop_active_content(self) -> bool:
-        """Delete what acts on its own or reaches outside the file; whether there was any."""
         return self.file.active_content.drop()
 
     def keeps_xmp_plain(self) -> bool:
-        """Whether the file is protected and has XMP it asks to keep unencrypted.
-
-        MuPDF reads and writes that XMP as encrypted all the same.
-        """
-        # Not asked to keep it plain, or not protected at all.
+        """MuPDF reads and writes that XMP as encrypted all the same."""
         if self.doc.xref_get_key(_TRAILER, "Encrypt/EncryptMetadata") != _FALSE:
             return False
         version = self._protection_version()
@@ -737,22 +559,17 @@ class _MuPDFDriver:
         return self.doc.xref_xml_metadata() != 0  # 0: it has no XMP
 
     def _protection_version(self) -> int | None:
-        """The version (V) of the file's protection, wherever it's kept; None if no number."""
-        # The open wrote it in place, where it was kept in an object of its own.
         _value_type, version = self.doc.xref_get_key(_TRAILER, "Encrypt/V")
         return int(version) if version.isdigit() else None
 
     def drop_xmp(self) -> None:
-        """Delete the file's XMP, wherever the file names it. Its Info stays."""
         # The object itself, not the catalog's name for it: a page or PieceInfo may name it too.
         self.doc.update_object(self.doc.xref_xml_metadata(), PDF_NULL)
 
     def mark_changed_by(self, producer: str, when: datetime) -> None:
-        """Say in the file's metadata that `producer` changed it, at `when`."""
         self.file.metadata.mark_changed_by(producer, when)
 
     def save(self, path: str) -> None:
-        """Write the document to `path`, protected as the original was."""
         self._fill_in_missing_id()
         # Object streams compress the plain objects too: a face's width list is most of it.
         self.doc.save(
@@ -764,7 +581,6 @@ class _MuPDFDriver:
         )
 
     def _fill_in_missing_id(self) -> None:
-        """Give a protected file with no ID the empty one a reader takes it to have."""
         protection_type, _protection = self.doc.xref_get_key(_TRAILER, "Encrypt")
         id_type, _id = self.doc.xref_get_key(_TRAILER, "ID")
         protected, has_id = protection_type != PDF_NULL, id_type != PDF_NULL
@@ -774,11 +590,9 @@ class _MuPDFDriver:
         self.doc.xref_set_key(_TRAILER, "ID", _EMPTY_ID)
 
     def close(self) -> None:
-        """Release the open document."""
         self.doc.close()
 
     def replace_font_file(self, font_object: int, font_file: bytes) -> None:
-        """Swap in a new file for font `font_object`, which must keep each glyph's number."""
         owner = self._describing_font(font_object)
         # Its inner font in place, or nowhere: MuPDF never adds one so, so it's someone else's.
         if owner is None:
@@ -786,12 +600,10 @@ class _MuPDFDriver:
                 self._why_kept_whole(font_object),
                 debug=f"font {font_object} has no inner font of its own",
             )
-        # A TrueType face is stored as FontFile2, an OpenType one (Latin Modern) as FontFile3.
         stored = (self.doc.xref_get_key(owner, f"FontDescriptor/{key}") for key in _FONT_FILES)
         value = next(
             (value for value_type, value in stored if value_type == PDF_REFERENCE), None
         )
-        # No file where MuPDF stores ours: someone else's font.
         if value is None:
             raise DriverError(
                 self._why_kept_whole(font_object),
@@ -799,56 +611,42 @@ class _MuPDFDriver:
             )
         file_xref = object_number(value)
         self.doc.update_stream(file_xref, font_file)
-        # Its size before compression (Length1), which MuPDF states for either kind.
         self.doc.xref_set_key(file_xref, "Length1", str(len(font_file)))
 
     def _why_kept_whole(self, font_object: int) -> Message:
-        """Why font `font_object` stays whole in the saved file, naming it as the file does."""
         _value_type, base_font = self.doc.xref_get_key(font_object, "BaseFont")
         return Message("face_not_trimmed", {"font": base_font.lstrip("/")})
 
     def has_tags(self) -> bool:
-        """Whether the file is tagged: it has the reading order a screen reader follows."""
-        catalog = self.doc.pdf_catalog()  # the file's root entry, where the tags are listed
+        catalog = self.doc.pdf_catalog()
         value_type, _value = self.doc.xref_get_key(xref=catalog, key=_TAGS_KEY)
         return value_type != PDF_NULL
 
     def drop_tags(self) -> None:
-        """Remove the file's tags. Saving then drops every page only they pointed at."""
-        catalog = self.doc.pdf_catalog()  # the file's root entry, where the tags are listed
+        catalog = self.doc.pdf_catalog()
         self.doc.xref_set_key(xref=catalog, key=_TAGS_KEY, value=PDF_NULL)
 
     def _add_content(self, page: int, stream: bytes) -> None:
-        """Draw `stream` on top of everything on the page.
-
-        The page's own drawing is wrapped first, so its settings (color,
-        position) can't leak into ours.
-        """
         self._changed_page(page).wrap(self.doc[page])
         self.file.additions.add_drawing(page, stream)
 
 
 @dataclass(frozen=True, slots=True)
 class _ListedFont:
-    """A font a page uses, as PyMuPDF's list of them gives it, read by name."""
-
-    font_object: int  # its PDF object; _IN_PLACE for one written in place
+    font_object: int
     file_type: str
     kind: str
-    name: str  # empty for a Type3 font with no /Name written in place
+    name: str
     resource: str
     encoding: str
-    referencer: int  # the form (a reusable drawing) that uses it; 0 for the page itself
+    referencer: int
 
     @property
     def written_in_place(self) -> bool:
-        """Whether it's written in place, so it has no object of its own."""
         return self.font_object == _IN_PLACE
 
 
 def _font_name(read_as: str, by_name: PageTextFonts) -> str:
-    """The name of a piece's font its text reads as `read_as`, as the page lists it."""
-    # An unnamed Type3 font written in place, which its text names by an object it doesn't have.
     if read_as == _UNNAMED_TYPE3.format(font_object=_IN_PLACE):
         return _UNNAMED_TYPE3_IN_PLACE
     return by_name.name_of(read_as)
@@ -856,19 +654,13 @@ def _font_name(read_as: str, by_name: PageTextFonts) -> str:
 
 @dataclass(slots=True)
 class _ChangedPage:
-    """What the driver did to one page, for its later changes to know."""
-
-    # Each font it named, by resource name: those write_text writes in and erase_text keeps.
     named: dict[str, int] = field(default_factory=dict)
-    # Whether the page's own drawing is known to put back each setting it changes.
     balanced: bool = False
 
     def keep_named(self, resource: str, font_object: int) -> None:
-        """Note the page draws with font `font_object` as `resource`, so an erase keeps it."""
         self.named[resource] = font_object
 
     def wrap(self, pdf_page: pymupdf.Page) -> None:
-        """Wrap the page's own drawing, the first time, so its settings can't leak into ours."""
         # Checked once, as that reads the whole page; nothing the driver does unbalances it.
         if self.balanced:
             return
@@ -879,31 +671,23 @@ class _ChangedPage:
 
 @dataclass(frozen=True, slots=True)
 class _Letter:
-    """One letter as get_text("rawdict") reads it, with its line's direction."""
-
     text: str
-    box: tuple[float, float, float, float]  # x0, y0, x1, y1, from ascender to descender
-    origin: tuple[float, float]  # where it starts, on its baseline
-    direction: tuple[float, float]  # the way its line reads: (1, 0) is left to right
-    size: float  # its piece's
+    box: tuple[float, float, float, float]
+    origin: tuple[float, float]
+    direction: tuple[float, float]
+    size: float
 
 
-# A letter's middle, down then across, and its place in reading order. A plain tuple:
-# it sorts at C speed, so a page read for one edit costs about what a scan of it did.
+# A plain tuple: it sorts at C speed.
 type _Middle = tuple[float, float, int]
 
 
 @dataclass(frozen=True, slots=True, eq=False)
 class _PageLetters:
-    """Letters on a page, found by where their middle is. Made by `_page_letters`."""
-
-    in_order: list[_Letter] = field(repr=False)  # in reading order
-    # Each letter's middle, top first: those level with a box are one slice, found by halving.
+    in_order: list[_Letter] = field(repr=False)
     middles_top_down: list[_Middle] = field(repr=False)
 
     def inside(self, box: Rect) -> list[_Letter]:
-        """The letters whose middle is inside `box`, in reading order."""
-        # The lowest key at the box's top and the highest at its bottom, so both edges count.
         first = bisect_left(self.middles_top_down, (box.y0, -math.inf, -math.inf))
         past = bisect_right(self.middles_top_down, (box.y1, math.inf, math.inf))
         across = self.middles_top_down[first:past]
@@ -912,9 +696,7 @@ class _PageLetters:
 
 
 def _page_letters(letters: list[_Letter]) -> _PageLetters:
-    """`letters`, in reading order, sorted by where their middle is too."""
     middles = (_middle_of(letter.box) for letter in letters)
-    # A middle that isn't a number is inside no box, and would leave the order unsorted.
     numbers = [
         (y, x, place)
         for place, (x, y) in enumerate(middles)
@@ -924,13 +706,11 @@ def _page_letters(letters: list[_Letter]) -> _PageLetters:
 
 
 def _each_line(blocks: list[dict]) -> Iterator[dict]:
-    """Every line of text get_text read, in reading order."""
     for block in blocks:
         yield from block["lines"]
 
 
 def _each_letter(lines: Iterable[dict]) -> Iterator[_Letter]:
-    """Every letter of `lines`, as get_text("rawdict") read them, in reading order."""
     for line in lines:
         direction = (line["dir"][0], line["dir"][1])
         for piece in line["spans"]:
@@ -940,17 +720,12 @@ def _each_letter(lines: Iterable[dict]) -> Iterator[_Letter]:
 
 
 def _placed(letter: _Letter) -> PlacedLetter:
-    """A letter read from the page, as the engine is told of it."""
     return PlacedLetter(letter.text, Rect(*letter.box), letter.origin, size=letter.size)
 
 
 def _text_piece(
     raw: dict, *, direction: tuple[float, float], font: PageFont | None, font_name: str
 ) -> TextPiece:
-    """One piece of text from get_text("dict"), drawn in `font`, on a `direction` line.
-
-    `font` is None for a font the page doesn't list; `font_name` is its name either way.
-    """
     return TextPiece(
         text=raw["text"],
         font=font_name,
@@ -965,62 +740,49 @@ def _text_piece(
 
 
 def _shows_text(kind: str, value: object) -> bool:
-    """Whether a form field of `kind`, as PyMuPDF names it, shows `value` as text."""
     return kind in _TEXT_FIELD_KINDS and isinstance(value, str) and bool(value.strip())
 
 
 def _ink_of(drawing: dict[str, Any]) -> float:
-    """How far a path's ink reaches past its outline: half its stroke, if it's stroked."""
-    # A fill alone, or a hairline, which MuPDF draws as thin as it can.
     if "s" not in drawing["type"] or not drawing["width"]:
         return 0.0
     return drawing["width"] / 2
 
 
 def _box_of(piece: tuple[Any, ...], *, ink: float) -> Rect:
-    """The box around one piece of a path's ink: its outline, grown by `ink` all round."""
     x0, y0, x1, y1 = _outline_of(piece)
     return Rect(x0 - ink, y0 - ink, x1 + ink, y1 + ink)
 
 
 def _outline_of(piece: tuple[Any, ...]) -> tuple[float, float, float, float]:
-    """The box around one piece of a path, as get_drawings lists it: a line, a curve, a box."""
     kind, *shape = piece
-    # A rectangle: its own box.
     if kind == "re":
         return tuple(shape[0])
-    # A four-sided shape: the box around it.
     if kind == "qu":
         return tuple(shape[0].rect)
-    # A line or a curve: the box around its points.
     xs, ys = [point.x for point in shape], [point.y for point in shape]
     return min(xs), min(ys), max(xs), max(ys)
 
 
 def _meets_any(line_box: tuple[float, float, float, float], boxes: list[Rect]) -> bool:
-    """Whether a line's box meets one of `boxes`, edges touching; always, if it's no box."""
     x0, y0, x1, y1 = line_box
     is_box = x0 <= x1 and y0 <= y1
-    # Inside out, or not a number: it bounds nothing, so it's read.
     if not is_box:
         return True
     return any(_meets(line_box, box) for box in boxes)
 
 
 def _meets(line_box: tuple[float, float, float, float], box: Rect) -> bool:
-    """Whether a line's box meets `box`, edges touching."""
     x0, y0, x1, y1 = line_box
     return box.x0 <= x1 and x0 <= box.x1 and box.y0 <= y1 and y0 <= box.y1
 
 
 def _middle_of(bbox: tuple[float, float, float, float]) -> tuple[float, float]:
-    """The middle of a box given as x0, y0, x1, y1."""
     x0, y0, x1, y1 = bbox
     return (x0 + x1) / 2, (y0 + y1) / 2
 
 
 def _strip_along(letters: list[_Letter]) -> Rect | None:
-    """A thin box along `letters`, just above their baselines; None when there are none."""
     points = [point for letter in letters for point in _lifted(letter)]
     if not points:
         return None
@@ -1030,13 +792,9 @@ def _strip_along(letters: list[_Letter]) -> Rect | None:
 
 
 def _lifted(letter: _Letter) -> list[tuple[float, float]]:
-    """Points over the letter's middle, each _STRIP_LIFTS of its height up from its baseline.
-
-    Up is across the line's direction, so a line turned on the page works too.
-    """
     x0, y0, x1, y1 = letter.box
     along_x, along_y = letter.direction
-    up_x, up_y = along_y, -along_x  # the page's y grows downward
+    up_x, up_y = along_y, -along_x
     width = abs(x1 - x0) * abs(along_x) + abs(y1 - y0) * abs(along_y)
     height = abs(x1 - x0) * abs(up_x) + abs(y1 - y0) * abs(up_y)
     x, y = letter.origin
@@ -1048,51 +806,38 @@ def _lifted(letter: _Letter) -> list[tuple[float, float]]:
 
 
 def _written_name(resource: str) -> str:
-    """The resource name `resource` as a page's drawing writes it: "/", then each byte, escaped.
-
-    PyMuPDF hands names back decoded ("/F#201" as "F 1"), a byte that isn't
-    UTF-8 as a stand-in character (a surrogate), so the bytes come back exactly.
-    """
+    """PyMuPDF hands names back decoded, a byte not UTF-8 as a surrogate."""
     raw = resource.encode("utf-8", "surrogateescape")
     plain = (chr(byte) if _is_plain(byte) else f"#{byte:02X}" for byte in raw)
     return "/" + "".join(plain)
 
 
 def _is_plain(byte: int) -> bool:
-    """Whether a PDF name can hold `byte` as it is."""
     return byte in _PRINTABLE and byte not in _ENDS_OR_ESCAPES_A_NAME
 
 
 def _written_numbers(numbers: Iterable[float]) -> str:
-    """Numbers as `write_codes` writes them: each to _PDF_DP decimals, a space apart."""
     return " ".join(f"{number:.{_PDF_DP}f}" for number in numbers)
 
 
 def _written_codes(run: CodeRun, *, resource: str, size: float) -> str:
-    """One run of `write_codes`: its font, named `resource`, at `size`, then its codes."""
     return f"{_written_name(resource)} {_written_numbers([size])} Tf <{run.codes.hex()}> Tj"
 
 
 def _written_placing(
     start: tuple[float, float], *, scale_x: float, turn_ccw: QuarterTurn
 ) -> str:
-    """The matrix placing `write_codes`'s text: narrowed along its line, turned, placed."""
     cos, sin = QUARTER_TURNS[turn_ccw]
     x, y = start
     return _written_numbers([scale_x * cos, scale_x * sin, -sin, cos, x, y])
 
 
 def _written_spacing(letter_spacing: float) -> str:
-    """Letter spacing as a drawing sets it, after a space; nothing when it's none."""
     return f" {letter_spacing:.{_PDF_DP}f} Tc" if letter_spacing else ""
 
 
 def _written_narrowing(start: tuple[float, float], scale_x: float) -> str:
-    """The matrix narrowing a run by `scale_x` toward its start, as a drawing writes it.
-
-    Worked out in MuPDF's matrices and rounded as PyMuPDF does: the same numbers, to the bit.
-    """
-    # Not narrowed: the same numbers wherever it starts.
+    """Rounded as PyMuPDF does: the same numbers, to the bit."""
     if scale_x == 1:
         return _NOT_NARROWED
     shift = pymupdf.Matrix(1, 0, 0, 1, *start)
@@ -1101,25 +846,20 @@ def _written_narrowing(start: tuple[float, float], scale_x: float) -> str:
 
 
 def _matrix_number(number: float) -> float:
-    """One of a matrix's numbers, rounded as PyMuPDF rounds a matrix `insert_text` writes."""
     return round(number, _MATRIX_DP) if abs(number) >= _NEAR_ZERO else 0
 
 
 @dataclass(frozen=True, slots=True)
 class _RunStyle:
-    """What every run of one `write_text` is written with."""
-
-    paint: str  # the graphics state that paints it see-through, or nothing when solid
+    paint: str
     scale_x: float
     turn_ccw: QuarterTurn
-    setting: str  # its size, colour and letter spacing, as a drawing writes them
+    setting: str
 
 
 def _written_setting(
     size: float, color: tuple[float, float, float], letter_spacing: float
 ) -> str:
-    """A run's size, and its colour for strokes and fills alike, as PyMuPDF writes them."""
-    # Each number as PyMuPDF writes one (format_g): the fewest digits its float needs.
     rgb = pymupdf.format_g(color)
     return f"{pymupdf.format_g(size)} Tf {rgb} RG {rgb} rg{_written_spacing(letter_spacing)}"
 
@@ -1127,7 +867,6 @@ def _written_setting(
 def _written_run(
     start: tuple[float, float], *, glyphs: str, resource: str, style: _RunStyle
 ) -> str:
-    """One run, written from `start` in the PDF's coordinates: its glyphs in `resource`."""
     placed = pymupdf.format_g(_turned_back(start, style.turn_ccw))
     narrowed = _written_narrowing(start, style.scale_x)
     return (
@@ -1138,7 +877,6 @@ def _written_run(
 
 
 def _written_turn(turn_ccw: QuarterTurn) -> str:
-    """The matrix turning a run `turn_ccw` counter-clockwise, as a drawing writes it."""
     if turn_ccw == 0:
         return ""
     cos, sin = QUARTER_TURNS[turn_ccw]
@@ -1146,27 +884,23 @@ def _written_turn(turn_ccw: QuarterTurn) -> str:
 
 
 def _turned_back(point: tuple[float, float], turn_ccw: QuarterTurn) -> tuple[float, float]:
-    """`point` turned `turn_ccw` clockwise: where it is once the page turns the other way."""
     x, y = point
     cos, sin = QUARTER_TURNS[turn_ccw]
     return cos * x + sin * y, cos * y - sin * x
 
 
 def _drawn(pdf_page: pymupdf.Page, scale: float) -> pymupdf.Pixmap:
-    """The whole page unrotated, `scale` pixels per point, drawn with no clip."""
     matrix = pdf_page.derotation_matrix * pymupdf.Matrix(scale, scale)
     return pdf_page.get_pixmap(matrix=matrix, alpha=False)
 
 
 def _cut(drawn: pymupdf.Pixmap, box: pymupdf.IRect) -> bytes:
-    """The pixels of `drawn` inside `box`, as a PNG; `box` is in `drawn`'s device pixels."""
     part = pymupdf.Pixmap(drawn.colorspace, box & drawn.irect, drawn.alpha)
     part.copy(drawn, part.irect)
     return png_of(part)
 
 
 def _rgb(packed: int) -> tuple[float, float, float]:
-    """A 0xRRGGBB color as r, g, b, each 0-1."""
     return (
         ((packed >> 16) & _BYTE_MAX) / _BYTE_MAX,
         ((packed >> 8) & _BYTE_MAX) / _BYTE_MAX,

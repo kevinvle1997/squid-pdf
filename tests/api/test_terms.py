@@ -1,5 +1,3 @@
-"""The service's terms come from the file its deployment names; a copy naming none has none."""
-
 from __future__ import annotations
 
 import os
@@ -15,8 +13,6 @@ from squidpdf.terms.terms_file import TermsUnreadable
 from tests.api.conftest import BASE_URL
 from tests.helpers import assert_equal
 
-# The terms CI's deploy serves (.github/workflows/ci.yml): placeholder words in every part
-# the page shows, a paragraph wrapped over two lines, and an email address.
 _FIXTURE = Path(__file__).parents[2] / "fixtures" / "terms.md"
 _SERVED = {
     "title": "Example terms",
@@ -44,7 +40,6 @@ _SERVED = {
 
 
 def _terms_answered(monkeypatch: pytest.MonkeyPatch, named: str | None) -> Response:
-    """What GET /api/terms answers on an app started with `SQUIDPDF_TERMS` set to `named`."""
     if named is None:
         monkeypatch.delenv("SQUIDPDF_TERMS", raising=False)
     else:
@@ -55,7 +50,6 @@ def _terms_answered(monkeypatch: pytest.MonkeyPatch, named: str | None) -> Respo
 
 @pytest.mark.parametrize("saved", ["as written", "as Notepad saves it"])
 def test_the_terms_are_sent_as_the_deployment_wrote_them(monkeypatch, tmp_path, saved):
-    """Notepad starts the file with a byte-order mark and ends each line with CR LF."""
     written = _FIXTURE.read_text(encoding="utf-8")
     path = tmp_path / "terms.md"
     if saved == "as written":
@@ -71,14 +65,12 @@ def test_the_terms_are_sent_as_the_deployment_wrote_them(monkeypatch, tmp_path, 
 
 @pytest.mark.parametrize("named", [None, ""])
 def test_a_deployment_naming_no_terms_has_none(monkeypatch, named):
-    """A self-hosted copy sets nothing; compose passes an empty value for an unset one."""
     response = _terms_answered(monkeypatch, named)
 
     assert_equal(response.status_code, 200, "status of no terms")
     assert_equal(response.json(), None, "no terms")
 
 
-# Each file the page can't show as written, and the sentence and line it's refused with.
 _REFUSED = {
     "no title": ("Example terms\n\n**A.** x\n", "terms_no_title", 1),
     "empty": ("", "terms_no_title", 1),
@@ -139,7 +131,6 @@ _REFUSED = {
 def test_terms_the_page_cant_show_stop_the_app_starting(
     monkeypatch, tmp_path, written, key, line
 ):
-    """Never shown as raw Markdown: refused, naming the file and the line."""
     path = tmp_path / "terms.md"
     path.write_text(written, encoding="utf-8")
     monkeypatch.setenv("SQUIDPDF_TERMS", str(path))
@@ -165,7 +156,6 @@ def test_a_lead_said_twice_stops_the_app_starting(monkeypatch, tmp_path):
 
 
 def test_what_markdown_draws_as_words_is_shown_as_words(monkeypatch, tmp_path):
-    """Markdown drops a title's closing #s; after a blank line only, any number opens a list."""
     path = tmp_path / "terms.md"
     path.write_text("# Terms #\n\n**A.** Given within\n30. days, or\n1.\n", encoding="utf-8")
 

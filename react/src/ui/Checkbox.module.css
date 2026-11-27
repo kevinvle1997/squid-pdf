@@ -3,12 +3,10 @@
   display: inline-flex; align-items: center; gap: var(--s2);
   font-size: var(--fs-sm); color: var(--ink-lo); white-space: nowrap; cursor: pointer;
 }
-/* The hit area grows past the box and its label without moving what you see. */
 .checkbox::before {
   content: ""; position: absolute; inset-inline: 0; top: 50%;
   height: max(100%, var(--hit)); transform: translateY(-50%);
 }
-/* Rounded as its rect is, so the focus ring follows the box. */
 .box {
   flex: none; width: var(--s3); height: var(--s3); border-radius: var(--r-1);
   transition: transform var(--dur-press) var(--ease-out);

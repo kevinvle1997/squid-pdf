@@ -3,7 +3,6 @@ import { aDoc, aFont, aSpan, PSEUDO_SENTENCES } from "../fixtures";
 import { createEditor } from "./editor";
 import { setWarningMuted } from "./mutedWarnings";
 
-// Its sentences are the server's, in a language made up for tests, so any the browser writes itself stands out.
 const DOC = aDoc({
   sentences: PSEUDO_SENTENCES,
   spans: [aSpan({ id: "similar", font: "Named", fidelity: "substitute", substitute: "Liberation Serif Regular" })],

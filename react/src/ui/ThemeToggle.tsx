@@ -3,7 +3,6 @@ import { ToggleButton } from "react-aria-components";
 import styles from "./ThemeToggle.module.css";
 import { onThemeChange, pickTheme, themeShown } from "./theme";
 
-/** Switches the interface between light and dark: a moon while it's light, a sun while it's dark. */
 export function ThemeToggle() {
   const dark = useSyncExternalStore(onThemeChange, themeShown) === "dark";
   return (

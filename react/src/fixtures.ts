@@ -1,5 +1,4 @@
-// Made-up API replies for tests, whole and typed. A field the server adds breaks here, where
-// `npm run types` brings it in, instead of hiding behind a cast in every test. Tests only.
+// Whole and typed, so a field the server adds breaks here, not behind a cast in every test.
 import type {
   AccountState,
   CountedSentence,
@@ -26,13 +25,10 @@ import type {
   Terms,
 } from "./api/types";
 
-/** An A4 page, upright, in points. */
 export const A4: PageInfo = { width: 595, height: 842, turn_cw: 0 };
 
-/** The server's thresholds, as core/constants.py sets them. */
 export const RULES: FitRules = { tolerance_pt: 4, room_slack_pt: 0.1, condense_limit: 0.05, shrink_floor: 0.9 };
 
-/** The server's sentences, as core/app/words/en.toml writes them. */
 export const SENTENCES: Sentences = {
   missing: "no {chars} in this font, so the line is drawn in our {font}",
   not_in_font: "no {chars} in this font",
@@ -128,25 +124,18 @@ export const SENTENCES: Sentences = {
   },
 };
 
-// A placeholder, which a sentence shouted keeps as it is.
 const PLACEHOLDER = /(\{\w+\})/;
 
-/** `english` shouted, its placeholders as they are. */
 function shouted(english: string): string {
   const parts = english.split(PLACEHOLDER);
   return parts.map((part) => (PLACEHOLDER.test(part) ? part : part.toUpperCase())).join("");
 }
 
-/** Each form of a sentence with a count, shouted. */
 function shoutedForms({ one, other }: CountedSentence): CountedSentence {
   return { one: shouted(one), other: shouted(other) };
 }
 
-/**
- * The server's sentences in a language made up for tests, as tests/conftest.py's `pseudo` makes one: those the
- * browser fills and says of an edit, a font, a download, Find or the bar's count, shouted. A sentence the browser
- * wrote itself reads unlike them.
- */
+/** Shouted, so a sentence the browser wrote itself reads unlike them. */
 export const PSEUDO_SENTENCES: Sentences = {
   ...SENTENCES,
   back_to: shouted(SENTENCES.back_to),
@@ -189,13 +178,12 @@ export const PSEUDO_SENTENCES: Sentences = {
   join_sentences: " | ",
 };
 
-/** A line of ten-point Times near the top of the first page, reading "was <id>". */
 export function aSpan(fields: Partial<SpanInfo> & Pick<SpanInfo, "id">): SpanInfo {
   return {
     page: 0,
     text: `was ${fields.id}`,
     font: "Times-Roman",
-    font_object: null, // no object: its font goes by its name alone, as aFont's does
+    font_object: null,
     size: 10,
     color: [0, 0, 0],
     bbox: { x0: 72, y0: 100, x1: 200, y1: 112 },
@@ -213,30 +201,27 @@ export function aSpan(fields: Partial<SpanInfo> & Pick<SpanInfo, "id">): SpanInf
   };
 }
 
-/** A font the file's own copy of can draw with, unless `substitute` names what stands in. */
 export function aFont(name: string, fields: Partial<FontInfo> = {}): FontInfo {
   return {
-    font_object: null, // no object: its spans name it by its name alone, as aSpan's do
+    font_object: null,
     name,
-    shown_name: name.replace(/^[A-Z]{6}\+/, ""), // as the server shows it: a trimmed copy's prefix aside
+    shown_name: name.replace(/^[A-Z]{6}\+/, ""),
     substitute: null,
     why: null,
     why_code: null,
     why_params: {},
-    same_widths: false, // as the server sends it when the font's own copy draws: nothing stands in to match
-    look_alike: "Liberation Serif Regular", // Times's, as the server matches it
+    same_widths: false,
+    look_alike: "Liberation Serif Regular",
     attached: false,
     glyphs: {},
     ...fields,
   };
 }
 
-/** When the server forgets a document read now, as its hour has not run out: the browser forgets its copy once it has. */
 function anHourOn(): string {
   return new Date(Date.now() + 3_600_000).toISOString();
 }
 
-/** A document of A4 pages, as many as its spans are on, unless `pages` says. */
 export function aDoc(fields: Partial<Document> = {}): Document {
   const spans = fields.spans ?? [];
   const pageCount = Math.max(1, ...spans.map((span) => span.page + 1));
@@ -256,7 +241,6 @@ export function aDoc(fields: Partial<Document> = {}): Document {
   };
 }
 
-/** The server's fit for a replacement that went in as typed, in the file's own font. */
 export function aFit(fields: Partial<FitInfo> = {}): FitInfo {
   return {
     delta_pt: 0,
@@ -274,7 +258,6 @@ export function aFit(fields: Partial<FitInfo> = {}): FitInfo {
   };
 }
 
-/** A render reply that drew nothing and had nothing to say. */
 export function aReply(fields: Partial<Render> = {}): Render {
   return {
     images: [],
@@ -289,27 +272,23 @@ export function aReply(fields: Partial<Render> = {}): Render {
   };
 }
 
-/** A span's edit the server drew other than asked, in its words. */
 export function aSpanNotice(detail: string, spanId = "span"): SpanNoticeInfo {
   return { kind: "span", span_id: spanId, code: "notice", params: {}, detail };
 }
 
-/** What saving did to the whole file other than asked, in the server's words. */
 export function aFileNotice(detail: string): FileNoticeInfo {
   return { kind: "file", code: "notice", params: {}, detail };
 }
 
-/** An edit the server left out, at `edit` in the list sent. */
 export function aSkipped(edit: number, detail: string): SkippedInfo {
   return { code: "no_span", params: {}, edit, type: "bad_reference", detail };
 }
 
-/** A Problem the server answered with. */
 export function aProblem(status: number, detail = "said"): ProblemInfo {
   return { type: "server_error", status, detail, code: "server_error", params: {} };
 }
 
-/** Widths for `letters`, each half the size wide, so a width is easy to work out: 10 letters at 10 pt is 50 pt. */
+/** Each letter half the size wide, so a width is easy to work out. */
 export function halfWideGlyphs(letters: string): Record<string, number> {
   return Object.fromEntries([...letters].map((letter) => [letter, 500]));
 }
@@ -337,32 +316,26 @@ export function aReplace(spanId: string, text = "now", fields: Partial<Replace> 
   return { kind: "replace", span_id: spanId, text, ...fields };
 }
 
-/** An edit that takes a span's words out of the file: all of them, or those its `range` names, by code point. */
 export function aRedact(spanId: string, fields: Partial<Redact> = {}): Redact {
   return { kind: "redact", span_id: spanId, ...fields };
 }
 
-/** An edit that leaves page `page` out of the file, by its number in the original. */
 export function aDeletePage(page: number): DeletePage {
   return { kind: "delete_page", page };
 }
 
-/** An edit that puts a new line on a page, set at its baseline. */
 export function anInsert(fields: Partial<Insert> = {}): Insert {
   return { kind: "insert", page: 0, origin: [72, 400], text: "Signed", size: 10, ...fields };
 }
 
-/** The server's verdict on a redaction: its words gone, and nothing else to say. */
 export function aRedaction(fields: Partial<RedactionInfo> = {}): RedactionInfo {
   return { verified: true, hidden_copies: [], message: null, runs: [], ...fields };
 }
 
-/** What opening the file found, in the server's words, its type its sentence's key as the server sends it. */
 export function aDocumentNotice(detail: string, type = "notice"): DocumentNoticeInfo {
   return { code: type, params: {}, type, detail };
 }
 
-/** The server's font list, cut to a face of each kind: the handwriting faces we ship, and a plain one. */
 export function aFontList(): FontList {
   const face = (name: string, style: "regular" | "bold" = "regular") => ({ name, style, glyphs: {} });
   const family = (name: string, category: "sans" | "handwriting", faces: FontList["families"][number]["faces"]) => ({
@@ -382,7 +355,6 @@ export function aFontList(): FontList {
   };
 }
 
-/** A deployment's terms, in placeholder words: a title, when they last changed, and paragraphs, one naming an address. */
 export const TERMS: Terms = {
   title: "Example terms",
   last_changed: "Last changed 1 January 2000",
@@ -399,12 +371,10 @@ export const TERMS: Terms = {
   ],
 };
 
-/** A server that keeps accounts, anyone may sign in to, and this browser isn't signed in to. */
 export function anAccount(fields: Partial<AccountState> = {}): AccountState {
   return { offered: true, invite_only: false, takes_payment: false, signed_in: null, ...fields };
 }
 
-/** An account signed in to, with a document limit, that has never gone to pay. */
 export function aSignedIn(fields: Partial<SignedIn> = {}): SignedIn {
   return {
     email: "friend@example.com",

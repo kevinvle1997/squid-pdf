@@ -1,9 +1,4 @@
-"""A part that forgets equals a fresh one afterwards, so nothing it read before is kept.
-
-Each test fills every field the way the engine does, forgets, then compares with a new one,
-so a field added later and missed fails here. The engine's parts forget through
-`keep_pages`, the one place that renumbers pages.
-"""
+"""Each test fills every field, so a field added later and missed by a forget fails here."""
 
 from __future__ import annotations
 
@@ -18,10 +13,8 @@ from tests.helpers import assert_equal, assert_every_field_filled
 
 
 def test_keeping_pages_forgets_the_fonts_read_by_page_number(engine):
-    """`keep_pages` renumbers the pages: nothing read through the old numbers may stay."""
     index = engine.index()
     engine.assess(index)
-    # The browser's letters for each span, as an upload asks: each pool walks every copy.
     for span in index:
         engine.widths(span)
     cache = engine.fonts.cache
@@ -33,9 +26,7 @@ def test_keeping_pages_forgets_the_fonts_read_by_page_number(engine):
 
 
 def test_keeping_pages_forgets_each_pages_resource_names(engine):
-    """A page's resource names are by page number, which `keep_pages` changes."""
     on_page = {span.page: span for span in engine.index()}
-    # A face we ship draws on the page that only names its fonts; the file's own, on the other.
     for page in (REFERENCED_PAGE, EMBEDDED_PAGE):
         engine.draw(on_page[page], "Invoices")
     names = engine.writer.names
@@ -47,7 +38,6 @@ def test_keeping_pages_forgets_each_pages_resource_names(engine):
 
 
 def test_a_retry_record_that_forgets_equals_a_fresh_one():
-    """A worker's record of Google's failed fetches: forgotten, every file may be fetched."""
     retries = _RetryRecord()
     retries.hold("ofl/poppins/Poppins-Regular.ttf", until=5.0, answered=threading.Event())
     assert_every_field_filled(retries, _RetryRecord(), "the record once a fetch got no answer")
@@ -58,7 +48,6 @@ def test_a_retry_record_that_forgets_equals_a_fresh_one():
 
 
 def test_kept_widths_that_forget_equal_fresh_ones():
-    """A worker's widths of copies from outside the file: forgotten, each is measured again."""
     kept = _KeptWidths()
     kept.widths(b"a digest", lambda: {"A": 600.0})
     assert_every_field_filled(kept, _KeptWidths(), "the widths once one copy is measured")

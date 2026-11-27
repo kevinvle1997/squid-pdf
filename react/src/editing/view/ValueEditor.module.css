@@ -1,29 +1,22 @@
-/* A row of its own under the verdict, as the ways out of a long line take theirs: the control, and what it opens under it. */
 .editor {
-  /* A day of the calendar: a button's size on a pointer, a finger's on a touch screen. */
   --cell: 32px;
 }
 @media (pointer: coarse) {
   .editor { --cell: var(--hit); }
 }
 .disclosure, .panel { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s2); }
-/* An empty panel takes no room: the gap under the control is the open editor's. */
 .panel:empty { display: none; }
-/* Named for its kind, bordered as the slip's other edit actions are, its chevron turning up while it's open. */
 .control { gap: var(--s1); }
 .chevron { display: block; flex: none; color: var(--ink-lo); }
 
 .calendar { display: flex; flex-direction: column; gap: var(--s2); width: calc(7 * var(--cell)); }
-/* The month, and its steps either side as quiet buttons: tools, not the edit. */
 .month { display: flex; align-items: center; justify-content: space-between; }
 .step { width: var(--cell); height: var(--cell); padding: 0; }
 .step svg { display: block; }
 .monthName { margin: 0; font-size: var(--fs-sm); font-weight: 600; color: var(--ink); }
-/* Its rows a day's height, so the weeks a month is short of six take as much under the reasons (`.reasons`). */
 .grid { border-collapse: collapse; border-spacing: 0; }
 .grid td { padding: 0; }
 .weekday { padding: 0 0 var(--s1); font-size: var(--fs-micro); font-weight: 500; color: var(--ink-lo); }
-/* A day, and, where the line can't take its date, the warning's dashed line under its number. */
 .day {
   composes: warnLine from "../../ui/WarnLine.module.css";
   --warn-line-inset: calc((var(--cell) - 16px) / 2);
@@ -36,13 +29,9 @@
   transition: background-color var(--dur-quick) var(--ease-out);
 }
 .day[data-hovered] { background: var(--rule-soft); }
-/* The chosen day in solid ink, as a chosen way out is, its dash in the page's white. */
 .day[data-selected] { --warn-line: var(--strip); background: var(--ink); color: var(--strip); font-weight: 600; }
 .day[data-focus-visible] { outline: 2px solid var(--change); outline-offset: 2px; }
-/* Other months' days are left out: the grid keeps their place. */
 .day[data-outside-month] { visibility: hidden; }
-/* A marked day's reason, under the month: each a day can give in one cell, shown one at a time. Under it, the room
-   of the weeks the month is short of six, so the slip keeps its height as the months are stepped through. */
 .reasons { display: grid; grid-template-rows: auto calc(var(--weeks-short, 0) * var(--cell)); }
 .reason {
   grid-area: 1 / 1; margin: 0; visibility: hidden;
@@ -50,7 +39,6 @@
 }
 .reason[data-shown] { visibility: visible; }
 
-/* The amount's own field, typed into: no step buttons, named by the Amount control over it. */
 .amountField { display: flex; }
 .amount {
   width: 14ch;
@@ -64,7 +52,6 @@
   .amount { min-height: var(--hit); }
 }
 
-/* Fills and shadows are dropped here: the chosen day and the focus keep a shape of their own. */
 @media (forced-colors: active) {
   .day[data-selected] { background: Highlight; color: HighlightText; forced-color-adjust: none; }
   .day[data-focus-visible] { outline-color: Highlight; }

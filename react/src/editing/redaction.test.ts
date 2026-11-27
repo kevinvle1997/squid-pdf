@@ -21,7 +21,6 @@ import { fill } from "./words";
 
 vi.mock(import("../api/client"), async (original) => ({ ...(await original()), renderStrips: vi.fn() }));
 
-// Its sentences are the server's, in a language made up for tests, so any the browser writes itself stands out.
 const DOC = aDoc({
   sentences: PSEUDO_SENTENCES,
   spans: [
@@ -100,14 +99,12 @@ describe("redacting some words of a span", () => {
       { start: 5, end: 9 },
       { start: 15, end: 19 },
     ];
-    // Turned a quarter: the first run's letters run up the page, where the server found them.
     const up = { x0: 60, y0: 40, x1: 72, y1: 60 };
     const redaction = aRedaction({ runs: [{ range: [5, 9], box: up }] });
 
     const [first, second] = redactedBoxes(span, { ranges, glyphs: undefined, redaction });
 
     expect(first).toEqual(up);
-    // The second, not in the reply yet: across the line, by letter count, the best guess without widths.
     expect(second).toEqual({ ...span.bbox, x0: 72 + (15 / 19) * 95, x1: 167 });
   });
 
@@ -116,7 +113,6 @@ describe("redacting some words of a span", () => {
 
     const boxes = redactedBoxes(span, { ranges: [{ start: 5, end: 9 }], glyphs: undefined, redaction: undefined });
 
-    // More covered than the download takes, never less: the browser can't measure along it.
     expect(boxes).toEqual([span.bbox]);
   });
 
@@ -132,7 +128,6 @@ describe("redacting some words of a span", () => {
   });
 
   test("a selection is in the field's units, and what it takes in code points, as the server counts", () => {
-    // A letter past the first 65,536 is two units in the field, one code point on the server.
     expect(wordsSelected("\u{1D400}x 4421", [4, 6])).toEqual([3, 7]);
   });
 
@@ -176,12 +171,10 @@ describe("redacting some words of a span", () => {
     redact(editor, null, { selected: [5, 9] });
     edit(editor, "card", null);
     redact(editor, null, { selected: [6, 7] });
-    // Said to be redacted, as they are: nothing's added.
     expect(editor.store.get().announcement.text).toBe(fill(PSEUDO_SENTENCES.redacted, { text: "4421" }));
     expect(editor.store.get().reading.edits).toEqual([aRedact("card", { range: [5, 9] })]);
     edit(editor, "card", null);
     typeInto(editor, "Card 4421 then 9918!");
-    // The whole line's question asks it too.
     expect(editor.store.get().announcement.text).toBe(PSEUDO_SENTENCES.undo_redaction);
     expect(undoQuestionOf(stale.sentences, [{ start: 5, end: 9 }])).toBe(PSEUDO_SENTENCES.undo_redaction);
   });
@@ -209,7 +202,6 @@ describe("redacting some words of a span", () => {
     expect(editor.store.get().announcement.text).toBe("PUT BACK “4421”.");
     redo(editor);
     expect(editor.store.get().announcement.text).toBe("REDACTED “4421”.");
-    // All of it, over the words redacted: undone, they stay, and the rest comes back.
     redact(editor, "card");
     undo(editor);
     expect(editor.store.get().reading.spans.get("card")?.redacted).toEqual([{ start: 5, end: 9 }]);

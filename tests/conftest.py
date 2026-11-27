@@ -1,5 +1,3 @@
-"""Shared fixtures for every test under tests/, however deep."""
-
 from __future__ import annotations
 
 import io
@@ -20,27 +18,22 @@ from squidpdf.core.fonts.catalog import FACES, face_bytes
 from squidpdf.documents.attached import AttachedFiles
 from squidpdf.documents.store import FOLDER_STORE
 
-# pytest only explains the asserts in test modules; this has it explain the helpers' too,
-# so a failing assert_equal shows a diff, not two whole values. Before any test imports them.
+# pytest rewrites asserts only in test modules: this makes a failing helper show a diff.
 pytest.register_assert_rewrite("tests.helpers")
 
-_POSTSCRIPT_NAME = 6  # the font's name table entry a PDF names it by
-_WIDTH_LIST_CODES = range(32, 127)  # the codes a width list covers: the keyboard's letters
-_WIDTH_LIST_EM = 1000  # a width list's unit: a thousandth of the size
+_POSTSCRIPT_NAME = 6  # the name table entry a PDF names a font by
+_WIDTH_LIST_CODES = range(32, 127)
+_WIDTH_LIST_EM = 1000
 _POPPINS_SIZE = 14.0
 
-# The sample's two pages, counted from 0 as spans count them.
-REFERENCED_PAGE = 0  # fonts named but not in the file: edits use a substitute
-EMBEDDED_PAGE = 1  # one font in the file, trimmed to the letters the page uses
-TAGGED_LINES = ["First page", "Second page"]  # the tagged fixture's line on each page
-# A sentence with its middle word in bold: three spans, which the page draws as one line.
+REFERENCED_PAGE = 0
+EMBEDDED_PAGE = 1
+TAGGED_LINES = ["First page", "Second page"]
 SENTENCE = (("Text is grouped into ", "helv"), ("spans", "hebo"), (" (one style).", "helv"))
 
 
 @dataclass(frozen=True, slots=True)
 class StoreWith:
-    """The folder store, with a test's own open, touch or sweep: a race, or a full disk."""
-
     opens_to_write: Callable[[Path], BinaryIO] = FOLDER_STORE.open_to_write
     opens_original: Callable[[Path], Engine] = FOLDER_STORE.open_original
     touches: Callable[[Path], float] = FOLDER_STORE.touch
@@ -48,59 +41,46 @@ class StoreWith:
 
     @property
     def driver_factory(self) -> DriverFactory:
-        """The folder store's."""
         return FOLDER_STORE.driver_factory
 
     def create(self, owner_digest: str) -> tuple[str, Path]:
-        """The folder store's."""
         return FOLDER_STORE.create(owner_digest)
 
     def find(self, doc_id: str) -> tuple[Path, str] | None:
-        """The folder store's."""
         return FOLDER_STORE.find(doc_id)
 
     def open_to_write(self, folder: Path) -> BinaryIO:
-        """The test's, or the folder store's."""
         return self.opens_to_write(folder)
 
     def open_to_analyse(self, folder: Path, attached: AttachedFiles) -> Engine:
-        """The folder store's."""
         return FOLDER_STORE.open_to_analyse(folder, attached)
 
     def delete(self, folder: Path) -> None:
-        """The folder store's."""
         FOLDER_STORE.delete(folder)
 
     def open_original(self, folder: Path) -> Engine:
-        """The test's, or the folder store's."""
         return self.opens_original(folder)
 
     def touch(self, folder: Path) -> float:
-        """The test's, or the folder store's."""
         return self.touches(folder)
 
     def sweep(self) -> None:
-        """The test's, or the folder store's."""
         self.sweeps()
 
 
-# A log line's fixed shape: time (UTC), level, outcome, module, event, then key=value fields.
 LOG_LINE = re.compile(
     r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ (INFO |WARN |ERROR) (noted  |skipped|failed ) "
     r"[a-z_.]+ [a-z_]+( [a-z_]+=\S+)*"
 )
-# Where each line starts, when a traceback or a debug follows it on the lines after.
 _LOG_LINE_START = re.compile(r"^\d{4}-\d\d-\d\dT", re.MULTILINE)
 
 
 def log_lines(output: str) -> list[str]:
-    """The first line of each log entry in captured output; what follows one isn't counted."""
     return [line for line in output.splitlines() if _LOG_LINE_START.match(line)]
 
 
 @pytest.fixture(scope="session", autouse=True)
 def no_fetch() -> Iterator[None]:
-    """Nothing in the suite reaches Google: set before any worker starts, so they inherit it."""
     with pytest.MonkeyPatch.context() as env:
         env.setenv("SQUIDPDF_NO_FETCH", "1")
         yield
@@ -113,7 +93,6 @@ def write_runs(
     origin: tuple[float, float],
     size: float,
 ) -> list[float]:
-    """Each run in its font, from where the last ends; where each starts, and the last ends."""
     x, baseline = origin
     places = [x]
     for text, font in runs:
@@ -124,29 +103,21 @@ def write_runs(
 
 
 def each_span(blocks: list[dict]) -> Iterator[dict]:
-    """Every span of text in get_text's blocks, in reading order."""
     for block in blocks:
-        # .get: an image block has no lines.
         for line in block.get("lines", []):
             yield from line["spans"]
 
 
 def each_letter(blocks: list[dict]) -> Iterator[dict]:
-    """Every letter get_text("rawdict") read, in reading order."""
     for span in each_span(blocks):
         yield from span["chars"]
 
 
 def cannot_cut(_subsetter: Subsetter, _font: TTFont) -> None:
-    """Fails, as fontTools can on an odd font: patched over `Subsetter.subset`."""
     raise ValueError("fontTools can't cut this font")
 
 
 def saved_as(face: str) -> str:
-    """The name a saved PDF gives a face we ship, e.g. "Carlito-Bold" for "Carlito Bold".
-
-    Read from the shipped file itself: its PostScript name, which MuPDF writes.
-    """
     font = TTFont(io.BytesIO(face_bytes(FACES[face])))
     return str(font["name"].getDebugName(_POSTSCRIPT_NAME))
 
@@ -154,12 +125,6 @@ def saved_as(face: str) -> str:
 def named_only(
     path: str, base_font: str, flags: int | None = None, *, italic_angle: float = 0
 ) -> str:
-    """One line in a font the file only names, never stores, as Word does with Calibri.
-
-    Written in MuPDF's Helvetica, then renamed: nothing here reads the letters'
-    shapes, only the font's name and, when `flags` is given, its description,
-    which slants by `italic_angle`.
-    """
     doc = pymupdf.open()
     page = doc.new_page()
     page.insert_text((72, 96), "Hello there", fontname="helv", fontsize=12)
@@ -176,11 +141,6 @@ def named_only(
 
 
 def named_with_widths(path: str, face: str, *, base_font: str) -> str:
-    """One line in a font the file only names, with the width list Word writes for it.
-
-    The widths are `face`'s, a face we ship, for codes 32 to 126 in the usual
-    encoding: Liberation Sans's are Arial's, so "Arial" names a font its file matches.
-    """
     program = pymupdf.Font(fontbuffer=face_bytes(FACES[face]))
     widths = [
         round(program.text_length(chr(code), fontsize=1) * _WIDTH_LIST_EM)
@@ -198,16 +158,11 @@ def named_with_widths(path: str, face: str, *, base_font: str) -> str:
 
 
 def inner_font_of(doc: pymupdf.Document, font_object: int) -> int:
-    """The font inside a two-byte font, which keeps its description and its width list."""
     _kind, descendants = doc.xref_get_key(font_object, "DescendantFonts")
     return int(descendants.strip("[]").split()[0])
 
 
 def name_two_byte_font(doc: pymupdf.Document, font_object: int, name: str) -> int:
-    """Names a two-byte font and the one inside it `ABCDEF+<name>`, as a real trimmed copy is.
-
-    Returns the one inside, which keeps the font's description.
-    """
     inner = inner_font_of(doc, font_object)
     for each_font in (font_object, inner):
         doc.xref_set_key(each_font, "BaseFont", f"/ABCDEF+{name}")
@@ -215,7 +170,6 @@ def name_two_byte_font(doc: pymupdf.Document, font_object: int, name: str) -> in
 
 
 def to_unicode(codespace: str, body: str) -> bytes:
-    """A ToUnicode CMap: the list saying which letter each code is."""
     return (
         "/CIDInit /ProcSet findresource begin 12 dict begin begincmap"
         " /CMapName /Test def /CMapType 2 def"
@@ -224,19 +178,11 @@ def to_unicode(codespace: str, body: str) -> bytes:
     ).encode()
 
 
-# Two Type3 copies of one font: each letter's code, the font's glyph number as Chrome
-# writes it, and the line each copy draws. Both draw e, l and o; only the second Y and w.
 _TYPE3_CODES = {"H": 1, "e": 2, "l": 3, "o": 4, "Y": 5, "w": 6}
 TYPE3_TEXTS = ("Hello", "Yellow")
 
 
 def type3_copies_at(path: str) -> str:
-    """Hello, then Yellow, each line in its own Type3 copy of one font, as Chrome prints one.
-
-    Each letter is the same square drawing: only whether it draws is read. Each
-    copy has only its own line's letters, by the same codes, in its letter list
-    (ToUnicode). With no /Name, only their descriptions name the font they share.
-    """
     doc = pymupdf.open()
     page = doc.new_page()
     letter = doc.get_new_xref()
@@ -262,7 +208,6 @@ def type3_copies_at(path: str) -> str:
 def _type3_copy(
     doc: pymupdf.Document, codes: dict[int, str], *, letter: int, prefix: str
 ) -> str:
-    """A Type3 copy drawing `codes`, each as `letter`, its description named with `prefix`."""
     last = max(_TYPE3_CODES.values())
     widths = " ".join("600" if code in codes else "0" for code in range(1, last + 1))
     names = " ".join(f"{code}/g{code}" for code in codes)
@@ -296,10 +241,6 @@ def drawn_with(
     text: str = "Terms of payment",
     face: str | None = None,
 ) -> str:
-    """One line of `text` in stored, trimmed Times or `face`, drawn with `setting` and `rotate`.
-
-    `setting` moves where each letter lands, not which it is, so the font still draws them all.
-    """
     font_file = pymupdf.Font("tiro").buffer if face is None else face_bytes(FACES[face])
     doc = pymupdf.open()
     page = doc.new_page()
@@ -313,18 +254,12 @@ def drawn_with(
     return path
 
 
-_SERIF = "Liberation Serif Regular"  # the face `in_a_copy_lacking` stores a copy of
+_SERIF = "Liberation Serif Regular"
 
 
 def in_a_copy_lacking(
     path: str, *, text: str, lacking: str = "", stored: bool = True, turn_ccw: QuarterTurn = 0
 ) -> str:
-    """One line of `text` in a whole, stored Liberation Serif with no shape for `lacking`.
-
-    Each of `lacking` the face has is emptied, as a trimmed copy leaves a letter it didn't
-    need, though the page still draws it; whole, so any other letter can be typed. Not
-    `stored`, it's in MuPDF's Times, which the file only names, and `lacking` is moot.
-    """
     doc = pymupdf.open()
     page = doc.new_page()
     font_name = "tiro"
@@ -337,11 +272,9 @@ def in_a_copy_lacking(
 
 
 def _emptied(face: str, letters: str) -> bytes:
-    """`face`'s file with no shape for each of `letters` it has."""
     font = TTFont(io.BytesIO(face_bytes(FACES[face])))
     glyph_names = font["cmap"].getBestCmap()
     for letter in letters:
-        # .get: a letter the face never had is lacking already.
         name = glyph_names.get(ord(letter))
         if name is not None:
             font["glyf"][name] = TTGlyphPen(None).glyph()
@@ -352,12 +285,7 @@ def _emptied(face: str, letters: str) -> bytes:
 
 @pytest.fixture(scope="module")
 def pdf(tmp_path_factory) -> str:
-    """A two-page contract with one kind of font on each page.
-
-    Page 1 only names its fonts ("tibo", "tiro": MuPDF's Times, never put in the file). Page 2
-    puts Times Roman in the file for two lines, then trims it to their letters, so é has no
-    shape.
-    """
+    """Page 1 only names its fonts; page 2 stores Times trimmed, so é has no shape."""
     path = tmp_path_factory.mktemp("fx") / "sample.pdf"
     doc = pymupdf.open()
 
@@ -371,7 +299,6 @@ def pdf(tmp_path_factory) -> str:
     )
 
     embedded = doc.new_page()
-    # "emb" is only the name the page files the font under.
     embedded.insert_font(fontname="emb", fontbuffer=pymupdf.Font("tiro").buffer)
     embedded.insert_text(
         (72, 96),
@@ -389,8 +316,6 @@ def pdf(tmp_path_factory) -> str:
     return str(path)
 
 
-# The form fixture's facts: its page's own line, the value its text field shows, and the
-# hint the page prints inside an empty field.
 FORM_LINE = "Name: Ada Byron"
 FORM_FIELD_VALUE = "SSN 078-05-1120"
 FORM_HINT = "MM/DD/YYYY"
@@ -399,12 +324,7 @@ _TEXT_FIELD = 7  # PyMuPDF's PDF_WIDGET_TYPE_TEXT, set at import, so type checke
 
 @pytest.fixture(scope="module")
 def form() -> bytes:
-    """One page: a line of the page's own text, a filled-in text field, and an empty one.
-
-    The filled field's value is drawn by the widget, not the page, so it's read as a span but
-    erasing the page's text can't reach it, as a filled-in form comes. The empty field holds a
-    hint the page prints, as forms do, which an edit reaches.
-    """
+    """The filled field's value is the widget's, so erasing the page's text can't reach it."""
     doc = pymupdf.open()
     page = doc.new_page()
     page.insert_text((72, 96), FORM_LINE, fontname="helv", fontsize=12)
@@ -422,11 +342,7 @@ def form() -> bytes:
 
 @pytest.fixture
 def tagged(tmp_path) -> str:
-    """Two pages tagged for screen readers, as Word and browsers save them.
-
-    Each page's line is one paragraph, and the tags point at it and back, as
-    a real file's do. That is enough for MuPDF to keep a page it was told to drop.
-    """
+    """Tagged as a real file is: enough for MuPDF to keep a page it was told to drop."""
     doc = pymupdf.open()
     for number, line in enumerate(TAGGED_LINES):
         page = doc.new_page()
@@ -453,14 +369,12 @@ def tagged(tmp_path) -> str:
 
 
 def new_object(doc: pymupdf.Document, source: str = "<<>>") -> int:
-    """A new object in `doc` holding `source`; its number."""
     xref = doc.get_new_xref()
     doc.update_object(xref, source)
     return xref
 
 
 def new_stream(doc: pymupdf.Document, data: str | bytes, **keys: str) -> int:
-    """A new stream in `doc` holding `data`, with these keys in its dictionary; its number."""
     stream = new_object(doc)
     doc.update_stream(stream, data if isinstance(data, bytes) else data.encode())
     for key, value in keys.items():
@@ -470,7 +384,6 @@ def new_stream(doc: pymupdf.Document, data: str | bytes, **keys: str) -> int:
 
 @pytest.fixture
 def engine(pdf):
-    """The sample, open in the engine for one test."""
     with open_pdf(pdf) as engine:
         yield engine
 
@@ -480,13 +393,11 @@ _PLACEHOLDER = re.compile(r"(\{\w+\})")
 
 
 def pseudo_sentence(english: str) -> str:
-    """`english` in the test-only language: shouted, placeholders left as they are."""
     parts = _PLACEHOLDER.split(english)
     return "".join(part if _PLACEHOLDER.fullmatch(part) else part.upper() for part in parts)
 
 
 def _pseudo_entry(english: words.CatalogEntry) -> words.CatalogEntry:
-    """A sentence in the test-only language, each of its forms if it takes a count."""
     if isinstance(english, str):
         return pseudo_sentence(english)
     return {form: pseudo_sentence(each) for form, each in english.items()}
@@ -494,7 +405,6 @@ def _pseudo_entry(english: words.CatalogEntry) -> words.CatalogEntry:
 
 @pytest.fixture
 def pseudo(monkeypatch) -> str:
-    """A second language to answer in, made from English, for this test only; its tag."""
     catalog = {
         key: _pseudo_entry(entry) for key, entry in words.CATALOGS[words.ENGLISH].items()
     }
@@ -502,20 +412,12 @@ def pseudo(monkeypatch) -> str:
     return PSEUDO
 
 
-# Poppins as Google's collection has it, with its licence beside it: the whole font.
 POPPINS = Path(__file__).parent / "core" / "fonts" / "Poppins-Regular.ttf"
-# What the Poppins fixture's page draws; "Yearly Hello" needs Y, a and y besides.
 POPPINS_TEXT = "Hello there"
 
 
 @pytest.fixture(scope="module")
 def poppins_subset(tmp_path_factory) -> str:
-    """One line in a trimmed copy of Poppins, named as a real trimmed copy is.
-
-    Trimmed with fontTools, which keeps its letter table, so the engine writes it by letter.
-    Named `ABCDEF+Poppins-Regular`, on the font and inside it, as a real file names it, not as
-    MuPDF files an added one ("Poppins Regular").
-    """
     trimmer = Subsetter(Options())
     trimmer.populate(text=POPPINS_TEXT)
     font = TTFont(POPPINS)
@@ -533,11 +435,9 @@ def poppins_subset(tmp_path_factory) -> str:
     return path
 
 
-# The facts of `with_hidden_copies`: the name its page shows, which the tests redact.
 REDACTED_NAME = "Ada Quill"
-OTHER_LINE = "Other line"  # the page's other line, which nothing redacts
-CHOSEN = "Bob Smith"  # the choice fields' other option, the one they show
-# Every copy of the name `with_hidden_copies` can make at once.
+OTHER_LINE = "Other line"
+CHOSEN = "Bob Smith"
 NAME_COPIES = (
     "title",
     "author",
@@ -560,17 +460,14 @@ NAME_COPIES = (
     "stamp",
     "tag",
 )
-# Copies in metadata that isn't read as XML, each made alone: a file has one metadata stream.
 NOT_XML_COPIES = ("not_xml", "not_xml_utf16", "xmp_utf32", "xmp_doctype", "xmp_deep")
-# The ways `with_hidden_copies` signs its page: plain, certifying, and checkable for years.
 SIGNED = ("signature", "certified", "dss")
 # PyMuPDF's PDF_WIDGET_TYPE_* values, set at import where type checkers can't see them.
 _LIST_FIELD = 4
 _CHOICE_FIELD = 3
 _SIGNATURE_FIELD = 6
 _BUTTON_FIELD = 1
-_MULTI_SELECT = 1 << 21  # a list box's flag (Ff) that lets it show more than one option
-# Metadata (XMP) as Acrobat writes it, plus a note to a program; both hold the name.
+_MULTI_SELECT = 1 << 21
 _XMP = (
     '<?xpacket begin="\ufeff" id="W5M0MpCehiHzreSzNTczkc9d"?>'
     '<x:xmpmeta xmlns:x="adobe:ns:meta/">'
@@ -583,22 +480,17 @@ _XMP = (
     "</rdf:Description></rdf:RDF></x:xmpmeta>"
     '<?xpacket end="w"?>'
 )
-# Metadata that isn't XML, its tags left unclosed, as a damaged file's.
 _BROKEN_XMP = "<x:xmpmeta><dc:creator>{name}</x:xmpmeta>"
-# Metadata whose DOCTYPE declares the name as a word of its own (an entity), used in its text.
 _DECLARING_XMP = (
     '<!DOCTYPE x [<!ENTITY who "{name}">]>'
     '<x:xmpmeta xmlns:x="adobe:ns:meta/" xmlns:dc="http://purl.org/dc/elements/1.1/">'
     "<dc:creator>&who;</dc:creator></x:xmpmeta>"
 )
-# The room a signature leaves for its certificates and value, zeros: nothing reads them.
 _SIGNED_BYTES = bytes(64)
 # How deep `xmp_deep` nests: far past how deep Python lets calls go.
 _DEEP = 3000
-# Each kind of metadata that isn't read as XML, as its bytes are written.
 _NOT_XML = {
     "not_xml": _BROKEN_XMP.format(name=REDACTED_NAME).encode(),
-    # UTF-16, with its byte order mark, as XMP may be written.
     "not_xml_utf16": ("\ufeff" + _BROKEN_XMP.format(name=REDACTED_NAME)).encode("utf-16-le"),
     # UTF-32, which XMP allows and the XML reader can't read.
     "xmp_utf32": _XMP.format(name=REDACTED_NAME).encode("utf-32"),
@@ -614,16 +506,11 @@ _NOT_XML = {
 
 
 def with_hidden_copies(hidden_copies: Collection[str]) -> bytes:
-    """A page that shows a name, and keeps a hidden copy of it as each of `hidden_copies` too.
-
-    The comments and fields sit apart from the lines, so erasing the name's letters
-    can't reach them.
-    """
     doc = pymupdf.open()
     page = doc.new_page()
     page.insert_text((72, 100), REDACTED_NAME, fontname="helv", fontsize=12)
     page.insert_text((72, 130), OTHER_LINE, fontname="helv", fontsize=12)
-    info = {}  # what the file says about itself
+    info = {}
     if "title" in hidden_copies:
         info["title"] = f"Notes on {REDACTED_NAME}"
     if "author" in hidden_copies:
@@ -632,7 +519,6 @@ def with_hidden_copies(hidden_copies: Collection[str]) -> bytes:
     if "xmp" in hidden_copies:
         doc.set_xml_metadata(_XMP.format(name=REDACTED_NAME))
     if "page_xmp" in hidden_copies:
-        # The page's own metadata, apart from the catalog's: any object may name one.
         doc.xref_set_key(page.xref, "Metadata", f"{_new_xmp(doc)} 0 R")
     for kind, written in _NOT_XML.items():
         if kind in hidden_copies:
@@ -652,7 +538,6 @@ def with_hidden_copies(hidden_copies: Collection[str]) -> bytes:
         stale = page.add_freetext_annot(
             pymupdf.Rect(320, 300, 560, 320), f"Ring {REDACTED_NAME}", fontsize=12
         )
-        # Its words lose the name, but its drawing, not drawn again, keeps it.
         doc.xref_set_key(stale.xref, "Contents", "(Ring)")
     if "field" in hidden_copies:
         field = _add_field(page, "who", REDACTED_NAME, top=400)
@@ -674,7 +559,6 @@ def with_hidden_copies(hidden_copies: Collection[str]) -> bytes:
         doc.xref_set_key(listed, "I", "[0 1]")
     if "unlisted_field" in hidden_copies:
         unlisted = _add_field(page, "signed", REDACTED_NAME, top=500)
-        # Off the form's list, as a half-flattened form leaves one.
         _kind, listed_fields = doc.xref_get_key(doc.pdf_catalog(), "AcroForm/Fields")
         left = listed_fields.replace(f"{unlisted} 0 R", "")
         doc.xref_set_key(doc.pdf_catalog(), "AcroForm/Fields", left)
@@ -702,15 +586,13 @@ def with_hidden_copies(hidden_copies: Collection[str]) -> bytes:
     if "dss" in hidden_copies:
         _sign(doc, page, name="kept_checkable", at=(72, 660))
         certificate = new_stream(doc, _SIGNED_BYTES)
-        by_signature = f"/VRI<</{'A' * 40} <</Cert[{certificate} 0 R]>>>>"  # by its hash
+        by_signature = f"/VRI<</{'A' * 40} <</Cert[{certificate} 0 R]>>>>"
         doc.xref_set_key(
             doc.pdf_catalog(), "DSS", f"<</Certs[{certificate} 0 R]{by_signature}>>"
         )
     if "tag" in hidden_copies:
         _tag_a_picture(doc, f"Photo of {REDACTED_NAME}")
     if "annotation_xmp" in hidden_copies:
-        # A comment naming metadata of its own, written in the page's list of comments
-        # itself, not as an object of its own. Last: it writes that list again, whole.
         value_type, listed = doc.xref_get_key(page.xref, "Annots")
         comments = listed[1:-1] if value_type == "array" else ""
         square = (
@@ -721,14 +603,12 @@ def with_hidden_copies(hidden_copies: Collection[str]) -> bytes:
 
 
 def _new_xmp(doc: pymupdf.Document) -> int:
-    """New metadata (XMP) in `doc` that holds the name, which nothing names yet; its number."""
     return new_stream(
         doc, _XMP.format(name=REDACTED_NAME).encode(), Type="/Metadata", Subtype="/XML"
     )
 
 
 def _set_metadata_bytes(doc: pymupdf.Document, written: bytes) -> None:
-    """Give `doc` metadata of these bytes, as written: PyMuPDF writes text only as UTF-8."""
     stream = new_stream(doc, written, Type="/Metadata", Subtype="/XML")
     doc.xref_set_key(doc.pdf_catalog(), "Metadata", f"{stream} 0 R")
 
@@ -742,7 +622,6 @@ def _add_field(
     left: float = 72,
     kind: int = _TEXT_FIELD,
 ) -> int:
-    """Add a form field `name` showing `value`, its top left at `left`, `top`; its number."""
     field = pymupdf.Widget()
     field.field_type = kind
     field.field_name = name
@@ -755,7 +634,6 @@ def _add_field(
 
 
 def _add_button(page: pymupdf.Page, caption: str) -> None:
-    """Add a push button captioned `caption`, which its drawing shows."""
     button = pymupdf.Widget()
     button.field_type = _BUTTON_FIELD
     button.field_name = "mail"
@@ -767,10 +645,6 @@ def _add_button(page: pymupdf.Page, caption: str) -> None:
 def _stamp(
     doc: pymupdf.Document, page: pymupdf.Page, words: str, *, in_image: bool = False
 ) -> None:
-    """Add a stamp whose drawing writes `words` only in hex, in an image if `in_image`.
-
-    Found only string by string.
-    """
     stamp = page.add_stamp_annot(pymupdf.Rect(320, 610, 548, 650), stamp=0)
     _kind, drawing = doc.xref_get_key(stamp.xref, "AP/N")
     drawn = f"BT /Helv 12 Tf 2 5 Td <{words.encode().hex()}> Tj ET"
@@ -783,7 +657,6 @@ def _stamp(
 def _sign(
     doc: pymupdf.Document, page: pymupdf.Page, *, name: str, at: tuple[float, float]
 ) -> int:
-    """Add signature field `name`, its top left `at`, and sign it; its signature's number."""
     field = _add_signature_field(page, name=name, at=at)
     signature = doc.get_new_xref()
     signed = f"/SubFilter/adbe.pkcs7.detached/Contents<{_SIGNED_BYTES.hex()}>"
@@ -793,7 +666,6 @@ def _sign(
 
 
 def _add_signature_field(page: pymupdf.Page, *, name: str, at: tuple[float, float]) -> int:
-    """Add signature field `name`, not signed, its top left `at`; its number."""
     left, top = at
     field = pymupdf.Widget()
     field.field_type = _SIGNATURE_FIELD
@@ -803,7 +675,6 @@ def _add_signature_field(page: pymupdf.Page, *, name: str, at: tuple[float, floa
 
 
 def _tag_a_picture(doc: pymupdf.Document, alt: str) -> None:
-    """Give `doc` tags of one picture described as `alt`: all a screen reader needs of it."""
     tags = doc.get_new_xref()
     picture = doc.get_new_xref()
     doc.update_object(tags, f"<</Type/StructTreeRoot/K {picture} 0 R>>")

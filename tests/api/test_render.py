@@ -1,5 +1,3 @@
-"""Send edits and the rows on screen; get those rows drawn, a fit per replace, and the skips."""
-
 from __future__ import annotations
 
 import base64
@@ -57,23 +55,19 @@ from tests.helpers import (
 )
 
 _SCALE = 2
-_LONGER = "!!"  # a few points too long: every way out is offered
+_LONGER = "!!"
 _OFF_GRID_PT = 80.3  # a strip edge between pixels at any scale
-_LOWERED = 3  # the region limit, lowered so a short list goes over it
-# The browser's editing code, where it says how many pages it asks a render for.
+_LOWERED = 3
 _REACT_EDITING = Path(__file__).parents[2] / "react" / "src" / "editing"
 _WIDEST_PT = 14_400  # the longest side a PDF's page can have
-_SHORT_PT = 72  # an inch: cut into the region limit's slivers, each far under a row
-_STACKED = 4  # copies of the long contract's page, stacked on one tall page
+_SHORT_PT = 72
+_STACKED = 4
 _INSERT = {"kind": "insert", "page": 0, "origin": [72, 700], "text": "Signed", "size": 12}
 _RED = (0.8, 0.1, 0.1)
-# An axial shading, red to blue, from corner to corner of the box it fills below.
 _SHADING = (
     "<</ShadingType 2/ColorSpace/DeviceRGB/Coords[250 40 340 180]"
     "/Function<</FunctionType 2/Domain[0 1]/C0[0.8 0.1 0.1]/C1[0.1 0.1 0.8]/N 1>>>>"
 )
-# Flipped to top-down points on a page 842 high: a box the shading fills, a triangle whose
-# slants the strip cuts, and a box clipped by a peaked path, its off-grid sides cut square.
 _ACROSS_THE_STRIP = (
     "q 1 0 0 -1 0 842 cm "
     "q 250.3 40.7 90 140 re W n /Sh sh Q "
@@ -84,44 +78,37 @@ _ACROSS_THE_STRIP = (
 )
 
 
-# The facts of `lacking_a_letter`: its one line, whose copy of its font has no "€".
 _LACKING_LINE = "Total 14 €"
 
 
 @pytest.fixture(scope="module")
 def lacking_a_letter(tmp_path_factory) -> bytes:
-    """One line whose stored copy of its font has no shape for the "€" it holds."""
     path = str(tmp_path_factory.mktemp("fx") / "lacking.pdf")
     return Path(in_a_copy_lacking(path, text=_LACKING_LINE, lacking="€")).read_bytes()
 
 
 def _png(image: dict) -> bytes:
-    """One of render's images, decoded."""
     return base64.b64decode(image["image"])
 
 
 def _pixels(png: bytes) -> bytes:
-    """An image's pixels in red, green and blue, however it was written: grey is one channel."""
     return pymupdf.Pixmap(pymupdf.csRGB, pymupdf.Pixmap(png)).samples
 
 
 def _in_color(pdf: bytes) -> bytes:
-    """`pdf` with a red bar on page 0, across the strip drawn below: neither is grey."""
     doc = pymupdf.open(stream=pdf, filetype="pdf")
     doc[0].draw_rect(pymupdf.Rect(72, 60, 300, 160), color=_RED, fill=_RED)
     return doc.tobytes()
 
 
 def _drawn_across(pdf: bytes) -> bytes:
-    """`pdf` with page 0 drawn across the strip below, in each way a clip changes the pixels."""
     doc = pymupdf.open(stream=pdf, filetype="pdf")
     page = doc[0]
-    # A picture drawn from more pixels than it covers and one from fewer: two ways to resample.
     page.insert_image(pymupdf.Rect(20.3, 40.7, 120.1, 180.9), pixmap=_noise(300, 400))
     page.insert_image(pymupdf.Rect(130.3, 40.7, 230.1, 180.9), pixmap=_noise(17, 23))
     shading = doc.get_new_xref()
     doc.update_object(shading, _SHADING)
-    resources = int(doc.xref_get_key(page.xref, "Resources")[1].split()[0])  # its own object
+    resources = int(doc.xref_get_key(page.xref, "Resources")[1].split()[0])
     doc.xref_set_key(resources, "Shading", f"<</Sh {shading} 0 R>>")
     drawing = doc.get_new_xref()
     doc.update_object(drawing, "<<>>")
@@ -132,8 +119,7 @@ def _drawn_across(pdf: bytes) -> bytes:
 
 
 def _noise(width: int, height: int) -> pymupdf.Pixmap:
-    """A picture of noise, from a fixed seed: any change in how it's resampled shows."""
-    samples = random.Random(0).randbytes(width * height * 3)  # red, green and blue
+    samples = random.Random(0).randbytes(width * height * 3)
     return pymupdf.Pixmap(pymupdf.csRGB, width, height, samples, False)
 
 
@@ -143,7 +129,6 @@ def test_a_replace_too_long_says_by_how_much_and_a_way_out_taken_says_nothing(mi
 
     fit = render(mine, doc, [edit], []).json()["fits"][span["id"]]
 
-    # Past the tolerance, not only at it.
     past_tolerance = math.nextafter(TOLERANCE_PT, math.inf)
     assert_at_least(fit["delta_pt"], past_tolerance, "points past the original")
     assert_equal(fit["options"], ["shrink", "condense", "as-is"], "the ways out")
@@ -152,18 +137,14 @@ def test_a_replace_too_long_says_by_how_much_and_a_way_out_taken_says_nothing(mi
     assert_equal(
         fit["message"], words.sentence("too_long").format(percent=percent), "the message"
     )
-    # Said as a share of the line, to the next whole percent; the line is about its box wide.
     wide = span["bbox"]["x1"] - span["bbox"]["x0"]
     assert_close(
         percent, fit["delta_pt"] / wide * 100, 1, "how far past, as a share of the line"
     )
-    # Taken, a way out ends the line where the original did: nothing runs long.
     shrunk = render(mine, doc, [{**edit, "strategy": "shrink"}], []).json()["fits"][span["id"]]
     assert_equal((shrunk["strategy"], shrunk["message"]), ("shrink", None), "a way out taken")
 
 
-# What render says of a redaction whose words a signed file kept in every place: two whole
-# sentences, joined as sentences are.
 _EVERY_PLACE_SAID = " ".join(
     [
         words.render(
@@ -188,7 +169,6 @@ _EVERY_PLACE_SAID = " ".join(
 def test_a_redaction_drawn_names_each_place_the_file_also_kept_its_words(
     mine, hidden_copies, named, said
 ):
-    """Said before the download: a title isn't on the page. Each place once, then signatures."""
     doc = upload(mine, with_hidden_copies(hidden_copies)).json()
     name = span_starting(doc, 0, REDACTED_NAME)
 
@@ -199,10 +179,7 @@ def test_a_redaction_drawn_names_each_place_the_file_also_kept_its_words(
 
 
 def _said_of(rendered: dict, span: dict, rest: list[Message]) -> str | None:
-    """What render should say of `span`'s redaction: `rest`, then where else its words were.
-
-    Each a whole sentence, so they join as sentences do, not as the parts of one.
-    """
+    """Each a whole sentence, so they join as sentences do, not as the parts of one."""
     places = rendered["redactions"][span["id"]]["hidden_copies"]
     named = [words.sentence(f"place_{place}", words.ENGLISH) for place in places]
     hidden = [Message("hidden_copies", {"places": named})] if named else []
@@ -213,7 +190,6 @@ def _said_of(rendered: dict, span: dict, rest: list[Message]) -> str | None:
 def test_words_redacted_whose_erase_moves_the_rest_of_the_line_say_so_first(
     app, mine, monkeypatch
 ):
-    """On the redaction, and under the bar, where, before the download; and the file goes."""
     monkeypatch.setattr(app.state, "documents", FolderStore(MovingAfterAnErase(_all_along)))
     doc = upload(mine, drawn_page(f"BT /F 12 Tf 72 100 Td {_ACCOUNT}", pages=2)).json()
     first, second = span_starting(doc, 0, "Acct"), span_starting(doc, 1, "Acct")
@@ -244,17 +220,14 @@ def test_words_redacted_whose_erase_moves_the_rest_of_the_line_say_so_first(
 
 
 def _all_along(_origin: Place) -> Place:
-    """All of the line set along it, as if the erase set the whole line further along."""
     return (2.0, 0.0)
 
 
 def _rest_along(origin: Place) -> Place:
-    """The rest of the redacted line after its words set along it; what's before, left."""
     return (2.0, 0.0) if origin[0] > 100 else _STILL
 
 
 def _rest_off(origin: Place) -> Place:
-    """The rest of the redacted line, after its words, set off it."""
     return (0.0, 3.0) if origin[0] > 100 else _STILL
 
 
@@ -275,7 +248,6 @@ _STILL = (0.0, 0.0)
 def test_the_rest_of_a_line_set_along_it_downloads_saying_so_and_set_off_it_doesnt(
     app, mine, monkeypatch, moves, said
 ):
-    """Only what's said may move: all the rest of the redacted span's line, along it alike."""
     monkeypatch.setattr(app.state, "documents", FolderStore(MovingAfterAnErase(moves)))
     doc = upload(mine, drawn_page(f"BT /F 12 Tf 72 100 Td {_ACCOUNT}")).json()
     span = span_starting(doc, 0, "Acct")
@@ -291,7 +263,7 @@ def test_the_rest_of_a_line_set_along_it_downloads_saying_so_and_set_off_it_does
     assert_equal((verdict["verified"], exported.status_code == 200), (downloads,) * 2, "goes")
 
 
-_ACCOUNT = "(Acct 1234 Name) Tj ET"  # the line the cases below draw, how each says
+_ACCOUNT = "(Acct 1234 Name) Tj ET"
 
 
 @pytest.mark.parametrize(
@@ -339,7 +311,6 @@ _ACCOUNT = "(Acct 1234 Name) Tj ET"  # the line the cases below draw, how each s
 def test_what_a_redactions_erase_did_to_the_rest_of_its_line_is_said_only_when_true(
     mine, drawing, starts, asked, rest
 ):
-    """Said of the letters the page draws: nothing of spaces it never drew, or other text."""
     doc = upload(mine, drawn_page(drawing)).json()
     span = span_starting(doc, 0, starts)
     edits = [{"kind": "redact", "span_id": span["id"], "range": asked}]
@@ -357,7 +328,6 @@ def test_what_a_redactions_erase_did_to_the_rest_of_its_line_is_said_only_when_t
     ids=["level", "a quarter turn", "upside down"],
 )
 def test_each_run_of_words_redacted_comes_with_the_box_its_letters_take(mine, turn):
-    """However its line is turned, the browser draws each run where the download takes it."""
     sent = drawn_page(f"BT /F 12 Tf {turn} (Acct 1234 Name) Tj ET")
     doc = upload(mine, sent).json()
     span = span_starting(doc, 0, "Acct")
@@ -377,7 +347,6 @@ def test_each_run_of_words_redacted_comes_with_the_box_its_letters_take(mine, tu
 
 
 def test_new_text_over_the_line_moves_none_of_the_rest_of_it(mine):
-    """Its letters, drawn in the line's box, are no letter of the line's moved."""
     doc = upload(mine, drawn_page(f"BT /F 12 Tf 72 100 Td {_ACCOUNT}")).json()
     span = span_starting(doc, 0, "Acct")
     box = span["bbox"]
@@ -391,7 +360,6 @@ def test_new_text_over_the_line_moves_none_of_the_rest_of_it(mine):
 
 
 def test_every_place_a_file_keeps_a_hidden_copy_has_its_word():
-    """Each place is said in the reader's words, by `place_<it>`."""
     for place in COPY_PLACES:
         assert_in(f"place_{place}", words.CATALOGS[words.ENGLISH], "the places named")
 
@@ -405,18 +373,12 @@ def test_every_place_a_file_keeps_a_hidden_copy_has_its_word():
 def test_rows_with_no_edits_are_the_page_image_exactly(
     mine, pdf_bytes, made, written_in, scale
 ):
-    """Else a strip laid over the page image would show a seam.
-
-    Each is the pixels MuPDF draws, though a page of grey is written in one channel. A clip
-    changes how MuPDF draws pictures, shadings and the paths it cuts: a strip isn't drawn alone.
-    """
     pdf = made(pdf_bytes)
     doc = upload(mine, pdf).json()
     delivery = span_starting(doc, 1, "Delivery")
     edit = {"kind": "replace", "span_id": delivery["id"], "text": "Delivery begins 2 March"}
     strip = {"page": 0, "y0": _OFF_GRID_PT, "y1": _OFF_GRID_PT + 60}
 
-    # Asked apart: one request never asks for the same rows twice.
     strip_image = render(mine, doc, [edit], [strip], scale=scale).json()["images"][0]
     whole_page = render(mine, doc, [edit], [{"page": 0}], scale=scale).json()["images"][0]
 
@@ -431,7 +393,6 @@ def test_rows_with_no_edits_are_the_page_image_exactly(
     assert_equal(taken, written_in, "the path the fixture's page image took")
     strip_png = _png(strip_image)
     rows = pymupdf.Pixmap(strip_png)
-    # The page's pixel rows under the strip; stride is the bytes in one row.
     top = round(strip_image["y"] * scale)
     expected = drawn.samples[top * drawn.stride : (top + rows.height) * drawn.stride]
     assert_equal(rows.width, drawn.width, "strip width")
@@ -449,7 +410,6 @@ def test_rows_with_no_edits_are_the_page_image_exactly(
     ids=["size 0", "a color past 1"],
 )
 def test_an_insert_nothing_can_draw_is_a_bad_request(mine, doc, change, field):
-    """Not drawn mirrored, not a crash in the worker: the browser sent something wrong."""
     response = render(mine, doc, [{**_INSERT, **change}], [{"page": 0}])
     assert_problem(response, "invalid_request", 400)
     assert_in(field, response.json()["debug"], "what a developer reads")
@@ -473,7 +433,6 @@ def test_an_insert_nothing_can_draw_is_a_bad_request(mine, doc, change, field):
     ],
 )
 def test_new_text_that_isnt_one_line_of_letters_is_a_bad_request(mine, doc, kind, character):
-    """Each would draw over the next line, draw nothing, or reorder the line."""
     span = span_starting(doc, 0, "Made")
     replace = {"kind": "replace", "span_id": span["id"], "text": f"Made{character}on"}
     insert = {**_INSERT, "text": f"Sig{character}ned"}
@@ -503,7 +462,6 @@ def test_new_text_that_isnt_one_line_of_letters_is_a_bad_request(mine, doc, kind
     ],
 )
 def test_new_text_with_a_joiner_or_a_narrow_space_is_drawn(mine, doc, kind, character):
-    """Real text, or a format character just outside the refused ranges."""
     span = span_starting(doc, 0, "Made")
     replace = {"kind": "replace", "span_id": span["id"], "text": f"Made{character}on"}
     insert = {**_INSERT, "text": f"Sig{character}ned"}
@@ -515,7 +473,6 @@ def test_new_text_with_a_joiner_or_a_narrow_space_is_drawn(mine, doc, kind, char
 
 
 def test_an_edit_that_doesnt_say_its_kind_is_a_bad_request(mine, doc):
-    """Never guessed as a replace: `kind` is what tells the edits apart."""
     span = span_starting(doc, 0, "Made")
 
     response = render(mine, doc, [{"span_id": span["id"], "text": "x"}], [{"page": 0}])
@@ -530,12 +487,10 @@ def test_an_edit_that_doesnt_say_its_kind_is_a_bad_request(mine, doc):
     ids=["below the page", "above it"],
 )
 def test_a_strip_off_the_page_is_a_bad_request(mine, doc, region):
-    """Nothing to draw there: the browser asked for rows the page doesn't have."""
     assert_problem(render(mine, doc, [], [region]), "invalid_request", 400)
 
 
 def test_more_regions_than_a_render_draws_are_a_bad_request(mine, doc, monkeypatch):
-    """The browser asks for a strip per group of edited rows, so never more than its edits."""
     monkeypatch.setattr(editing_constants, "MAX_REGIONS", _LOWERED)
     strips = [{"page": 0, "y0": 100 * row, "y1": 100 * row + 50} for row in range(_LOWERED + 1)]
 
@@ -546,7 +501,6 @@ def test_more_regions_than_a_render_draws_are_a_bad_request(mine, doc, monkeypat
 
 
 def test_regions_on_more_pages_than_a_render_draws_are_a_bad_request(mine, doc, monkeypatch):
-    """The browser asks for its pages a few at a time, so its images cross in one answer."""
     monkeypatch.setattr(editing_constants, "MAX_RENDER_PAGES", 1)
     pages = [{"page": 0, "y0": 100, "y1": 150}, {"page": 1, "y0": 100, "y1": 150}]
 
@@ -557,7 +511,6 @@ def test_regions_on_more_pages_than_a_render_draws_are_a_bad_request(mine, doc, 
 
 
 def test_the_browser_asks_for_no_more_pages_than_a_render_draws():
-    """Its batch is its own constant, read here, so the two can't drift apart."""
     constants_ts = (_REACT_EDITING / "constants.ts").read_text()
     batch = re.search(r"export const RENDER_PAGES_AT_ONCE = (\d+);", constants_ts)
     assert_true(batch is not None, "react/src/editing/constants.ts names RENDER_PAGES_AT_ONCE")
@@ -581,7 +534,6 @@ def test_the_browser_asks_for_no_more_pages_than_a_render_draws():
     ],
 )
 def test_regions_that_share_rows_on_a_page_are_a_bad_request(mine, doc, regions):
-    """The browser joins rows that touch into one strip, so it never asks for a row twice."""
     response = render(mine, doc, [], regions)
 
     assert_problem(response, "invalid_request", 400)
@@ -589,7 +541,6 @@ def test_regions_that_share_rows_on_a_page_are_a_bad_request(mine, doc, regions)
 
 
 def test_strips_thinner_than_a_pixel_row_are_a_bad_request(mine):
-    """Grown to whole rows, they'd be many times this page, as wide as a PDF's can be."""
     wide = pymupdf.open()
     wide.new_page(width=_WIDEST_PT, height=_SHORT_PT)
     doc = upload(mine, wide.tobytes()).json()
@@ -606,10 +557,6 @@ def test_strips_thinner_than_a_pixel_row_are_a_bad_request(mine):
 
 @pytest.fixture
 def tall_page(mine, tmp_path) -> dict:
-    """The long contract's page, stacked on one tall page, as `mine` uploaded it.
-
-    Every drawing of it runs every copy, however few rows it fills.
-    """
     path = tmp_path / "contract.pdf"
     write_dense(str(path), pages=1)
     contract = pymupdf.open(path)
@@ -624,7 +571,6 @@ def tall_page(mine, tmp_path) -> dict:
 
 
 def test_strips_apart_on_one_heavy_page_are_drawn_in_time(mine, tall_page):
-    """Thin strips within every limit: drawn one by one, they'd outlast the timeout."""
     scale = max(api_constants.PAGE_SCALES)
     params = {"scale": scale, "build": tall_page["build"]}
     page_png = mine.get(f"/api/documents/{tall_page['id']}/pages/0", params=params).content
@@ -644,9 +590,7 @@ def test_strips_apart_on_one_heavy_page_are_drawn_in_time(mine, tall_page):
 @pytest.mark.parametrize(
     ("driver_factory", "verdict", "counted"),
     [
-        # The file's own copy draws the words typed, as the page sets the line.
         (open_driver, ("exact", None), "edits_exact"),
-        # The page refuses the file's own copy, so a similar font draws them.
         (refusing_own_copies, ("substitute", "Liberation Serif Regular"), "edits_substitute"),
     ],
     ids=["drawn in its own font", "on a page that refuses it"],
@@ -654,11 +598,7 @@ def test_strips_apart_on_one_heavy_page_are_drawn_in_time(mine, tall_page):
 def test_an_edits_fit_says_how_it_is_drawn_as_its_export_counts_it(
     app, mine, lacking_a_letter, capsys, monkeypatch, driver_factory, verdict, counted
 ):
-    """A span judged a similar font's at upload, for a letter its copy lacks, edited without it.
-
-    Its note kept saying "a similar font", though the file and its log said otherwise.
-    """
-    monkeypatch.setattr(app.state, "pool", InProcess())  # so the worker's line is captured
+    monkeypatch.setattr(app.state, "pool", InProcess())
     monkeypatch.setattr(app.state, "documents", FolderStore(driver_factory))
     doc = upload(mine, lacking_a_letter).json()
     [span] = doc["spans"]
@@ -674,21 +614,16 @@ def test_an_edits_fit_says_how_it_is_drawn_as_its_export_counts_it(
     assert_equal(counts, {counted: "1"}, "the edit, as its export counts it")
 
 
-_PAGE_FONT = "the page's"  # new text in the font the page's line is in
+_PAGE_FONT = "the page's"
 
 
 @pytest.mark.parametrize(
     ("driver_factory", "font", "text", "verdict"),
     [
-        # No font of the document's to stand in for: it is what's asked.
         (open_driver, "Caveat Bold", "Signed", ("exact", None)),
-        # A face we ship that lacks Ω: one that has it draws the line, as a similar font.
         (open_driver, "Caveat Bold", "Ω Smith", ("substitute", "Noto Sans Bold")),
-        # In the page's own font, which draws it.
         (open_driver, _PAGE_FONT, "Paid", ("exact", None)),
-        # In the page's own font, whose copy lacks "€": a similar font draws the line.
         (open_driver, _PAGE_FONT, "Paid €", ("substitute", "Liberation Serif Regular")),
-        # In the page's own font, on a page that refuses it: a similar font draws it.
         (refusing_own_copies, _PAGE_FONT, "Paid", ("substitute", "Liberation Serif Regular")),
     ],
 )
@@ -705,45 +640,35 @@ def test_new_texts_fit_says_how_it_is_drawn_as_a_replaces_does(
     assert_equal((fit["fidelity"], fit["substitute"]), verdict, "the new text's verdict")
 
 
-type Written = tuple[int, tuple[float, float]]  # a line written: its page, where it starts
+type Written = tuple[int, tuple[float, float]]
 
 
 @dataclass(frozen=True, slots=True, eq=False)
 class _NotingDriver:
-    """MuPDF's driver, noting where each line it writes starts."""
-
     driver: PdfDriver
     written: list[Written]
 
     def write_text(self, page: int, *, runs: Sequence[TextRun], **setting: Any) -> None:
-        """The real driver's write, noted at its first run's start."""
         self.written.append((page, runs[0].origin))
         self.driver.write_text(page, runs=runs, **setting)
 
     def write_codes(
         self, page: int, *, origin: tuple[float, float], runs: Sequence[CodeRun], **setting: Any
     ) -> None:
-        """The real driver's write, noted at its start."""
         self.written.append((page, origin))
         self.driver.write_codes(page, origin=origin, runs=runs, **setting)
 
     def __getattr__(self, name: str) -> Any:
-        """Every other call, as the real driver answers it."""
         return getattr(self.driver, name)
 
 
 def _noting_driver(path: str, *, written: list[Written]) -> PdfDriver:
-    """A driver factory for the store: MuPDF's driver, noting into `written`."""
     # A PdfDriver through __getattr__, which mypy reads and ty doesn't yet.
     return cast(PdfDriver, _NotingDriver(open_driver(path), written))
 
 
 def test_only_the_edits_in_the_rows_asked_for_are_redrawn(app, mine, doc, monkeypatch):
-    """A strip over one line of a page with others edited: redrawing them all was most of it.
-
-    Every replace still gets its fit: that's measurement, not drawing.
-    """
-    monkeypatch.setattr(app.state, "pool", InProcess())  # so the lines noted are the test's
+    monkeypatch.setattr(app.state, "pool", InProcess())
     redrawn: list[Written] = []
     noting = partial(_noting_driver, written=redrawn)
     monkeypatch.setattr(app.state, "documents", FolderStore(noting))
@@ -759,8 +684,7 @@ def test_only_the_edits_in_the_rows_asked_for_are_redrawn(app, mine, doc, monkey
 
 
 def test_render_reads_the_page_list_once(app, mine, doc, monkeypatch):
-    """The request reads it to check the regions, and hands the work the pages it draws."""
-    monkeypatch.setattr(app.state, "pool", InProcess())  # so the worker's reads are counted
+    monkeypatch.setattr(app.state, "pool", InProcess())
     reads: list[object] = []
     load_pages = store.load_pages
 

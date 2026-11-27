@@ -2,7 +2,6 @@ import { describe, expect, test } from "vitest";
 import { aFont, aSpan } from "../fixtures";
 import { drawingOf, draws, substituteFor } from "./substitutes";
 
-// The server's own lists of what each face we ship draws (face-letters.json), so these are its answers.
 describe("the face a line goes to", () => {
   test("is the look-alike when it draws every letter", () => {
     expect(substituteFor("Caladea Regular", "Café")).toEqual({ face: "Caladea Regular", leftOut: [] });

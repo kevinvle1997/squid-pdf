@@ -38,10 +38,8 @@ import { SheetScreen } from "./ui/SheetScreen";
 const loadEditor = () => import("./editing/view/EditorShell");
 const EditorShell = lazy(() => loadEditor().then((module) => ({ default: module.EditorShell })));
 
-// Why a server open to invited people asks for a sign-in before the landing.
 const INVITED_ONLY = "squid-pdf is open to invited people for now. We'll email you a link that signs you in.";
 
-/** The landing, which takes a dropped PDF; once a file is open, the editor; the service's terms, at their own path; and signing in, where the server asks for it. */
 export function App() {
   return (
     <ErrorBoundary fallback={<Crashed />}>
@@ -50,10 +48,8 @@ export function App() {
   );
 }
 
-/** The landing, or the document open in the editor: opened again from this browser, with its work persisted. */
 type Screen = Landing | SignInFirst | { kind: "open"; opened: Opened; persisted?: PersistedWork<unknown> };
 
-/** Deleting what this browser persisted: under way, or why it's still there. */
 type Forgetting = { kind: "under way" } | { kind: "failed"; detail: string };
 
 function Screens() {
@@ -63,38 +59,30 @@ function Screens() {
   const [terms, setTerms] = useState<TermsAnswer>({ kind: "asking" });
   const [fontLoaded, setFontLoaded] = useState(false);
   const [account, setAccount] = useState<AccountAnswer>({ kind: "asking" });
-  // A sign-in link's token, read once as the app starts: the link's page is left for the landing at once.
   const [linkToken] = useState(() => tokenIn(window.location.pathname, window.location.hash));
   const [linkFailed, setLinkFailed] = useState<string | null>(null);
-  // Sent back by Stripe's checkout, paid: read once as the app starts, as a link's token is.
   const [backFromPaying] = useState(() => isBackFromPaying(window.location.search));
   const [back, setBack] = useState<BackFromPaying | null>(backFromPaying ? { kind: "waiting" } : null);
   const [going, setGoing] = useState<Going>({ kind: "idle" });
 
-  // Read as the landing first shows: it's outside React, in the browser's storage, and on the server.
   useEffect(() => {
-    // Refused (a private window, say): nothing persisted, so nothing to offer.
     persistedDocument().then(setPersisted, () => undefined);
     termsAnswer().then(setTerms);
     accountAtStart(linkToken).then((started) => {
-      // The landing's address: the token leaves the address bar, and a reload doesn't trade it again.
       if (linkToken !== null || backFromPaying) window.history.replaceState(null, "", "/");
       setLinkFailed(started.linkFailed);
       setAccount(started.account);
       if (!backFromPaying) return;
-      // Stripe's word reaches the server a moment after the browser: the account is asked until it's paid.
       accountOncePaid(accountAnswer).then((paid) => {
         setAccount(paid);
         setBack(backFrom(paid));
       });
     });
-    // The terms' link waits for the interface's font: in a stand-in its line can wrap, and jump back as the
-    // font comes. A font that fails to load leaves the stand-in for good, so the link comes anyway.
+    // In a stand-in font the link's line can wrap, and jump back as the font comes.
     const loaded = () => setFontLoaded(true);
     document.fonts.load(`1em ${getComputedStyle(document.body).fontFamily}`).then(loaded, loaded);
   }, [linkToken, backFromPaying]);
 
-  // The offer lasts as long as it says: as the server's hour runs out while the landing is open, the copy goes.
   useEffect(() => {
     if (persisted === null) return;
     const forgetting = setTimeout(
@@ -109,19 +97,16 @@ function Screens() {
 
   async function signOut() {
     const answer = await signedOut();
-    // Still signed in, so said where the landing says what went wrong.
     if (answer.kind === "failed") {
       setScreen({ kind: "failed", detail: answer.detail });
       return;
     }
     setAccount(answer);
-    // Signing out is leaving this browser to others: the document persisted here goes too.
     await forget();
   }
 
-  // To Stripe's checkout or portal: the server names the page, and the browser leaves for it.
   async function goToStripe(page: () => ReturnType<typeof checkoutPage>) {
-    // One at a time: a second press would ask Stripe for a second page.
+    // A second press would ask Stripe for a second page.
     if (going.kind === "under way") return;
     setGoing({ kind: "under way" });
     const went = await page();
@@ -148,7 +133,6 @@ function Screens() {
     if (persisted === null) return;
     setForgetting({ kind: "under way" });
     const detail = await forgetOrSayWhy(persisted.file.name);
-    // Still persisted, so still offered, and why.
     if (detail !== null) {
       setForgetting({ kind: "failed", detail });
       return;
@@ -157,9 +141,8 @@ function Screens() {
     setForgetting(null);
   }
 
-  // From the landing, or a PDF dropped on the editor in place of the open one.
   async function open(file: File) {
-    // One file at a time: a second drop mid-upload would race the first to the editor.
+    // A second drop mid-upload would race the first to the editor.
     if (screen.kind === "opening") return;
     void loadEditor();
     setScreen({ kind: "opening", name: file.name, sent: 0, total: file.size });
@@ -167,23 +150,18 @@ function Screens() {
       setScreen((now) => (now.kind === "opening" ? { ...now, sent, total } : now)),
     );
     setScreen(opening);
-    // A file opened may have counted against the month: the landing shows its count afresh next time.
     if (documentsLeft(account) === null) return;
     const asked = await accountAnswer();
-    // Unanswered, the count read before stays: a failure here is no news to the landing.
     if (asked.kind === "read") setAccount(asked);
   }
 
-  // A deployment with no terms has no such page: the path shows the landing, as any other does.
   if (isTermsPath(window.location.pathname) && terms.kind !== "none") return <TermsScreen answer={terms} />;
   if (linkToken !== null && account.kind === "asking") {
     return <SignInScreen why={INVITED_ONLY} signingIn failed={null} />;
   }
   if (mustSignIn(account)) return <SignInScreen why={INVITED_ONLY} signingIn={false} failed={linkFailed} />;
-  // Past the documents a browser opens without an account: the server's sentence says why to sign in.
   if (screen.kind === "sign in") return <SignInScreen why={screen.detail} signingIn={false} failed={null} home />;
   if (screen.kind !== "open") {
-    // A link that failed where anyone may open a document: said on the landing, until something else is.
     const landing =
       screen.kind === "waiting" && linkFailed !== null ? { kind: "failed" as const, detail: linkFailed } : screen;
     return (
@@ -220,7 +198,6 @@ function Screens() {
   );
 }
 
-/** Drawing failed: say so, and the way back, on the landing's sheet rather than a blank page. */
 function Crashed() {
   return (
     <SheetScreen title="Something went wrong, and this page stopped">

@@ -18,10 +18,6 @@ import { setWarningMuted } from "../mutedWarnings";
 import { useEditor, useEditorState } from "./context";
 import styles from "./Fonts.module.css";
 
-/**
- * The document's fonts, from the bar, a row for each name, its copies together: what draws it, the
- * user's own copy, added or removed, and whether an edit in it warns in full.
- */
 export function Fonts() {
   const fonts = useEditorState((state) => state.doc.fonts);
   const rows = useMemo(() => copiesByName(fonts), [fonts]);
@@ -41,7 +37,6 @@ export function Fonts() {
   );
 }
 
-/** One font's row: its copies act together, since attaching and removing one reach them all. */
 function FontRow({ copies }: { copies: FontCopies }) {
   const { shownName, names, font, attached } = copies;
   const name = readableName(shownName);

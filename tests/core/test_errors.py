@@ -1,5 +1,3 @@
-"""A Problem says the same thing wherever it's raised, a worker included."""
-
 from __future__ import annotations
 
 import pickle
@@ -25,8 +23,6 @@ from tests.helpers import assert_equal, assert_in, assert_true
 
 
 class _Sized(Problem):
-    """A problem whose own arguments differ from the base's, as an upload's size limit's do."""
-
     type = "too_large"
 
     def __init__(self, mb: int) -> None:
@@ -34,7 +30,6 @@ class _Sized(Problem):
 
 
 def test_a_problem_survives_the_trip_from_a_worker():
-    """The API tests' refusals take no arguments; one that does must still unpickle."""
     back = pickle.loads(pickle.dumps(_Sized(100)))
     assert_true(type(back) is _Sized, f"came back as {type(back).__name__}")
     said = words.sentence("too_large").format(mb=100)
@@ -67,14 +62,12 @@ def test_the_error_controller_asks_its_rows_in_order_and_a_layer_above_adds_its_
 
 
 def _types_in(raised: type[Exception] | tuple[type[Exception], ...]) -> tuple[type, ...]:
-    """The exception types a row claims, whether it names one or several."""
-    if isinstance(raised, tuple):  # several: a row claims each of them
+    if isinstance(raised, tuple):
         return raised
     return (raised,)
 
 
 def _each_clash(rows: tuple[Failure, ...]) -> Iterator[str]:
-    """Each row that claims a type an earlier row already claims, and the row above it."""
     for below, later in enumerate(rows):
         for above, earlier in enumerate(rows[:below]):
             claims = product(_types_in(later.raised), _types_in(earlier.raised))
@@ -87,13 +80,11 @@ def _each_clash(rows: tuple[Failure, ...]) -> Iterator[str]:
 
 
 def test_no_failure_row_sits_below_a_broader_one():
-    """The first row that matches wins: a row below one that claims its type never matches."""
     shadowed = list(_each_clash(API_ERRORS.rows))
     assert_equal(shadowed, [], "rows no earlier row already claims")
 
 
 def test_a_failure_no_row_claims_goes_up_as_it_is_and_the_top_calls_it_a_server_error():
-    """A worker sends it back as itself: a layer above may claim it, or log it as a bug."""
     controller = ErrorController((Failure(KeyError, NotFound),))
     with pytest.raises(ZeroDivisionError):
         controller.result_of(partial(divmod, 1, 0))
@@ -103,7 +94,6 @@ def test_a_failure_no_row_claims_goes_up_as_it_is_and_the_top_calls_it_a_server_
 
 
 def test_a_file_the_machine_cannot_write_is_a_server_error_not_too_heavy(engine, tmp_path):
-    """A document deleted mid-export once answered "needs more memory"."""
     with pytest.raises(Problem) as caught:
         result_of(partial(engine.save, str(tmp_path / "deleted" / "out.pdf")))
     said = (caught.value.type, caught.value.status)
@@ -130,7 +120,6 @@ except Problem as problem:
 
 @pytest.mark.skipif(sys.platform != "linux", reason="the memory cap is Linux only")
 def test_mupdf_running_out_of_memory_is_too_heavy(pdf):
-    """MuPDF raises the same error for a file it couldn't open: its words tell them apart."""
     command = [sys.executable, "-c", _OUT_OF_MEMORY, pdf]
     said = subprocess.run(command, capture_output=True, text=True, check=True).stdout
     assert_in("too_heavy FzErrorSystem", said, "a page image past the memory cap")

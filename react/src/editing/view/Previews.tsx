@@ -1,5 +1,3 @@
-// What the browser draws over a page until the server's render shows it: a span's new words, a
-// redaction's bare paper, the page's own pixels where a span is put back, and the settle as a render lands.
 import { Fragment } from "react";
 import type { FitRules, FontInfo, PageInfo, ReplaceRuns, SpanInfo, Strategy } from "../../api/types";
 import { previewFaceOf } from "../faces";
@@ -15,7 +13,6 @@ import { fontOf } from "../spanFonts";
 import { boxOf, cropOf, newTextBoxIn, newTextStyleOf, paddedBoxOf, previewStyleOf } from "./geometry";
 import styles from "./Previews.module.css";
 
-/** Where the render said other than the preview, its words come up from faint as it lands: drawn anew each landing. */
 export function Settles({ page, info }: { page: PageState; info: PageInfo }) {
   const { disagreement } = page;
   if (disagreement === undefined) return null;
@@ -36,11 +33,6 @@ export function Settles({ page, info }: { page: PageState; info: PageInfo }) {
   ));
 }
 
-/**
- * New text the page's strips don't show as it is now: drawn by the browser in the face the server will draw it in,
- * over whatever the page has there, as it exports. Where a strip still shows an earlier version, moved or retyped
- * since, the page's own pixels cover it until the render lands.
- */
 export function NewTextPreviews({
   page,
   info,
@@ -83,7 +75,6 @@ export function NewTextPreviews({
   );
 }
 
-/** Where a span reads other than its strip shows, the browser draws it until the server has. */
 export function Previews({
   page,
   info,
@@ -118,7 +109,6 @@ export function Previews({
         />
       );
     }
-    // Bare where its words were: over the page's own pixels, where a strip still shows words since put back.
     if (redacted !== null) {
       const glyphs = fontOf(page.fonts, span)?.glyphs;
       return (
@@ -139,7 +129,6 @@ export function Previews({
         </Fragment>
       );
     }
-    // Put back: the page's own pixels are exactly right, under any strip still drawn over its row.
     if (text === span.text) {
       return isUnderStrip(span.bbox, { strips, info }) ? (
         <Original key={span.id} box={stripBoxOf(span, info)} info={info} src={page.src} />
@@ -205,10 +194,6 @@ function LinePreview({
   );
 }
 
-/**
- * The original page's pixels over `box`, where a strip of its row still shows an edit gone since: a span put back,
- * or new text moved. As far as the server would redraw, so the old edit's ink goes too.
- */
 function Original({
   box,
   info,
@@ -225,7 +210,6 @@ function Original({
   );
 }
 
-/** The browser's drawing of a span's text, while the server's strip under it shows other words: in the way out asked for. */
 function Preview({
   span,
   info,

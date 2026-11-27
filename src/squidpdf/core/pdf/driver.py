@@ -1,9 +1,4 @@
-"""What the engine asks of a PDF library: the seam another library would fill.
-
-Primitives only: read what the file says, change it, draw on it, save it. What to make of it is
-`core.engine`'s, the same over any driver. PyMuPDF is AGPL; a permissive rewrite would implement
-these two protocols over pypdfium2 and pikepdf, and give the engine what `core.pdf.mupdf` does.
-"""
+"""The seam another PDF library would fill: PyMuPDF is AGPL, pypdfium2 and pikepdf aren't."""
 
 from __future__ import annotations
 
@@ -32,238 +27,90 @@ from squidpdf.core.types import (
 
 
 class DriverError(Exception):
-    """The library couldn't do what was asked with a font, and why, for the edge to say.
-
-    One error for every way a font fails in the driver, as `FontUnusable` is in
-    the engine. Caught by name.
-    """
-
     def __init__(self, reason: Message, *, debug: str = "") -> None:
-        """`reason` names a sentence in `core.app.words`; `debug` is the library's own words."""
         super().__init__(reason, debug)
         self.reason = reason
         self.debug = debug
 
 
 class FontProgram(Protocol):
-    """A font to measure with: a file the library has opened, or a Type3 font's width list."""
+    def listed_letters(self) -> list[int]: ...
 
-    def listed_letters(self) -> list[int]:
-        """Every code point the library says the font maps; a trimmed font lists more."""
-        ...
+    def advance(self, ch: str) -> float: ...
 
-    def advance(self, ch: str) -> float:
-        """How far `ch` moves the pen, in ems."""
-        ...
+    def maps(self, ch: str) -> bool: ...
 
-    def maps(self, ch: str) -> bool:
-        """Whether the font has a glyph of its own for `ch`, even an empty one."""
-        ...
-
-    def width(self, text: str, size: float) -> float:
-        """How wide `text` is at `size` points."""
-        ...
+    def width(self, text: str, size: float) -> float: ...
 
 
 class PdfDriver(Protocol):
-    """A PDF open in a library. `core.pdf.mupdf`'s is the one there is.
+    """Pages count from 0; boxes are in points, top-left origin, on the page unrotated."""
 
-    Pages count from 0. Boxes and points are in points, top-left origin, on the page unrotated.
-    A font goes by its PDF object, as `PageFont.font_object` gives it. One the library can't use
-    raises DriverError, saying why, so the engine falls back. Anything else goes to `result_of`.
-    """
+    def page_count(self) -> int: ...
 
-    def page_count(self) -> int:
-        """How many pages the document has, without reading any of them."""
-        ...
+    def pages(self) -> list[Page]: ...
 
-    def pages(self) -> list[Page]:
-        """Each page's size, unrotated, and the turn it asks for."""
-        ...
+    def page_image(self, page: int, scale: float) -> bytes: ...
 
-    def page_image(self, page: int, scale: float) -> bytes:
-        """The page unrotated as a PNG, `scale` pixels per point."""
-        ...
+    def box_images(self, page: int, scale: float, boxes: list[Rect]) -> list[bytes]: ...
 
-    def box_images(self, page: int, scale: float, boxes: list[Rect]) -> list[bytes]:
-        """Each box of the page unrotated as a PNG, `scale` pixels per point.
+    def text_lines(self, page: int) -> list[list[TextPiece]]: ...
 
-        Each is the page image's own pixels in that box, so a strip over it shows no seam.
-        The page is drawn once for them all.
-        """
-        ...
+    def text_in(self, page: int, boxes: list[Rect]) -> list[str]: ...
 
-    def text_lines(self, page: int) -> list[list[TextPiece]]:
-        """Each line of text on the page, split into the pieces it is drawn in.
+    def letters_in(self, page: int, boxes: list[Rect]) -> list[list[PlacedLetter]]: ...
 
-        Each piece names the font that draws it by its PDF object, one `fonts` lists, or None
-        when the page lists none for it.
-        """
-        ...
+    def drawn_boxes(self, page: int) -> list[Rect]: ...
 
-    def text_in(self, page: int, boxes: list[Rect]) -> list[str]:
-        """The letters inside each box on the page, in reading order."""
-        ...
+    def link_boxes(self, page: int) -> list[Rect]: ...
 
-    def letters_in(self, page: int, boxes: list[Rect]) -> list[list[PlacedLetter]]:
-        """The letters drawn with their middle in each box, where each is, in reading order."""
-        ...
+    def drawn_glyphs(self, page: int) -> list[DrawnGlyph]: ...
 
-    def drawn_boxes(self, page: int) -> list[Rect]:
-        """The box around each thing the page draws but text: lines, shapes and pictures.
+    def drawn_glyph_boxes(self, page: int) -> list[Rect] | None: ...
 
-        A path is boxed piece by piece, so a grid drawn as one path still has its lines.
-        """
-        ...
+    def form_fields(self, page: int) -> list[FormField]: ...
 
-    def link_boxes(self, page: int) -> list[Rect]:
-        """The area of each link on the page, as shown, whatever it does."""
-        ...
+    def fonts(self, page: int) -> list[PageFont]: ...
 
-    def drawn_glyphs(self, page: int) -> list[DrawnGlyph]:
-        """Each letter the page's own drawing writes, on it or off it, and the shape picked.
+    def font_bytes(self, font_object: int) -> bytes: ...
 
-        In the order drawn. Not a comment's or a field's, which draw their own.
-        """
-        ...
+    def font_descriptor(self, font_object: int) -> FontDescriptor | None: ...
 
-    def drawn_glyph_boxes(self, page: int) -> list[Rect] | None:
-        """The box each of `drawn_glyphs` takes as drawn, in its order: its ink, descenders too.
+    def font_codes(self, font_object: int, code_bytes: int) -> list[FontCode] | None: ...
 
-        Through all of its text's matrix: a letter condensed or stretched up is as tall as it
-        shows. A glyph that draws nothing, as a space, has an empty box where it starts. None
-        where the page's text can't be read through for them.
-        """
-        ...
+    def listed_widths(self, font_object: int) -> dict[str, float] | None: ...
 
-    def form_fields(self, page: int) -> list[FormField]:
-        """Each form field on the page that shows text, and the value it shows.
+    def open_font(self, font_file: bytes) -> FontProgram: ...
 
-        A field draws its value itself, not the page. A check box, a button, a
-        signature or an empty field shows no value, so it isn't listed.
-        """
-        ...
-
-    def fonts(self, page: int) -> list[PageFont]:
-        """Each font the page uses that's an object of its own, forms included.
-
-        Not one written in place, its dictionary inside the page's resources rather than an
-        object: it has no object to look it up by, so its text goes by its name.
-        """
-        ...
-
-    def font_bytes(self, font_object: int) -> bytes:
-        """The font file stored in the PDF. Raises DriverError when it can't be read out."""
-        ...
-
-    def font_descriptor(self, font_object: int) -> FontDescriptor | None:
-        """What the font's description says of its look and the font it names; None if none."""
-        ...
-
-    def font_codes(self, font_object: int, code_bytes: int) -> list[FontCode] | None:
-        """Each code the font has a letter for, lowest first; None without a letter list.
-
-        Raises DriverError when the library can't load the font.
-        """
-        ...
-
-    def listed_widths(self, font_object: int) -> dict[str, float] | None:
-        """Each letter the font's width list gives a width, per 1000 em; None without a list.
-
-        The list is `/Widths`, or a two-byte font's `/W`, read whether the font is stored or
-        only named. Raises DriverError when the library can't load the font.
-        """
-        ...
-
-    def open_font(self, font_file: bytes) -> FontProgram:
-        """Open a font file to measure with. Raises DriverError when it isn't one."""
-        ...
-
-    def face_font(self, face: Face) -> FontProgram:
-        """A face we ship, opened to measure with: it measures what `add_font` draws."""
-        ...
+    def face_font(self, face: Face) -> FontProgram: ...
 
     def erase_text(self, page: int, boxes: list[Rect]) -> list[str]:
-        """Delete the letters whose middle is inside these boxes, for real.
-
-        Returns what `text_in` still reads in each box. Images, drawings, links, the file's own
-        redaction marks and the text under them stay, and each font `add_font` or `write_codes`
-        named keeps its resource name. A FreeText over the letters goes: it can hold the text.
-        """
+        """Returns what `text_in` still reads in each box; a FreeText over them goes too."""
         ...
 
     def drop_links(
         self, page: int, boxes: list[Rect], *, holding: Callable[[str], bool] | None = None
-    ) -> None:
-        """Delete every link whose area overlaps one of `boxes`, whatever it does.
+    ) -> None: ...
 
-        With `holding`, only one whose action holds text it's true of: an address, a file name.
-        """
-        ...
-
-    def hidden_copies(self, page: int) -> list[str]:
-        """Every hidden copy on the page, as text, and each string the library may miss.
-
-        Another reader may keep a string the library misses, so a redacted word there fails the
-        check. A string the library reads under another key, as a language, is no hidden copy.
-        """
-        ...
+    def hidden_copies(self, page: int) -> list[str]: ...
 
     def rewrite_hidden_copies(self, page: int, rewritten: Callable[[str], str]) -> None:
-        """Put `rewritten(hidden_copy)` for each hidden copy on the page; one blanked goes.
-
-        A hidden copy is text marked content keeps beside what it draws (ActualText, Alt, E),
-        which a screen reader or a search still reads after the letters go. One the library
-        can't read whole stays as written; a key written twice keeps only the one it reads.
-        """
+        """A hidden copy: text marked content keeps beside its drawing (ActualText, Alt, E)."""
         ...
 
-    def document_hidden_copies(self, holding: Callable[[str], bool]) -> list[HiddenCopy]:
-        """Each of the document's own hidden copies that `holding` is true of, and where.
+    def document_hidden_copies(self, holding: Callable[[str], bool]) -> list[HiddenCopy]: ...
 
-        Those `rewrite_document_hidden_copies` reaches, even a field the form doesn't list.
-        Metadata not read as XML, and words in a stream, come whole. `holding` looks for words:
-        it's true of any text with a part it's true of, set apart by punctuation.
-        """
-        ...
+    def rewrite_document_hidden_copies(self, rewritten: Callable[[str], str]) -> None: ...
 
-    def rewrite_document_hidden_copies(self, rewritten: Callable[[str], str]) -> None:
-        """Put `rewritten(copy)` for each of the document's hidden copies; one left blank goes.
+    def holds_signature(self) -> bool: ...
 
-        A field's value or a bookmark's title left blank stays, empty. One the library can't
-        write back goes whole once changed. A comment or field showing its words is drawn again;
-        a drawing still showing a word goes. `rewritten` deletes words, as `holding` finds them.
-        """
-        ...
-
-    def holds_signature(self) -> bool:
-        """Whether the document holds a signature, which any change to the file breaks.
-
-        A signed field's value is one, a widget the form doesn't list included, and so is a
-        certifying (DocMDP) or rights (UR3) entry of its permissions (Perms) that's a signature.
-        What checks one (DSS) is not, nor are permissions naming none.
-        """
-        ...
-
-    def is_signed(self) -> bool:
-        """Whether the document holds a signature, or anything `drop_signatures` deletes."""
-        ...
+    def is_signed(self) -> bool: ...
 
     def drop_signatures(self) -> None:
-        """Delete every signature, and what the file keeps only to check one.
-
-        Nothing in them is read: the edit rewrites the file, so none would still hold.
-        A signed field's drawing stays.
-        """
+        """Nothing in them is read: the edit rewrites the file, so none would still hold."""
         ...
 
-    def add_font(self, page: int, font_file: bytes, *, resource: str) -> FontResource:
-        """Add a font to the page under the resource name `resource`, or one like it if taken.
-
-        Returns the resource name it went under, and its PDF object. Raises
-        DriverError when the library won't add it.
-        """
-        ...
+    def add_font(self, page: int, font_file: bytes, *, resource: str) -> FontResource: ...
 
     def write_text(
         self,
@@ -276,14 +123,7 @@ class PdfDriver(Protocol):
         scale_x: float,
         turn_ccw: QuarterTurn,
         letter_spacing: float,
-    ) -> None:
-        """Write each run from its origin, in its font, on top of the page, in order.
-
-        Each run's font is one `add_font` added. `scale_x` narrows each run from its own
-        start; an `opacity` of 1 is solid. `turn_ccw` turns each run counter-clockwise about
-        its origin. `letter_spacing` sets each letter that many points past its width.
-        """
-        ...
+    ) -> None: ...
 
     def write_codes(
         self,
@@ -297,75 +137,31 @@ class PdfDriver(Protocol):
         scale_x: float,
         turn_ccw: QuarterTurn,
         letter_spacing: float,
-    ) -> None:
-        """Write each run's codes in its font, from `origin` on, on top of the page.
-
-        For a font that has no letters of its own, only codes (`CodeRun` says
-        what a code is). Each run starts where the last left the pen, moved on
-        by that font's own widths. The rest is as for `write_text`.
-        """
-        ...
+    ) -> None: ...
 
     def replace_font_file(self, font_object: int, font_file: bytes) -> None:
-        """Swap in a new file for font `font_object`. It must keep each glyph at its old number.
-
-        Raises DriverError when the font's file can't be found to swap.
-        """
+        """The new file must keep each glyph at its old number."""
         ...
 
-    def drop_active_content(self) -> bool:
-        """Delete what acts on its own or reaches outside the file; whether there was any.
+    def drop_active_content(self) -> bool: ...
 
-        Scripts, actions but a move within the file or a link to the web, attached files,
-        and a stream kept in another file. A link's box stays.
-        """
-        ...
+    def keeps_xmp_plain(self) -> bool: ...
 
-    def keeps_xmp_plain(self) -> bool:
-        """Whether the file is protected and has XMP it asks to keep unencrypted.
+    def drop_xmp(self) -> None: ...
 
-        What the file asks (EncryptMetadata false, which only V4 or later means), whether or
-        not the library reads it so.
-        """
-        ...
+    def has_tags(self) -> bool: ...
 
-    def drop_xmp(self) -> None:
-        """Delete the file's XMP, wherever the file names it. Its Info stays."""
-        ...
+    def drop_tags(self) -> None: ...
 
-    def has_tags(self) -> bool:
-        """Whether the file is tagged: it has the reading order a screen reader follows."""
-        ...
+    def keep_pages(self, pages: list[int]) -> None: ...
 
-    def drop_tags(self) -> None:
-        """Remove the file's tags. Saving then drops every page only they pointed at."""
-        ...
+    def turn_page(self, page: int, turn_cw: QuarterTurn) -> None: ...
 
-    def keep_pages(self, pages: list[int]) -> None:
-        """Keep only `pages`, in that order; links, bookmarks and fields on the rest go too."""
-        ...
+    def mark_changed_by(self, producer: str, when: datetime) -> None: ...
 
-    def turn_page(self, page: int, turn_cw: QuarterTurn) -> None:
-        """Set the turn `page` asks for, clockwise, in place of the one it had."""
-        ...
+    def save(self, path: str) -> None: ...
 
-    def mark_changed_by(self, producer: str, when: datetime) -> None:
-        """Say in the file's metadata that `producer` changed it, at `when`.
-
-        Its Info's Producer becomes `producer` and its ModDate `when`, in UTC; the rest stays.
-        XMP read as XML says the same in each pdf:Producer, xmp:ModifyDate and xmp:MetadataDate
-        it holds, and gains none it lacks.
-        """
-        ...
-
-    def save(self, path: str) -> None:
-        """Write the document to `path`, protected as the original was."""
-        ...
-
-    def close(self) -> None:
-        """Release the open document."""
-        ...
+    def close(self) -> None: ...
 
 
-# What opens the PDF at a path as a driver: `core.pdf.mupdf.open_driver`, or a test's double.
 type DriverFactory = Callable[[str], PdfDriver]

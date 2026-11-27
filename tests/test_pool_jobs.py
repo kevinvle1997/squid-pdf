@@ -1,8 +1,4 @@
-"""Every job a controller sends to the pool pickles: a module function, never a lambda.
-
-A job crosses to its worker as a pickle, by module and name; a lambda or closure fails only
-when a request reaches it. Read from the source: each `_enqueue_<job>` names its job.
-"""
+"""A job crosses to its worker as a pickle: a lambda or closure fails only when one is sent."""
 
 from __future__ import annotations
 
@@ -20,12 +16,10 @@ _ENQUEUE = "_enqueue_"
 
 
 def _module(path: Path) -> str:
-    """`src/squidpdf/editing/render.py` -> `squidpdf.editing.render`."""
     return ".".join(path.relative_to(_SRC).with_suffix("").parts)
 
 
 def _enqueuers() -> Iterator[tuple[str, ast.AsyncFunctionDef]]:
-    """Each `_enqueue_<job>` method in src, with the module it's in."""
     for path in sorted(_SRC.rglob("*.py")):
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             if isinstance(node, ast.AsyncFunctionDef) and node.name.startswith(_ENQUEUE):
@@ -33,7 +27,6 @@ def _enqueuers() -> Iterator[tuple[str, ast.AsyncFunctionDef]]:
 
 
 def _job_name(enqueuer: ast.AsyncFunctionDef) -> str | None:
-    """The job a method sends: `partial`'s first argument, else `run`'s; None if neither."""
     calls = [node for node in ast.walk(enqueuer) if isinstance(node, ast.Call)]
     for call in calls:
         is_partial = isinstance(call.func, ast.Name) and call.func.id == "partial"
@@ -58,7 +51,6 @@ def test_every_pool_job_is_a_module_function_that_pickles():
 
 
 def test_the_apps_store_pickles():
-    """Every job takes the store with it, so a store that won't pickle fails every request."""
     assert_equal(
         pickle.loads(pickle.dumps(FOLDER_STORE)), FOLDER_STORE, "the store after a pickle"
     )

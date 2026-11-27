@@ -1,5 +1,3 @@
-"""A line is too long only once it runs into something: its room, read from the page."""
-
 from __future__ import annotations
 
 import pymupdf
@@ -10,7 +8,7 @@ from tests.api.conftest import span_starting, upload
 from tests.helpers import assert_at_least, assert_close, assert_equal
 
 _SIZE = 10
-_LEADING = 14  # a paragraph's lines, this far apart
+_LEADING = 14
 _PROSE = (
     "A paragraph set ragged right, its first line the longest of the three",
     "Second line",
@@ -21,23 +19,17 @@ _JUSTIFIED = (
     "still run past it into the white space beside it, as far as the page's rightmost "
     "text, since it overlaps nothing on the way there."
 )
-_FAR_X = 480  # a column far right on the paragraph's first line: the page's rightmost text
+_FAR_X = 480
 _LABEL, _VALUE = "Delivery", "$12.00"
-_CELL = ("Large widget,", "boxed")  # a description over two lines
-_ROW_VALUE = "1"  # the row's value, set between the description's two lines
+_CELL = ("Large widget,", "boxed")
+_ROW_VALUE = "1"
 _BOXED = "Boxed in"
-_BOX_X = 200  # where a filled box starts, level with `_BOXED`
-_AFTER_X = 330  # where the text after the box starts
-_VALUE_X = 300  # where the label's value and the row's value start
+_BOX_X = 200
+_AFTER_X = 330
+_VALUE_X = 300
 
 
 def _room_page() -> bytes:
-    """One page with each kind of room.
-
-    A ragged paragraph, a column far right of its first line, a justified one, a label
-    and its value, a two-line cell whose row value sits between its lines, overlapping
-    each by less than half, and a line with a filled box before the text after it.
-    """
     doc = pymupdf.open()
     page = doc.new_page()
     for row, line in enumerate(_PROSE):
@@ -64,22 +56,17 @@ def _room_page() -> bytes:
 
 
 _LONG = "A long line above each, so its paragraph's edge is far to the right of it"
-_KERNED = ("Total ", "Amount")  # the second set a little into the first, as a kern sets it
-_TURNED_X = 120  # where a word drawn turned crosses the line beside it
+_KERNED = ("Total ", "Amount")
+_TURNED_X = 120
 _GRID = ("Apples", "Notes: a row that runs across both of the grid's columns")
-_CELL_X = 140  # the grid's inner border, drawn in one path with the rest of it
+_CELL_X = 140
 _GRID_STROKE = 0.5  # its lines' width: half of it is ink before the border
-_RULE_X = 200  # a rule down the page, many lines tall
+_RULE_X = 200
 _RULE_WIDTH = 1.0  # half of it is ink before the rule's line
 _RULED = "beside a rule"
 
 
 def _add_walls_page(doc: pymupdf.Document) -> None:
-    """A page of what a longer line could run into, each where the page's margin is far.
-
-    A word set a little into the line's end, a word drawn turned across it, a table
-    grid drawn as one path, and a rule down the page.
-    """
     page = doc.new_page()
     page.insert_text((72, 86), _LONG, fontsize=_SIZE)
     first_width = pymupdf.get_text_length(_KERNED[0], fontsize=_SIZE)
@@ -100,7 +87,6 @@ def _add_walls_page(doc: pymupdf.Document) -> None:
 
 
 def _draw_grid(page: pymupdf.Page) -> None:
-    """A table grid of two rows and two columns, drawn as one path."""
     grid = page.new_shape()
     for row in range(2):
         top = 288 + row * 20
@@ -112,22 +98,18 @@ def _draw_grid(page: pymupdf.Page) -> None:
 
 @pytest.fixture
 def room_doc(mine) -> dict:
-    """The room page, uploaded by `mine`."""
     return upload(mine, _room_page()).json()
 
 
 def _room_to(x: float, span: dict) -> float:
-    """The room from where `span` ends to `x`."""
     return x - span["bbox"]["x1"]
 
 
 def _margin_of(doc: dict, page: int) -> float:
-    """Where the rightmost text on `page` ends."""
     return max(span["bbox"]["x1"] for span in doc["spans"] if span["page"] == page)
 
 
 def test_each_line_has_the_room_the_page_leaves_it(room_doc):
-    """Up to what it would overlap, else the page's rightmost text, justified or not."""
     first, second, _last = (span_starting(room_doc, 0, line) for line in _PROSE)
     label, *cell, boxed = (span_starting(room_doc, 0, s) for s in (_LABEL, *_CELL, _BOXED))
     justified = [s for s in room_doc["spans"] if s["page"] == 0 and 150 < s["bbox"]["y0"] < 260]
@@ -149,7 +131,6 @@ def test_each_line_has_the_room_the_page_leaves_it(room_doc):
 
 
 def test_a_line_stops_at_whatever_a_longer_one_would_run_into(room_doc):
-    """Not only text it half overlaps: a kerned word, turned text, a grid's line, a rule."""
     kerned, turned_beside, turned, apple, ruled = (
         span_starting(room_doc, 1, s) for s in (_KERNED[0], "short", "TURNED", _GRID[0], _RULED)
     )
@@ -171,12 +152,10 @@ def test_a_line_stops_at_whatever_a_longer_one_would_run_into(room_doc):
 
 
 def test_an_edit_into_its_room_fits_and_one_past_it_says_how_far_past(mine, room_doc):
-    """Past its paragraph's widest line fits; the warning says the part past the margin."""
     span = span_starting(room_doc, 0, _PROSE[1])
     url = f"/api/documents/{room_doc['id']}/render"
 
     def fit_of(text: str) -> dict:
-        """The server's fit for the span reading `text`."""
         edit = {"kind": "replace", "span_id": span["id"], "text": text}
         body = {"edits": [edit], "scale": 2, "regions": []}
         return mine.post(url, json=body).json()["fits"][span["id"]]
@@ -196,7 +175,6 @@ def test_an_edit_into_its_room_fits_and_one_past_it_says_how_far_past(mine, room
     percent = part["params"]["percent"]
     too_long = words.render(Message("too_long", {"percent": percent}))
     assert_equal(runs_past["message"], too_long, "an edit past its room")
-    # How far past its room, not past the original's end, as a share of the line.
     past_pt = runs_past["delta_pt"] - span["room_pt"]
     wide = span["bbox"]["x1"] - span["bbox"]["x0"]
     assert_close(percent, past_pt / wide * 100, 1, "how far past its room, as a share")

@@ -1,9 +1,4 @@
-"""How few of an image's bytes, written under its filters, give its pixels.
-
-A reader that counts an image's bytes stops once it has its pixels, which may be
-before its written bytes end. Pure: the filters come by name, and only Python's own
-decoders read them.
-"""
+"""A reader that counts an image's bytes stops at its pixels, maybe before its bytes end."""
 
 from __future__ import annotations
 
@@ -15,15 +10,14 @@ from dataclasses import dataclass
 import squidpdf.core.constants as constants
 
 _FLATE_STEP = 4096  # bytes fed to Flate's decoder at a time, before byte by byte
-_A85_GROUP = 5  # characters in a group of ASCII85, which give a byte fewer
-_WHITE_SPACE = b" \t\n\r\x00\x0c"  # what ASCII85 and ASCIIHex read past
-_A85_ZEROS = ord("z")  # one character for a group of four zero bytes
-_A85_END = ord("~")  # where ASCII85 ends, written ~>
-_HEX_END = ord(">")  # where ASCIIHex ends
+_A85_GROUP = 5
+_WHITE_SPACE = b" \t\n\r\x00\x0c"
+_A85_ZEROS = ord("z")
+_A85_END = ord("~")
+_HEX_END = ord(">")
 _HEX_DIGITS = b"0123456789abcdefABCDEF"
-_RUN_END = 128  # the length byte that ends RunLength
-_RUN_REPEATS = 257  # a length byte past 128 repeats the next byte this less it times
-# Filters whose bytes mark their own end, which a reader that doesn't count them looks for.
+_RUN_END = 128
+_RUN_REPEATS = 257  # a length byte past 128 repeats the next byte 257 less it times
 _MARKING_THEIR_END = frozenset(
     {"ASCII85Decode", "A85", "ASCIIHexDecode", "AHx", "DCTDecode", "DCT"}
 )
@@ -31,33 +25,24 @@ _MARKING_THEIR_END = frozenset(
 
 @dataclass(frozen=True, slots=True)
 class _Filter:
-    """How a filter's bytes read back: how few give so many, and what all of them give."""
-
-    fewest: Callable[[bytes, int], int | None]  # None: they never give so many
-    decoded: Callable[[bytes, int], bytes]  # what they give, up to so many
+    fewest: Callable[[bytes, int], int | None]
+    decoded: Callable[[bytes, int], bytes]
 
 
 def fewest_giving(written: bytes, filters: list[str], wanted: int) -> int:
-    """How few of `written` give `wanted` bytes through `filters`, in the order they're undone.
-
-    0 when a filter isn't one sized here, or its bytes can't be read: fewer is the safe side.
-    """
-    # No filter: its bytes are its pixels.
+    """0 for a filter not sized here, or bytes that can't be read: fewer is the safe side."""
     if not filters:
         return wanted
-    # A filter not sized here, as LZW or DCT: any of its bytes may be the last.
     if not all(name in _FILTERS for name in filters):
         return 0
     steps = [_FILTERS[name] for name in filters]
-    inputs = [written]  # each filter's bytes: what the ones undone before it give
+    inputs = [written]
     at_most = len(written) * constants.DECODED_PER_BYTE
-    # zlib, and base64's ASCII85, raise on bytes they can't read.
     try:
         for step in steps[:-1]:
             inputs.append(step.decoded(inputs[-1], at_most))
         for step, given in zip(reversed(steps), reversed(inputs), strict=True):
             fewest = step.fewest(given, wanted)
-            # They never give so many: nothing says where a reader stops.
             if fewest is None:
                 return 0
             wanted = fewest
@@ -67,125 +52,99 @@ def fewest_giving(written: bytes, filters: list[str], wanted: int) -> int:
 
 
 def marks_its_end(filters: list[str]) -> bool:
-    """Whether an image's bytes end themselves, as its first filter writes them."""
     return bool(filters) and filters[0] in _MARKING_THEIR_END
 
 
 def _flate_fewest(written: bytes, wanted: int) -> int | None:
-    """How few of Flate's bytes give `wanted` bytes."""
     decoder = zlib.decompressobj()
-    given = 0  # bytes decompressed so far
+    given = 0
     for start in range(0, len(written), _FLATE_STEP):
-        before = decoder.copy()  # to feed this step again byte by byte
+        before = decoder.copy()
         step = len(decoder.decompress(written[start : start + _FLATE_STEP]))
         if given + step < wanted:
             given += step
             continue
         for taken, byte in enumerate(written[start : start + _FLATE_STEP], start=1):
             given += len(before.decompress(bytes([byte])))
-            # They end with this byte.
             if given >= wanted:
                 return start + taken
     return None
 
 
 def _flate_decoded(written: bytes, at_most: int) -> bytes:
-    """What Flate's bytes give, as far as they can be read, up to `at_most`."""
     return zlib.decompressobj().decompress(written, at_most)
 
 
 def _a85_fewest(written: bytes, wanted: int) -> int | None:
-    """How few of ASCII85's characters give `wanted` bytes."""
-    given = 0  # bytes given by whole groups so far
-    in_group = 0  # characters of the group being read
+    given = 0
+    in_group = 0
     for taken, byte in enumerate(written, start=1):
-        # Its end: a group left short gives a byte fewer than its characters.
         if byte == _A85_END:
             ends_here = in_group > 0 and given + in_group - 1 >= wanted
             return taken if ends_here else None
         if byte in _WHITE_SPACE:
             continue
         given, in_group = _a85_after(byte, given=given, in_group=in_group)
-        # They end with this character.
         if given >= wanted:
             return taken
     return None
 
 
 def _a85_after(byte: int, *, given: int, in_group: int) -> tuple[int, int]:
-    """The bytes whole groups give, and the characters of the group being read, after `byte`."""
-    # A group of zeros, in one character.
     if byte == _A85_ZEROS and in_group == 0:
         return given + _A85_GROUP - 1, 0
-    # The character that makes a group whole.
     if in_group + 1 == _A85_GROUP:
         return given + _A85_GROUP - 1, 0
-    # One character of a group: any other, as a reader that takes any into one counts it.
+    # Any other character counts, as a reader that takes any into a group counts it.
     return given, in_group + 1
 
 
 def _a85_decoded(written: bytes, at_most: int) -> bytes:
-    """What ASCII85's characters give, to its end, up to `at_most`."""
     before_end = written.split(b"~", 1)[0]
     return base64.a85decode(before_end, ignorechars=_WHITE_SPACE)[:at_most]
 
 
 def _hex_fewest(written: bytes, wanted: int) -> int | None:
-    """How few of ASCIIHex's characters give `wanted` bytes."""
     digits = 0
     for taken, byte in enumerate(written, start=1):
-        # Its end: a digit left alone gives a byte too.
         if byte == _HEX_END:
             return taken if -(-digits // 2) >= wanted else None
-        # Any but white space, as a reader that reads it as a 0 counts it.
         digits += byte not in _WHITE_SPACE
-        # They end with this digit.
         if digits // 2 >= wanted:
             return taken
     return None
 
 
 def _hex_decoded(written: bytes, at_most: int) -> bytes:
-    """What ASCIIHex's characters give, to its end, up to `at_most`.
-
-    A digit left alone is read with a 0 after it.
-    """
     digits = bytes(byte for byte in written.split(b">", 1)[0] if byte in _HEX_DIGITS)
     return bytes.fromhex((digits + b"0" * (len(digits) % 2)).decode())[:at_most]
 
 
 def _run_length_fewest(written: bytes, wanted: int) -> int | None:
-    """How few of RunLength's bytes give `wanted` bytes."""
     given = 0
-    at = 0  # where the next run's length byte is
+    at = 0
     while at < len(written) and written[at] != _RUN_END:
         length = written[at]
-        as_they_are = length < _RUN_END  # else the next byte, repeated
+        as_they_are = length < _RUN_END
         run = length + 1
-        # A run of the next bytes as they are, and enough within it: they end with the last.
         if as_they_are and given + run >= wanted:
             return at + 1 + wanted - given
-        # A run of the next bytes as they are, short of enough.
         if as_they_are:
             given += run
             at += 1 + run
             continue
-        # A run of the next byte, repeated.
         given += _RUN_REPEATS - length
         at += 2
-        # They end with this run.
         if given >= wanted:
             return min(at, len(written))
     return None
 
 
 def _run_length_decoded(written: bytes, at_most: int) -> bytes:
-    """What RunLength's bytes give, to its end, up to `at_most`."""
     given = bytearray()
     at = 0
     while at < len(written) and written[at] != _RUN_END and len(given) < at_most:
         length = written[at]
-        # A run of the next byte, repeated.
         if length > _RUN_END:
             given += written[at + 1 : at + 2] * (_RUN_REPEATS - length)
             at += 2
@@ -195,7 +154,6 @@ def _run_length_decoded(written: bytes, at_most: int) -> bytes:
     return bytes(given[:at_most])
 
 
-# Each filter sized here, by its name in full and as an inline image writes it.
 _FLATE = _Filter(fewest=_flate_fewest, decoded=_flate_decoded)
 _A85 = _Filter(fewest=_a85_fewest, decoded=_a85_decoded)
 _HEX = _Filter(fewest=_hex_fewest, decoded=_hex_decoded)

@@ -1,12 +1,9 @@
 .field { display: contents; }
-/* The field covers the span's own pixels with the page, and types in the face that will draw it. A
-   hairline of the pencil's wash shows the box it covers, past the span when the words run longer. */
 .input, .troubleInput {
   position: absolute; z-index: var(--z-field);
   margin: 0; padding: 0; border: 0; border-radius: 0;
   background: var(--sheet);
   box-shadow: inset 0 -2px 0 var(--mark-change), 0 0 0 1px var(--mark-change-soft);
-  /* A way out sets the words smaller (--field-shrink) or narrower (--field-narrow); the box it covers stays. */
   font-size: calc(var(--field-size) * var(--field-shrink, 1));
   width: calc(var(--field-width) / var(--field-narrow, 1)); height: var(--field-height);
   transform: scaleX(var(--field-narrow, 1)); transform-origin: 0 0;
@@ -14,9 +11,8 @@
   outline: none;
   caret-color: var(--sheet-ink);
 }
-/* The page never themes, so neither do the caret and the selection on it, in either theme. */
 .input::selection, .troubleInput::selection { background: var(--sheet-rule); color: var(--sheet-ink); }
-/* On a touch screen, set at --fs-input so iOS doesn't zoom, and scaled down to the span's size. */
+/* Set at --fs-input so iOS doesn't zoom, and scaled down to the span's size. */
 @media (pointer: coarse) {
   .input, .troubleInput {
     --field-across: calc(var(--field-scale) * var(--field-shrink, 1) * var(--field-narrow, 1));
@@ -28,28 +24,23 @@
   }
 }
 .troubleInput { box-shadow: inset 0 -2px 0 var(--mark-warn), 0 0 0 1px var(--mark-warn-soft); }
-/* Where a line left long runs out of room: a dashed warning line across it, over the field, so what's past it shows. */
 .roomEnds {
   position: absolute; z-index: var(--z-field);
   margin-block: calc(-1 * var(--s1)); padding-block: var(--s1);
   border-inline-start: 2px dashed var(--mark-warn);
   pointer-events: none;
 }
-/* The date or amount its editor rewrites, ringed as Find rings the place it went to, over the field's words:
-   tight to them, the --r-1 step, so it stays clear of the next word across a space. */
 .valueRing {
   position: absolute; z-index: var(--z-field);
   outline: 2px solid var(--mark-change); outline-offset: 0; border-radius: var(--r-1);
   pointer-events: none;
 }
-/* The shadows go in high contrast: an outline keeps the field's line, dashed in trouble as a warning's is. */
 @media (forced-colors: active) {
   .input { outline: 2px solid Highlight; }
   .troubleInput { outline: 2px dashed CanvasText; }
   .roomEnds { border-color: CanvasText; }
   .valueRing { outline-color: Highlight; }
 }
-/* Words redacted already, over their letters in the field as on the page, above it: its clicks go through. */
 .redactedRun {
   composes: redacted from "../../ui/Redacted.module.css";
   position: absolute; z-index: var(--z-field); pointer-events: none;

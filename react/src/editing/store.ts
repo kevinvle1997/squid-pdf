@@ -1,11 +1,8 @@
-// State outside React, so a handler reads it the moment it changes, and what's drawn subscribes to the part
-// it shows: a change to one span redraws that span, not the document.
+// State outside React, so a handler reads it the moment it changes.
 
 export interface Store<S> {
   get(): S;
-  /** Merge `patch` in and tell every subscriber, at once. */
   set(patch: Partial<S>): void;
-  /** Hear of every change; the function returned stops it. */
   subscribe(listener: () => void): () => void;
 }
 
@@ -25,7 +22,6 @@ export function createStore<S extends object>(initial: S): Store<S> {
   };
 }
 
-/** Whether two objects have the same fields, each the same by `Object.is`: a selection of several parts. */
 export function shallowEqual<T extends object>(a: T, b: T): boolean {
   const keys = Object.keys(a) as (keyof T)[];
   return keys.length === Object.keys(b).length && keys.every((key) => Object.is(a[key], b[key]));

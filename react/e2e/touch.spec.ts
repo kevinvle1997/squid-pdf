@@ -1,10 +1,8 @@
-// The editor on a touch screen, as a phone opens it: the bar offers no keys, since there are none to press.
 import { fileURLToPath } from "node:url";
 import { expect, type Page } from "@playwright/test";
 import { test } from "./policy";
 
 const SAMPLE = fileURLToPath(new URL("../../fixtures/sample.pdf", import.meta.url));
-// The first page's line with a date in it.
 const DATED = "This agreement is made on 14 March 2026 between";
 
 async function open(page: Page) {
@@ -13,12 +11,11 @@ async function open(page: Page) {
   await page.getByRole("button", { name: "Choose a PDF" }).click();
   await (await chooser).setFiles(SAMPLE);
   await expect(page.getByRole("region", { name: "Page 1" })).toBeVisible();
-  // Export first, so the bar is drawn before anything in it is looked for.
   await expect(page.getByRole("button", { name: /^Export/ })).toBeVisible();
 }
 
 test.describe("on a touch screen", () => {
-  // A phone by what it has, not a device's descriptor, which would pin the browser too.
+  // Not a device's descriptor, which would pin the browser too.
   test.use({ hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 } });
 
   test("the bar lists no shortcuts, ? opens none, and Export carries no key", async ({ page }) => {
@@ -27,7 +24,6 @@ test.describe("on a touch screen", () => {
     await expect(page.getByRole("button", { name: "Keyboard shortcuts", includeHidden: true })).toHaveCount(0);
     await page.keyboard.press("?");
     await expect(page.getByRole("dialog")).toHaveCount(0);
-    // The keycap is there for a keyboard, and found hidden rather than not found at all.
     const keycap = page.getByRole("button", { name: /^Export/ }).locator("kbd");
     await expect(keycap).toBeAttached();
     await expect(keycap).toBeHidden();
@@ -37,7 +33,6 @@ test.describe("on a touch screen", () => {
     await open(page);
     const button = page.getByRole("button", { name: "Delete page 1", exact: true });
     await expect(button).toBeVisible();
-    // The hit area grows past the icon drawn, so the hit area is what is measured.
     const hit = await button.evaluate((drawn) => {
       const area = getComputedStyle(drawn, "::before");
       return Math.min(parseFloat(area.width), parseFloat(area.height));
@@ -57,13 +52,12 @@ test.describe("on a touch screen", () => {
     await expect(day).toBeVisible();
     await expect(page.getByRole("tooltip")).toHaveCount(0);
     await expect(page.getByText(/Alt|⌥/)).toHaveCount(0);
-    // Its laid-out height: a box measured through the slip's fractional translate can round a hair short.
+    // A box measured through the slip's fractional translate can round a hair short.
     expect(await day.evaluate((element: HTMLElement) => element.offsetHeight)).toBeGreaterThanOrEqual(44);
   });
 
   test("a tap on a day the font can't write says why, and a second tap chooses it", async ({ page }) => {
     await open(page);
-    // Page 2's line is in a subset of the file's own font, which drew only the digits it printed.
     const line = "Delivery begins 14 March 2026 and runs eighteen months.";
     await page.getByRole("button", { name: line }).focus();
     await page.keyboard.press("Enter");
@@ -83,17 +77,14 @@ test.describe("new text on a touch screen", () => {
 
   test("a double tap on bare paper opens new text there, and a single tap opens none", async ({ page }) => {
     await open(page);
-    // Above the first page, the how-to-start note says it a finger's way: its copy in the margin is hidden here.
     const onScreen = (words: string) => page.getByText(words).filter({ visible: true });
     await expect(onScreen("Tap any word to fix it.")).toHaveCount(1);
     await expect(onScreen("Double-tap any blank spot to add text.")).toHaveCount(1);
     await expect(page.getByText("Click any word to fix it.")).toHaveCount(0);
     await expect(page.getByText("Double-click any blank spot to add text.")).toHaveCount(0);
-    // The sheet, first: the layer its slips hang from, after it, has its shape too.
     const shape = page.getByRole("region", { name: "Page 1" }).locator("[style*='aspect-ratio']");
     const sheet = await shape.first().boundingBox();
     if (sheet === null) throw new Error("the first page is drawn");
-    // Bare paper, under the page's last line.
     const [x, y] = [sheet.x + sheet.width * 0.3, sheet.y + sheet.height * 0.6];
     await page.touchscreen.tap(x, y);
     await expect(page.getByRole("textbox", { name: "New text" })).toHaveCount(0);
@@ -105,7 +96,6 @@ test.describe("new text on a touch screen", () => {
   });
 });
 
-// The same names with a mouse: a control renamed away would be missed above, and prove nothing.
 test.describe("with a mouse", () => {
   test("the bar lists the shortcuts, ? opens them, and Export carries its key", async ({ page }) => {
     await open(page);
@@ -117,14 +107,12 @@ test.describe("with a mouse", () => {
 
   test("a date's control in the slip shows its key on hover", async ({ page }) => {
     await open(page);
-    // A click opens the field, as a mouse does: after a key, hover shows no tooltip, as React Aria has it.
     await page.getByRole("button", { name: DATED }).click();
     await page.getByRole("button", { name: "Date" }).hover();
     await expect(page.getByRole("tooltip")).toHaveText(/Alt ↓|⌥↓/);
   });
 });
 
-/** Open the field on the first page's line with a date in it, from the keyboard. */
 async function editTheDate(page: Page) {
   await page.getByRole("button", { name: DATED }).focus();
   await page.keyboard.press("Enter");

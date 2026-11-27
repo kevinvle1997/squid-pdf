@@ -10,7 +10,6 @@ import { useEditor, useEditorState } from "./context";
 import styles from "./DeletePage.module.css";
 import { sheetWidthOf } from "./geometry";
 
-/** A ref for page `page`'s own control, its delete button or its Put back: it takes focus as it's drawn when focus is sent there. */
 function useFocusSent(page: number) {
   const editor = useEditor();
   const sent = useEditorState((state) => {
@@ -29,10 +28,6 @@ function useFocusSent(page: number) {
   );
 }
 
-/**
- * Leave page `page` out of the download: one quiet button on the mat by the sheet's top corner, always shown,
- * named for its `shownNumber`. The last page left can't go: a download needs a page.
- */
 export function DeletePage({ page, shownNumber }: { page: number; shownNumber: number }) {
   const editor = useEditor();
   const last = useEditorState((state) => state.reading.order.length === 1);
@@ -46,7 +41,6 @@ export function DeletePage({ page, shownNumber }: { page: number; shownNumber: n
           className={styles.button}
           aria-label={name}
           isDisabled={last}
-          // Cmd+Enter goes on to the window's shortcuts: on a page with no text, it opens new text there.
           onPressStart={passShortcut}
           onPress={(event) => {
             if (!isShortcutPress(event)) deletePage(editor, page);
@@ -59,7 +53,6 @@ export function DeletePage({ page, shownNumber }: { page: number; shownNumber: n
   );
 }
 
-/** Page `page`, deleted: collapsed in its place to a slip the sheet's width, left out of the download, with Put back. */
 export function DeletedPage({ page, info }: { page: number; info: PageInfo }) {
   const editor = useEditor();
   const sentence = useEditorState((state) => leftOutSentence(state.doc));
@@ -79,7 +72,6 @@ export function DeletedPage({ page, info }: { page: number; info: PageInfo }) {
   );
 }
 
-/** A trash can: a lid and its handle, a can narrowing to its foot, two ribs. Drawn at its own size, so the stroke stays 1.5px. */
 function TrashCan() {
   return (
     <svg

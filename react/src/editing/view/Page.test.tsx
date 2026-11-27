@@ -35,7 +35,6 @@ import { EditorContext } from "./context";
 import { ALT, onBarePaper } from "./keys";
 import { Page } from "./Page";
 
-// What's persisted in this browser is the App's to test, in the browser's real storage.
 vi.mock(import("../../documents/localPersistence"), async (original) => ({
   ...(await original()),
   persistFile: vi.fn(async () => undefined),
@@ -67,9 +66,7 @@ vi.mock(import("./Margin"), async (original) => {
 
 const WORDS = "was here";
 const span = aSpan({ id: "s1", text: WORDS, size: 20, bbox: { x0: 72, y0: 100, x1: 152, y1: 124 }, origin: [72, 120] });
-// Every letter half the size wide: the span's eight are 80 pt at 20 pt.
 const glyphs = halfWideGlyphs("abcdefghijklmnopqrstuvwxyz ");
-// A line on the next page, to show what a change to the first leaves alone.
 const elsewhere = aSpan({ id: "s2", page: 1, text: "was there" });
 const DOC = aDoc({ spans: [span, elsewhere], fonts: [aFont("Times-Roman", { glyphs })] });
 
@@ -77,16 +74,12 @@ const FILE = new File(["%PDF-"], "contract.pdf");
 // Every page's image: one white pixel, which loads, so no failure or retry draws the page again mid-test.
 const WHITE_PIXEL =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVR42mP4DwABAQEAHLCMmQAAAABJRU5ErkJggg==";
-// The viewport the file starts in, put back after each test so none runs at the size another set.
 const VIEWPORT = { width: window.innerWidth, height: window.innerHeight };
-// Tall enough for the window to have room under the page's foot, where a slip at the foot hangs.
 const ROOM_UNDER_FOOT = { width: 1400, height: 1400 };
 
 let editor: Editor;
-// What `farAway` adds below the page, taken out after the test even when it fails.
 let spacer: HTMLElement | null = null;
 
-/** Open `doc` in the editor the page draws from, in place of DOC. */
 function openDocument(doc: Document) {
   editor = createEditor(FILE, doc, 2);
 }
@@ -105,7 +98,6 @@ afterEach(async () => {
   await page.viewport(VIEWPORT.width, VIEWPORT.height);
 });
 
-/** The page, in the window, or in a box that scrolls sideways as the editor's pages do (`scrolledIn`). */
 async function draw(index = 0, info = A4, { scrolledIn = false } = {}) {
   const drawn = <Page index={index} info={info} shownNumber={index + 1} />;
   return render(
@@ -115,10 +107,7 @@ async function draw(index = 0, info = A4, { scrolledIn = false } = {}) {
   );
 }
 
-/**
- * Wait until the page has stopped drawing. Its observers report a frame or more after layout, and a page
- * coming near draws its marks in a transition: a count taken before then counts those draws too.
- */
+/** Its observers report a frame or more after layout, and a page coming near draws its marks in a transition. */
 async function settled() {
   let count: number;
   do {
@@ -128,14 +117,12 @@ async function settled() {
   } while (drawn.margins !== count);
 }
 
-/** Wait until page `index`'s own image has its size, so a count starts with nothing pending. */
 async function imageLoadedOn(screen: Awaited<ReturnType<typeof draw>>, index = 0) {
   const region = screen.getByRole("region", { name: `Page ${index + 1}` });
   // Its size is known, not only done: a broken image is `complete` too.
   await expect.poll(() => region.element().querySelector("img")?.naturalWidth).toBeGreaterThan(0);
 }
 
-/** WCAG contrast against the white page of a line drawn in its gradient's colour at its opacity. */
 function contrastOnWhite(line: CSSStyleDeclaration): number {
   const [red = 0, green = 0, blue = 0] = (/rgb\((\d+), (\d+), (\d+)\)/.exec(line.backgroundImage) ?? [])
     .slice(1)
@@ -149,10 +136,7 @@ function contrastOnWhite(line: CSSStyleDeclaration): number {
   return 1.05 / (luminance + 0.05);
 }
 
-/**
- * Marks come once the page is near the viewport, which its observer says a moment after drawing.
- * It leaves the field's words selected: a caller's {ArrowRight} puts the caret after them, where a Mac's {End} may scroll.
- */
+/** It leaves the field's words selected: a caller's {ArrowRight} puts the caret after them, where a Mac's {End} may scroll. */
 async function editSpan(screen: Awaited<ReturnType<typeof draw>>, words = WORDS) {
   const mark = screen.getByRole("button", { name: words });
   await expect.element(mark).toBeInTheDocument();
@@ -160,17 +144,12 @@ async function editSpan(screen: Awaited<ReturnType<typeof draw>>, words = WORDS)
   await userEvent.keyboard("{Enter}");
 }
 
-/**
- * Press, by mouse or finger, the bare background of the slip `within` is on, the chip or the redaction prompt: in its
- * padding, halfway along its top.
- */
 async function pressBareSlip(within: Element, pointer: "mouse" | "finger") {
   const box = within.closest("[data-slip], [role=group]")?.getBoundingClientRect();
   if (box === undefined) throw new Error("no slip");
   await pressBy(pointer, { x: box.left + box.width / 2, y: box.top + 4 });
 }
 
-/** Press the page's bare paper at `at`, in the window, by mouse or finger: nothing is there but the page's image. */
 async function pressBarePaper(at: { x: number; y: number }, pointer: "mouse" | "finger") {
   const layer = document.querySelector("section img")?.parentElement;
   if (layer == null) throw new Error("the page's layer holds its image");
@@ -178,22 +157,17 @@ async function pressBarePaper(at: { x: number; y: number }, pointer: "mouse" | "
   await pressBy(pointer, at);
 }
 
-/** Press at `at`, in the window, with the mouse's left button or a finger. */
 async function pressBy(pointer: "mouse" | "finger", at: { x: number; y: number }) {
   if (pointer === "finger") await tapAt(at);
   else await pressMouse(at);
 }
 
-/**
- * Focus `element` as the keyboard would: a key pressed first, one React Aria counts as the keyboard's, which Shift
- * alone isn't, and which nothing open hears. A mouse moved since leaves focus the pointer's.
- */
+/** A key pressed first, one React Aria counts as the keyboard's (Shift alone isn't) and nothing open hears. */
 async function focusFromKeyboard(element: HTMLElement | SVGElement) {
   await userEvent.keyboard("{Escape}");
   element.focus();
 }
 
-/** Move the mouse from `from` to `to` a few pixels at a time, as a hand does, over whatever lies between. */
 async function moveMouse(from: { x: number; y: number }, to: { x: number; y: number }) {
   const steps = Math.max(1, Math.ceil(Math.hypot(to.x - from.x, to.y - from.y) / 2));
   for (let step = 1; step <= steps; step++) {
@@ -203,17 +177,12 @@ async function moveMouse(from: { x: number; y: number }, to: { x: number; y: num
   }
 }
 
-/** Press the mouse's left button at `at`, and let it go. */
 async function pressMouse(at: { x: number; y: number }) {
   const press = { ...at, button: "left" as const, clickCount: 1 };
   await cdp().send("Input.dispatchMouseEvent", { type: "mousePressed", ...press });
   await cdp().send("Input.dispatchMouseEvent", { type: "mouseReleased", ...press });
 }
 
-/**
- * Two lines of a form field's text, one under the other, each with a note; the pointer rests on the lower,
- * at `start`, until its note shows.
- */
 async function hoveredUnderALine() {
   const fieldAt = (id: string, y0: number) =>
     aSpan({ id, text: `SSN ${id}`, form_field: true, bbox: { x0: 72, y0, x1: 152, y1: y0 + 24 } });
@@ -230,7 +199,6 @@ async function hoveredUnderALine() {
   return { screen, above, mark, start };
 }
 
-/** Wait for an open slip to come to rest, its faces loaded: measured again as it grows, it brings itself into view. */
 async function slipSettled() {
   await document.fonts.ready;
   await animationsDone();
@@ -238,7 +206,6 @@ async function slipSettled() {
   await new Promise(requestAnimationFrame);
 }
 
-/** Scroll the page far enough away that it's past the margin pages are drawn within. */
 function farAway() {
   spacer = document.createElement("div");
   spacer.style.height = "20000px";
@@ -246,9 +213,7 @@ function farAway() {
   window.scrollTo(0, 15000);
 }
 
-/** The sheet of the page `element` is on: the box after its margin that the page is drawn in. */
 function sheetOf(element: Element): Element {
-  // The one child its page's shape is held on, whatever is set beside it (the margin).
   const sheet = element.closest("section")?.querySelector(":scope > [style*='aspect-ratio']") ?? undefined;
   if (sheet === undefined) throw new Error("no sheet");
   return sheet;
@@ -268,7 +233,6 @@ describe("a page", () => {
     await expect.element(field).toHaveFocus();
     await userEvent.keyboard("{ArrowRight}");
     await userEvent.keyboard("xyz");
-    // Three letters of 10 pt past 80 pt: 30 pt too long, well past the tolerance, said as a share of the line.
     const sentence = screen.getByText("about 38% too long for its place: shorten it, or it runs into what's beside it");
     await expect.element(sentence).toBeVisible();
     expect(getComputedStyle(sentence.element()).color).toBe(colorOf("--warn"));
@@ -294,7 +258,6 @@ describe("a page", () => {
   });
 
   test("a line a little past its room offers the ways out; one pressed is drawn in the field at once, focus staying", async () => {
-    // Twenty letters at 5 pt each is 100 pt; one more runs 5 pt past, where every way out is offered.
     const letters = "abcdefghijklmnopqrst";
     const long = aSpan({ id: "long", text: letters, bbox: { x0: 72, y0: 100, x1: 172, y1: 112 }, origin: [72, 110] });
     openDocument(aDoc({ spans: [long], fonts: [aFont("Times-Roman", { glyphs })] }));
@@ -319,7 +282,6 @@ describe("a page", () => {
       .element(screen.getByText("about 5% too long for its place: shorten it, or it runs into what's beside it"))
       .not.toBeInTheDocument();
 
-    // The field's own keys choose too: the next is tightening the letters, at the size typed.
     await userEvent.keyboard("{ArrowDown}");
     await expect.element(ways.getByRole("radio", { name: "Tighten the letters" })).toBeChecked();
     expect(fontSize()).toBeCloseTo(asTyped, 1);
@@ -346,13 +308,11 @@ describe("a page", () => {
   });
 
   test("the field names the font that draws it, and a missing letter the face the server draws it in", async () => {
-    // Kept in the file, trimmed to the letters it draws: the server falls back to the Lato we ship.
     const lato = aFont("ABCDEE+Lato-Bold", { look_alike: "Lato Bold", glyphs });
     const bold = aSpan({ ...span, font: lato.name });
     openDocument(aDoc({ spans: [bold], fonts: [lato] }));
     const screen = await draw();
     await editSpan(screen);
-    // As a reader writes it: "Lato-Bold" is PostScript's.
     await expect.element(screen.getByText("Lato Bold", { exact: true })).toBeVisible();
     await userEvent.keyboard("{ArrowRight}Q");
     await expect.element(screen.getByText("no Q in this font, so the line is drawn in our Lato Bold")).toBeVisible();
@@ -362,7 +322,6 @@ describe("a page", () => {
     await page.viewport(1400, 900);
     const amount = aSpan({ ...span, text: "was here", bbox: { x0: 480, y0: 100, x1: 560, y1: 124 } });
     openDocument(aDoc({ spans: [amount], fonts: DOC.fonts }));
-    // Its font's full warning muted: the chip holds the trouble, the offer and Redact alone.
     setWarningMuted(editor, "Times-Roman", { muted: true });
     const screen = await draw();
     await editSpan(screen);
@@ -373,9 +332,7 @@ describe("a page", () => {
     const chip = redact.element().closest("div")?.getBoundingClientRect();
     const field = screen.getByRole("textbox").element().getBoundingClientRect();
     if (chip === undefined) throw new Error("no chip");
-    // Its sentence on one line and its offer and Redact on the next, not wrapped into a column at the page's edge.
     expect(button.top - chip.top).toBeLessThan(button.height * 2);
-    // Ending where the span does: its box starts where the field does, and the page shows at its printed size.
     expect(chip.right).toBeLessThanOrEqual(field.left + (560 - 480) * PX_PER_PT + 1);
   });
 
@@ -418,7 +375,6 @@ describe("a page", () => {
   });
 
   test('typing out the letter its copy lacks turns the chip\'s short warning to "looks identical", heard once', async () => {
-    // Its copy of the font has no "€", so judged on its own words a similar font draws it; the copy draws every other letter.
     const lacking = aSpan({
       ...span,
       id: "s4",
@@ -436,26 +392,22 @@ describe("a page", () => {
     openDocument(aDoc({ spans: [lacking], fonts: [font] }));
     const screen = await draw();
     await editSpan(screen, "Total 14 €");
-    // What its own words lack is what the chip says first.
     await expect
       .element(screen.getByText(/in this font, so the line is drawn in our Liberation Serif Regular/))
       .toBeVisible();
 
     await userEvent.keyboard("{ArrowRight}{Backspace}");
     await expect.element(screen.getByText("looks identical")).toBeVisible();
-    // Its own font draws it now, named as the reader knows it: no similar one beside "looks identical".
     await expect.element(screen.getByText("Liberation Serif", { exact: true })).toBeVisible();
     expect(screen.getByText("Liberation Serif Regular", { exact: true }).query()).toBeNull();
     const heard = editor.store.get().announcement;
     expect(heard.text).toBe(SENTENCES.typed_identical);
-    // The verdict's kind didn't change with this letter: nothing more is heard.
     await userEvent.keyboard("{Backspace}");
     await expect.element(screen.getByRole("textbox")).toHaveValue("Total 14");
     expect(editor.store.get().announcement).toBe(heard);
   });
 
   test("the chip's full warning goes once the words typed draw exact, and comes back with the letter, each heard once", async () => {
-    // Its copy of the font has no "€", so judged on its own words a similar font draws it; the copy draws every other letter.
     const lacking = aSpan({
       ...span,
       id: "s4",
@@ -474,7 +426,6 @@ describe("a page", () => {
     const warning = "Edits here use Liberation Serif Regular, whose letters are the same width as the original's.";
     const screen = await draw();
     await editSpan(screen, "Total 14 €");
-    // As the edit starts, its own words warrant the warning in full.
     await expect.element(screen.getByText(warning)).toBeVisible();
 
     await userEvent.keyboard("{ArrowRight}{Backspace}");
@@ -486,7 +437,6 @@ describe("a page", () => {
     await expect.element(screen.getByText(warning)).toBeVisible();
     const heard = editor.store.get().announcement;
     expect(heard.text).toContain(warning);
-    // Still a similar font's with this change: nothing more is heard.
     await userEvent.keyboard("{ArrowLeft}{Backspace}");
     await expect.element(screen.getByRole("textbox")).toHaveValue("Total 14€");
     expect(editor.store.get().announcement).toBe(heard);
@@ -496,7 +446,6 @@ describe("a page", () => {
     const screen = await draw();
     await editSpan(screen);
     await userEvent.keyboard("{ArrowRight}");
-    // Capitals: the span's font has only lower case, so its widths count none of them.
     await userEvent.keyboard(" AND A GOOD DEAL MORE");
     const field = screen.getByRole("textbox").element() as HTMLInputElement;
     await expect.element(screen.getByRole("textbox")).toHaveValue(`${WORDS} AND A GOOD DEAL MORE`);
@@ -509,7 +458,6 @@ describe("a page", () => {
     const screen = await draw();
     await editSpan(screen);
     await userEvent.keyboard("{ArrowRight}");
-    // Far past the right edge of the page, as a long replacement runs.
     await userEvent.keyboard(" and a good deal more besides, running on past the edge of the page");
     expect(sheetOf(screen.getByRole("textbox").element()).scrollLeft).toBe(0);
   });
@@ -523,7 +471,6 @@ describe("a page", () => {
       await userEvent.keyboard("{ArrowRight} AND MORE");
       const field = screen.getByRole("textbox").element();
       const before = field.clientWidth;
-      // As wide as the face that loaded draws it: the font's own widths count none of these capitals.
       measure.mockReturnValue({ width: 400 } as TextMetrics);
       document.fonts.dispatchEvent(new Event("loadingdone"));
       await vi.waitFor(() => expect(field.clientWidth).toBeGreaterThan(before));
@@ -570,7 +517,6 @@ describe("a page", () => {
       await editSpan(screen, `${WORDS} (redacted)`);
       const keep = screen.getByRole("button", { name: "Keep redaction" });
       await expect.element(keep).toHaveFocus();
-      // Pressed where it comes to rest: the prompt arrives moving.
       await animationsDone();
       await pressBareSlip(keep.element(), pointer);
       await expect.element(keep).toHaveFocus();
@@ -580,7 +526,6 @@ describe("a page", () => {
   test("a press on Use your copy while a font is being attached keeps the edit open, focus in the field", async () => {
     const screen = await draw();
     await editSpan(screen);
-    // A letter the font lacks: the slip offers the user's copy.
     await userEvent.keyboard("{ArrowRight} Yes");
     const offer = screen.getByRole("button", { name: "Use your copy" });
     await expect.element(offer).toBeVisible();
@@ -602,7 +547,6 @@ describe("a page", () => {
       await editSpan(screen);
       await userEvent.keyboard("{ArrowRight} now");
       await slipSettled();
-      // Scrolled on while typing, the line out of sight above.
       const field = screen.getByRole("textbox").element();
       window.scrollBy(0, field.getBoundingClientRect().bottom + 40);
       const scrolled = window.scrollY;
@@ -626,12 +570,10 @@ describe("a page", () => {
     const before = inView();
     await pressMouse({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
     await expect.element(screen.getByRole("button", { name: `${WORDS} now` })).toHaveFocus();
-    // To the pixel: the browser keeps it there in fractions of one.
     expect(inView()).toBeCloseTo(before ?? Number.NaN, 0);
   });
 
   test("Shift+Tab from the field, with nothing before it to go to, keeps the edit and puts focus on the span", async () => {
-    // One page, so the page's Delete is off: nothing comes before the field.
     openDocument(aDoc({ spans: [span], fonts: DOC.fonts }));
     const screen = await draw();
     await editSpan(screen);
@@ -665,7 +607,6 @@ describe("a page", () => {
     undo(editor);
     await vi.waitFor(() => expect(window.scrollY).toBeLessThan(1000));
     farAway();
-    // The page draws again: its image goes as it leaves, and the server's verdict lands.
     const sheet = screen.getByRole("region", { name: "Page 1" }).element();
     await vi.waitFor(() => expect(sheet.querySelector("img")).toBeNull());
     editor.store.set({ drawn: { ...editor.store.get().drawn, fits: new Map([[0, { s1: aFit({}) }]]) } });
@@ -679,7 +620,6 @@ describe("a page", () => {
     const field = screen.getByRole("textbox");
     await expect.element(field).toBeInTheDocument();
     farAway();
-    // The image goes as the page leaves; the field the user typed in doesn't.
     const sheet = screen.getByRole("region", { name: "Page 1" }).element();
     await vi.waitFor(() => expect(sheet.querySelector("img")).toBeNull());
     await expect.element(field).toBeInTheDocument();
@@ -712,7 +652,6 @@ describe("a page", () => {
     const sheet = screen.getByRole("region", { name: "Page 1" }).element();
     await expect.element(note).toBeVisible();
     await vi.waitFor(() => expect(sheet.querySelector("[data-preview]")).not.toBeNull());
-    // Focus held in the page keeps what's on it; nothing holds it here.
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
     farAway();
     await expect.element(note).not.toBeInTheDocument();
@@ -728,14 +667,12 @@ describe("a page", () => {
     await editSpan(screen);
     const field = screen.getByRole("textbox").element();
     expect(getComputedStyle(field).fontSize).toBe("16px");
-    // The span's box, as wide as the page is shown: what the field must look like on it.
     const layer = field.closest("section")?.querySelector("img")?.getBoundingClientRect();
     if (layer === undefined) throw new Error("no page image");
     const spanPx = (pt: number) => (pt / A4.width) * layer.width;
     const drawn = field.getBoundingClientRect();
     expect(drawn.height).toBeCloseTo(spanPx(span.bbox.y1 - span.bbox.y0), 0);
     expect(drawn.left).toBeCloseTo(layer.left + spanPx(span.bbox.x0), 0);
-    // Its letters drawn at the span's size: 16 px, scaled down.
     const scale = new DOMMatrix(getComputedStyle(field).transform).a;
     expect(16 * scale).toBeCloseTo(spanPx(span.size), 1);
   });
@@ -746,7 +683,6 @@ describe("a page", () => {
     const mark = screen.getByRole("button", { name: WORDS });
     await expect.element(mark).toBeInTheDocument();
     const box = mark.element().getBoundingClientRect();
-    // On "was", the first word: a quarter of the way along "was here".
     const at = { x: box.left + box.width / 4, y: box.top + box.height / 2 };
     await tapAt(at);
     const field = screen.getByRole("textbox");
@@ -799,7 +735,6 @@ describe("a page", () => {
     expect([first?.textContent, second?.textContent]).toEqual(["48,500,000", "9918"]);
     for (const run of [first, second]) expect(getComputedStyle(run as Element).textDecorationLine).toBe("line-through");
     expect(getComputedStyle(between as Element).textDecorationLine).toBe("none");
-    // Cut or not, the second run shows inside the note.
     const shown = (second as Element).getBoundingClientRect();
     expect(shown.width).toBeGreaterThan(0);
     expect(shown.right).toBeLessThanOrEqual(note.element().getBoundingClientRect().right + 0.5);
@@ -843,7 +778,6 @@ describe("a page", () => {
     edit(editor, span.id, null);
     typeInto(editor, "is here");
     finish(editor, true);
-    // The live check found every letter; the server lacks one.
     land(aReply({ fits: { [span.id]: aFit({ delta_pt: -10, missing: ["h"] }) } }));
     await expect.poll(() => settles().length).toBe(1);
     expect(getComputedStyle(settles()[0] as HTMLElement).animationDuration).toBe("0.4s");
@@ -863,7 +797,6 @@ describe("a page", () => {
     edit(editor, span.id, null);
     typeInto(editor, "was here and more");
     finish(editor, true);
-    // The original's 80 pt and the 40 pt the server drew past it, on the A4 page's 595.
     const mark = screen.getByRole("button", { name: "was here and more" });
     await expect.poll(() => Number.parseFloat(mark.element().style.width)).toBeCloseTo((120 / A4.width) * 100);
   });
@@ -876,7 +809,6 @@ describe("a page", () => {
     finish(editor, true);
     const preview = () => screen.container.querySelector<HTMLElement>("[data-preview]");
     await expect.poll(() => preview()?.textContent).toBe("is here");
-    // A line as tall as the span's box centres the words in it, as the field does.
     const style = getComputedStyle(preview() as HTMLElement);
     expect(parseFloat(style.lineHeight)).toBeCloseTo(parseFloat(style.height), 0);
   });
@@ -906,13 +838,11 @@ describe("a page", () => {
     typeQuery(editor, "here");
     const found = () => screen.container.querySelector<HTMLElement>("[data-found]");
     await expect.poll(() => found()).not.toBeNull();
-    // "was here" is eight 10 pt letters from 72 pt: "here" is its last four, from 112 pt to 152 pt.
     expect(parseFloat(found()?.style.left ?? "")).toBeCloseTo((112 / A4.width) * 100, 3);
     expect(parseFloat(found()?.style.width ?? "")).toBeCloseTo((40 / A4.width) * 100, 3);
   });
 
   test("find tints the words found in an edit where the server drew them, not where the original's letters were", async () => {
-    // The file's widths make "was here and more" 170 pt; the server drew it 30 pt past the original's 80.
     vi.mocked(renderStrips).mockResolvedValue(aReply({ fits: { [span.id]: aFit({ delta_pt: 30 }) } }));
     const screen = await draw();
     await expect.element(screen.getByRole("button", { name: WORDS })).toBeInTheDocument();
@@ -924,7 +854,6 @@ describe("a page", () => {
     typeQuery(editor, "more");
     const found = () => screen.container.querySelector<HTMLElement>("[data-found]");
     await expect.poll(() => found()).not.toBeNull();
-    // "more" is the last 4 of 17 letters across the 110 pt drawn.
     expect(parseFloat(found()?.style.left ?? "")).toBeCloseTo(((72 + (110 * 13) / 17) / A4.width) * 100, 3);
     expect(parseFloat(found()?.style.width ?? "")).toBeCloseTo(((110 * 4) / 17 / A4.width) * 100, 3);
   });
@@ -934,7 +863,6 @@ describe("a page", () => {
     const beside = aSpan({ id: "beside", text: WORDS, size: 20, bbox: { x0: 300, y0: 100, x1: 380, y1: 124 } });
     const strip = (y: number): ImageInfo => ({ page: 0, y, image: "" });
 
-    /** Both spans changed, and the server's strips for them in. */
     async function bothChanged(other: typeof below, images: ImageInfo[]) {
       openDocument(aDoc({ spans: [span, other], fonts: DOC.fonts }));
       vi.mocked(renderStrips).mockResolvedValue(aReply({ images }));
@@ -968,7 +896,6 @@ describe("a page", () => {
 
   test("a page whose image fails says why on the page, in the server's words", async () => {
     const busy = "We can't work on files right now. Try again in a few minutes.";
-    // An image no browser can decode, so the page's image fails; asked why, the server says it's too busy.
     vi.mocked(pageUrl).mockReturnValue("data:image/png;base64,");
     vi.mocked(pageImage).mockRejectedValueOnce(new ProblemError(aProblem(503, busy)));
     const screen = await draw();
@@ -976,7 +903,6 @@ describe("a page", () => {
   });
 
   describe("the page's edge", () => {
-    /** What a press at the middle of `box`, on screen, lands on. */
     const pressedAt = (box: DOMRect) => {
       const { x, y } = middleOf(box);
       return document.elementFromPoint(x, y);
@@ -1012,17 +938,13 @@ describe("a page", () => {
       await editSpan(screen);
       const redact = screen.getByRole("button", { name: "Redact" });
       await expect.element(redact).toBeVisible();
-      // Where it rests: it arrives moving up.
       await animationsDone();
-      // Upright, a button's words run across it.
       const button = redact.element().getBoundingClientRect();
       expect(button.width).toBeGreaterThan(button.height);
-      // Turned a quarter clockwise, the line runs down the screen, and what's under it is to its left.
       const field = screen.getByRole("textbox").element().getBoundingClientRect();
       const slip = redact.element().closest("[data-slip]")?.getBoundingClientRect();
       if (slip === undefined) throw new Error("no slip");
       expect(slip.right).toBeLessThanOrEqual(field.left + 1);
-      // Level with the line's start, 72 pt along it: down the sheet, which shows the page's 595 pt width as its height.
       const sheet = sheetOf(screen.getByRole("textbox").element()).getBoundingClientRect();
       expect(slip.top).toBeCloseTo(sheet.top + (span.bbox.x0 / A4.width) * sheet.height, 0);
     });
@@ -1046,10 +968,8 @@ describe("a page", () => {
       await expect.element(screen.getByRole("textbox")).toHaveFocus();
     });
 
-    /** Whether two boxes on screen share any of their area. */
     const overlap = (one: DOMRect, other: DOMRect) =>
       one.left < other.right && other.left < one.right && one.top < other.bottom && other.top < one.bottom;
-    // A line near the page's foot, which a quarter turn shows by a side of the screen, and a half turn at its top.
     const nearFoot = aSpan({ ...span, id: "foot", text: "at the foot", bbox: { x0: 72, y0: 800, x1: 152, y1: 820 } });
 
     test.each([90, 270] as const)(
@@ -1093,11 +1013,9 @@ describe("a page", () => {
       },
     );
 
-    // A date low on the page, which a half turn shows high up: the slip sits over it, on screen.
     const DATED = "Due 14 March 2026";
     const dated = aSpan({ ...span, id: "dated", text: DATED, bbox: { x0: 72, y0: 600, x1: 242, y1: 624 } });
 
-    /** The field on `line` on page `info`, its slip's Date showing, at rest; `scrolledIn` is `draw`'s. */
     async function editTheDate(info: PageInfo, line = dated, { scrolledIn = false } = {}) {
       await learnDateLanguages();
       const font = aFont("Times-Roman", { glyphs: halfWideGlyphs(`${DATED}0123456789`) });
@@ -1111,7 +1029,6 @@ describe("a page", () => {
       return { screen, control, slip };
     }
 
-    /** Which side of `field` a slip is on, on screen, or "over" it. */
     function sideOf(slip: DOMRect, field: DOMRect): string {
       if (slip.bottom <= field.top + 1) return "above";
       if (slip.top >= field.bottom - 1) return "below";
@@ -1133,13 +1050,11 @@ describe("a page", () => {
         const field = () => screen.getByRole("textbox").element().getBoundingClientRect();
         const side = sideOf(slip(), field());
         expect(side).not.toBe("over");
-        // Opened, and read, in one task: what the next frame paints, before the slip has measured itself again.
         const pressed = control.element();
         if (!(pressed instanceof HTMLElement)) throw new Error("no button");
         flushSync(() => pressed.click());
         expect(screen.getByRole("grid").query()).not.toBeNull();
         expect(sideOf(slip(), field())).toBe(side);
-        // And once it has.
         await new Promise(requestAnimationFrame);
         await new Promise(requestAnimationFrame);
         expect(sideOf(slip(), field())).toBe(side);
@@ -1148,11 +1063,9 @@ describe("a page", () => {
 
     test("places the slip as it grows before that frame is painted: whatever observes it next sees it placed", async () => {
       await page.viewport(1400, 900);
-      // A line ending by the page's right edge: as the calendar widens the slip, it moves left to stay on the page.
       const right = { ...dated, bbox: { x0: 400, y0: 300, x1: 570, y1: 324 } };
       const { control, slip } = await editTheDate(A4, right);
-      // Told after the slip's own observer, in the same round, before the frame is painted. The calendar may grow
-      // in more than one round as it lays out, each placed in its own: the last is where the slip settles.
+      // Told after the slip's own observer, before the frame is painted; the calendar may grow over several rounds, the last where it settles.
       const seen: number[] = [];
       const after = new ResizeObserver(() => seen.push(slip().left));
       const element = control.element().closest("[data-slip]");
@@ -1174,12 +1087,10 @@ describe("a page", () => {
       "keeps the slip of a page narrower than its calendar inside a phone's window, the gutter in, in a box that scrolls: %s",
       async (scrolledIn) => {
         await page.viewport(390, 800);
-        // A finger's days, which make the calendar wider than this page shows.
         await emulateTouchScreen();
         const line = { ...dated, bbox: { x0: 20, y0: 20, x1: 110, y1: 32 }, size: 10 };
         const receipt = { width: 200, height: 120, turn_cw: 0 } as const;
         const { control, slip } = await editTheDate(receipt, line, { scrolledIn });
-        // From the keyboard: the day it focuses is scrolled into view before the slip has measured itself again.
         await userEvent.keyboard("{Alt>}{ArrowDown}{/Alt}");
         await expect.element(control).toHaveAttribute("aria-expanded", "true");
         await new Promise(requestAnimationFrame);
@@ -1189,7 +1100,6 @@ describe("a page", () => {
       },
     );
 
-    /** New text opened at `at` on the page shown as `info`, in `doc`, `words` typed: its field, its fonts and its slip. */
     async function openNewText(info: PageInfo, at: [number, number], { doc = DOC, words = "" } = {}) {
       openDocument(doc);
       await loadShippedFaces(editor);
@@ -1200,7 +1110,6 @@ describe("a page", () => {
       if (words !== "") await userEvent.keyboard(words);
       const faces = screen.getByRole("listbox", { name: "Font" });
       await expect.element(faces).toBeVisible();
-      // Where it rests: it arrives moving up.
       await animationsDone();
       const slip = () => faces.element().closest("[data-slip]")?.getBoundingClientRect() ?? new DOMRect();
       return { screen, field, faces, slip };
@@ -1231,7 +1140,6 @@ describe("a page", () => {
       async (turn) => {
         await page.viewport(1400, 900);
         const { field, faces, slip } = await openNewText({ ...A4, turn_cw: turn }, [300, 400], { words: "Signed" });
-        // Upright, a font's name runs across it.
         const option = faces.getByRole("option", { name: "Caveat Bold" }).element().getBoundingClientRect();
         expect(option.width).toBeGreaterThan(option.height);
         await expect.poll(() => overlap(slip(), field.element().getBoundingClientRect())).toBe(false);
@@ -1242,7 +1150,6 @@ describe("a page", () => {
     );
 
     test("Tab in new text's field goes on to its fonts, and Shift+Tab back, the typing still open", async () => {
-      // Above the page's line, which comes after it in page order.
       const { field, faces } = await openNewText(A4, [300, 60], { words: "Signed" });
       await userEvent.keyboard("{Tab}");
       await expect.element(faces.getByRole("option", { name: "Times Roman" })).toHaveFocus();
@@ -1257,7 +1164,6 @@ describe("a page", () => {
       "a press by %s on new text's slip, on its bare background, keeps the typing open, focus in the field",
       async (pointer) => {
         if (pointer === "finger") await emulateTouchScreen();
-        // A line under all of the slip, so a press let through it lands on the line's mark, which would take focus.
         const under = aSpan({ ...span, bbox: { x0: 40, y0: 290, x1: 555, y1: 760 } });
         const doc = aDoc({ spans: [under], fonts: DOC.fonts });
         const { field, faces } = await openNewText(A4, [300, 300], { doc, words: "Signed" });
@@ -1285,7 +1191,6 @@ describe("a page", () => {
         if (pointer === "finger") await emulateTouchScreen();
         const { screen, field } = await openNewText(A4, [300, 300], { words: "Signed" });
         const sheet = sheetOf(field.element()).getBoundingClientRect();
-        // Over the page's one line, away from the slip that hangs under the field.
         await pressBarePaper({ x: sheet.left + sheet.width / 2, y: sheet.top + sheet.height * 0.05 }, pointer);
         await expect.element(screen.getByRole("button", { name: "Signed" })).toHaveFocus();
       },
@@ -1296,7 +1201,6 @@ describe("a page", () => {
       async (pointer) => {
         if (pointer === "finger") await emulateTouchScreen();
         await page.viewport(1400, 400);
-        // Page 1 has no text; page 2 has a line, so page 1's Delete is on.
         const doc = aDoc({ spans: [elsewhere], fonts: DOC.fonts });
         const { screen, field } = await openNewText(A4, [300, 760], { doc });
         await slipSettled();
@@ -1304,14 +1208,12 @@ describe("a page", () => {
         const sheet = sheetOf(field.element()).getBoundingClientRect();
         await pressBarePaper({ x: sheet.left + 30, y: 60 }, pointer);
         await expect.element(screen.getByRole("button", { name: "Delete page 1" })).toHaveFocus();
-        // The slip gone from under the page's foot, the window may scroll back as far as the page has shrunk: no further.
         const most = document.documentElement.scrollHeight - window.innerHeight;
         expect(window.scrollY).toBeCloseTo(Math.min(scrolled, most), 0);
       },
     );
 
     test("Shift+Tab from new text's field, with nothing before it to go to, keeps it and puts focus on it", async () => {
-      // On one page, so the page's Delete is off, and above its line: nothing comes before the field.
       const doc = aDoc({ spans: [span], fonts: DOC.fonts });
       const { screen } = await openNewText(A4, [300, 60], { doc, words: "Signed" });
       await userEvent.keyboard("{Shift>}{Tab}{/Shift}");
@@ -1320,21 +1222,17 @@ describe("a page", () => {
 
     test("holds the side of its line new text's slip is on as its fonts, used from the keys, shrink it", async () => {
       await page.viewport(1400, 900);
-      // Arial only named, so its slip warns in full, and is the taller for it; in Caveat it warns of nothing.
       const arial = { ...span, font: "Arial", fidelity: "substitute", substitute: "Liberation Sans Regular" } as const;
       const font = aFont("Arial", { substitute: "Liberation Sans Regular", glyphs });
       const doc = aDoc({ spans: [aSpan({ ...arial, in_file: false })], fonts: [font] });
-      // Upside down, the line shows a quarter of the way down: over it, room for the slip in Caveat, not in Arial.
       const { field, faces, slip } = await openNewText({ ...A4, turn_cw: 180 }, [300, 640], { doc });
       const side = () => sideOf(slip(), field.element().getBoundingClientRect());
       expect(side()).toBe("below");
       const tall = slip().height;
       await userEvent.keyboard("{Tab}{ArrowDown}");
       await expect.element(faces.getByRole("option", { name: "Caveat", exact: true, selected: true })).toHaveFocus();
-      // Placed as it shrinks, before the frame is painted.
       await expect.poll(() => slip().height).toBeLessThan(tall);
       expect(side()).toBe("below");
-      // Back in the field, it stays on its side: a slip crosses its line only where the pages would cut it.
       await userEvent.keyboard("{Shift>}{Tab}{/Shift}");
       await expect.element(field).toHaveFocus();
       expect(side()).toBe("below");
@@ -1350,7 +1248,6 @@ describe("a page", () => {
       const field = screen.getByRole("textbox").element();
       const sheet = sheetOf(field).getBoundingClientRect();
       const box = field.getBoundingClientRect();
-      // Turned a quarter, the line runs down the screen: past the page's foot, nothing of it takes a press.
       expect(box.bottom).toBeGreaterThan(sheet.bottom);
       const below = new DOMRect(box.x, sheet.bottom + 2, box.width, Math.min(8, box.bottom - sheet.bottom - 2));
       expect(field.contains(pressedAt(below))).toBe(false);
@@ -1362,7 +1259,6 @@ describe("a page", () => {
     const letter: PageInfo = { width: 612, height: 792, turn_cw: 0 };
     const screen = await draw(0, letter);
     const sheet = sheetOf(screen.getByRole("region", { name: "Page 1" }).element());
-    // 612 pt at 96 dpi is 816 px.
     expect(sheet.getBoundingClientRect().width).toBeCloseTo(816, 0);
   });
 
@@ -1440,7 +1336,6 @@ describe("a page", () => {
     await expect.element(screen.getByText("Not embedded.")).toBeVisible();
     await screen.getByRole("button", { name: "Don't show again for this font" }).click();
     await expect.element(note).not.toBeInTheDocument();
-    // Muted, the chip still gives its short warning (Rule 1).
     await expect.element(screen.getByText("a similar font", { exact: true })).toBeVisible();
     await userEvent.keyboard("{Escape}");
     await userEvent.keyboard("{Enter}");
@@ -1475,7 +1370,6 @@ describe("a page", () => {
     await expect.element(mark).toBeInTheDocument();
     const line = getComputedStyle(mark.element(), "::after");
     expect(line.backgroundImage).toContain("repeating-linear-gradient");
-    // At rest, before anything is touched, it's the Rule 1 signal: a mark's 3:1 on the white page.
     expect(contrastOnWhite(line)).toBeGreaterThanOrEqual(3);
     await mark.hover();
     await expect.element(screen.getByText(SENTENCES.form_field_not_edited)).toBeVisible();
@@ -1497,7 +1391,6 @@ describe("a page", () => {
     await expect.element(marks.nth(0)).toBeInTheDocument();
     marks.nth(0).element().focus();
     await userEvent.keyboard("{Enter}");
-    // The file's own font draws it, named as the reader knows it, not by its object.
     await expect.element(screen.getByText("Drawn Regular", { exact: true })).toBeVisible();
     await screen.getByRole("button", { name: "Don't show again for this font" }).click();
     await userEvent.keyboard("{Escape}");
@@ -1532,16 +1425,13 @@ describe("a page", () => {
 
   test("hover shows a span's note and a click's focus alone doesn't; a click edits, its caret where it pressed", async () => {
     const field = aSpan({ id: "s3", text: "SSN 078", form_field: true, bbox: { x0: 72, y0: 300, x1: 152, y1: 324 } });
-    // Every letter measured, so the press lands on a letter.
     openDocument(aDoc({ spans: [field], fonts: [aFont("Times-Roman", { glyphs: halfWideGlyphs("SSN 078") })] }));
     const screen = await draw();
     const mark = screen.getByRole("button", { name: "SSN 078" });
     await expect.element(mark).toBeInTheDocument();
     const note = screen.getByText(SENTENCES.form_field_not_edited);
-    // A pointer was used last: focus that comes without a press is a click's, not the keyboard's.
     await userEvent.click(screen.getByRole("region", { name: "Page 1" }), { position: { x: 1, y: 1 } });
     mark.element().focus();
-    // Focus is taken: the mark points at the page's note, which a click's focus leaves shut.
     await expect.element(mark).toHaveAttribute("aria-describedby");
     await expect.element(note).not.toBeInTheDocument();
     await mark.hover();
@@ -1561,7 +1451,6 @@ describe("a page", () => {
     const onNote = { x: start.x, y: noteBox.top + noteBox.height / 2 };
     await moveMouse(start, onNote);
     const movedAt = performance.now();
-    // Past the delay a note closes after, and its fade: still there, under the pointer.
     await expect
       .poll(() => performance.now() - movedAt, { timeout: NOTE_CLOSE_DELAY_MS * 4 })
       .toBeGreaterThan(NOTE_CLOSE_DELAY_MS * 2);
@@ -1574,7 +1463,6 @@ describe("a page", () => {
     await expect.element(note, { timeout: NOTE_CLOSE_DELAY_MS * 4 }).not.toBeInTheDocument();
   });
 
-  /** Signed, new text at rest on the page beside a form field, its mark unfocused, the pointer away. */
   async function signedBesideAField() {
     const formField = aSpan({
       id: "s3",
@@ -1597,7 +1485,6 @@ describe("a page", () => {
     return { screen, spanMark, newTextMark };
   }
 
-  /** Wait past the delay a hover's note opens after, so the next hover is cold. */
   async function pastNoteDelay() {
     const from = performance.now();
     await expect.poll(() => performance.now() - from).toBeGreaterThan(NOTE_DELAY_MS * 2);
@@ -1683,7 +1570,6 @@ describe("a page", () => {
 
   test("a press on a span's note, over the line above, closes it, and the next press there edits that line", async () => {
     const { screen, mark, start } = await hoveredUnderALine();
-    // Just above the hovered line: where the line above is drawn, under the note.
     const justAbove = { x: start.x, y: mark.element().getBoundingClientRect().top - 4 };
     await moveMouse(start, justAbove);
     await pressMouse(justAbove);
@@ -1727,7 +1613,6 @@ describe("a page", () => {
     await moveMouse(onNote, onNote);
     await moveMouse(onNote, { x: 1, y: noteBox.top - 40 });
     const leftAt = performance.now();
-    // Past the delay a note closes after, and its fade: still there, focus still on its mark.
     await expect
       .poll(() => performance.now() - leftAt, { timeout: NOTE_CLOSE_DELAY_MS * 4 })
       .toBeGreaterThan(NOTE_CLOSE_DELAY_MS * 2);

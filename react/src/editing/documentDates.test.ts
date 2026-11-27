@@ -9,7 +9,6 @@ import { edit, spanDraftOf } from "./typing";
 
 vi.mock(import("../api/client"), async (original) => ({ ...(await original()), renderStrips: vi.fn() }));
 
-// Welsh's March: a month no other date language names, so read only once Welsh is learnt.
 const TEXT = "Due 14 Mawrth 2026";
 
 let editor: Editor;

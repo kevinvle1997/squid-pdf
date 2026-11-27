@@ -29,20 +29,14 @@ import { PageList } from "./PageList";
 import { SplitHere } from "./SplitHere";
 import { ZoomControl } from "./Zoom";
 
-// Page images are drawn for this screen's pixels: sharp, and no larger than the API draws.
 const SCALE = Math.min(MAX_SCALE, Math.max(MIN_SCALE, Math.ceil(window.devicePixelRatio * PX_PER_PT)));
 
-/** The props of the editor: the document opened, what opens a PDF dropped on it, and work persisted here to restore. */
 interface Props {
   opened: Opened;
   onOpen: (file: File) => void;
   persisted?: PersistedWork<unknown> | undefined;
 }
 
-/**
- * The open document: every page, every span marked, editable in place, under the bar. `onOpen`
- * opens a PDF dropped on it, in its place. Opened again from this browser, it restores the work persisted.
- */
 export function EditorShell({ opened, onOpen, persisted }: Props) {
   const [editor] = useState(() => {
     const made = createEditor(opened.file, opened.doc, SCALE);
@@ -55,7 +49,6 @@ export function EditorShell({ opened, onOpen, persisted }: Props) {
     if (pdf !== null) onOpen(pdf);
   });
 
-  // The one effect, for what happens outside React; each listener says what it's for.
   useEffect(() => {
     addFaces(facesOf(editor.store.get().doc));
     void loadShippedFaces(editor);
@@ -81,13 +74,11 @@ export function EditorShell({ opened, onOpen, persisted }: Props) {
     const dragging = (event: DragEvent) => {
       if (carriesFiles(event.dataTransfer)) event.preventDefault();
     };
-    // The field a font goes on takes its own drop first.
     const dropped = (event: DragEvent) => {
       if (event.defaultPrevented || !carriesFiles(event.dataTransfer)) return;
       event.preventDefault();
       openDropped([...(event.dataTransfer?.files ?? [])]);
     };
-    // The browser asks before leaving, in its own words, only when work would be lost: not persisted here yet.
     const leaving = (event: BeforeUnloadEvent) => {
       if (wouldLoseWork(editor)) event.preventDefault();
     };
@@ -110,8 +101,6 @@ export function EditorShell({ opened, onOpen, persisted }: Props) {
     <EditorContext.Provider value={editor}>
       <SkipLink to="pages">Skip to the document</SkipLink>
       <Title />
-      {/* Held at the top together, however many rows the bar wraps to; the lines under it hang below, over the
-          pages, so one coming or going never moves the document. */}
       <div className={styles.top}>
         <Bar />
         <FindBar />
@@ -126,7 +115,6 @@ export function EditorShell({ opened, onOpen, persisted }: Props) {
   );
 }
 
-/** The tab's title: the document's name, starred while it has changes the last export didn't take. */
 function Title() {
   const editor = useEditor();
   const changed = useEditorState((state) => state.reading.edits.length > 0 && unexported(state));
@@ -146,14 +134,12 @@ function NoticeLine() {
   ));
 }
 
-/** Every page, each kept one labelled by its number as shown; a deleted one is a slip in its place, with no Split here beside it. */
 function Pages() {
   const pages = useEditorState((state) => state.doc.pages);
   const order = useEditorState((state) => state.reading.order);
   const shown = useMemo(() => pagesShown(order, pages), [order, pages]);
   const asked = useEditorState((state) => state.zoom.asked);
   const howToStart = useEditorState(neverEdited);
-  // Zoomed to a share of the printed size: each page takes that much, and the pages scroll sideways past the window.
   const zoomed = asked === null ? undefined : { "--zoom": asked };
   return (
     <main

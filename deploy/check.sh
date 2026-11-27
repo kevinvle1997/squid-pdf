@@ -1,14 +1,5 @@
 #!/usr/bin/env bash
-# Proves a running stack serves what a stranger reaches: the browser app, the
-# health check, the terms where the deployment names them, compression and the
-# security headers; where the deployment takes payment, that an event Stripe
-# didn't sign is refused. Then, where anyone may open documents, an upload, an
-# export with one edit and a delete; where only the invited may, that a
-# stranger's upload is refused. Needs curl and jq.
-#
-#   deploy/check.sh https://your.domain [root.crt]
-#
-# root.crt is only for a local run, where Caddy signs its own certificate.
+# Proves a running stack serves what a stranger reaches. root.crt is for a local run's own certificate.
 set -euo pipefail
 
 usage() {
@@ -26,19 +17,16 @@ trap 'rm -rf "$work"' EXIT
 
 browser=(--silent --show-error)
 if [[ -n "$ca" ]]; then browser+=(--cacert "$ca"); fi
-# The owner cookie is how a document knows its browser, so it's kept between calls.
 browser+=(--cookie-jar "$work/cookies" --cookie "$work/cookies")
 
 fail() { printf 'FAIL  %s\n' "$*" >&2; exit 1; }
 pass() { printf 'ok    %s\n' "$*"; }
 
-# Prints "status seconds" for one request; the body goes to $work/body, headers to $work/headers.
 call() { curl "$@" --output "$work/body" --dump-header "$work/headers" --write-out '%{http_code} %{time_total}\n'; }
 # wc, not stat: stat's options differ between Linux and macOS.
 size_of() { wc -c <"$1" | tr -d ' '; }
 header() { grep -i "^$1:" "$work/headers" | cut -d: -f2- | tr -d ' \r' || true; }
 
-# Retried at first, while a stack that has just started gets its certificate.
 read -r status seconds < <(call "${browser[@]}" --retry 10 --retry-all-errors --retry-delay 1 \
   "$base/api/health")
 [[ $status == 200 ]] && jq -e '.status == "ok"' "$work/body" >/dev/null ||
@@ -61,13 +49,12 @@ read -r status seconds < <(call "${browser[@]}" "$base/")
 [[ $status == 200 ]] && grep -q '<div id="root">' "$work/body" ||
   fail "the browser app answered $status: $(head -c "$shown_bytes" "$work/body")"
 pass "the browser app is served: $status in ${seconds}s"
-# header() drops spaces, so the directive is matched without them.
 [[ $(header content-security-policy) == *"frame-ancestors'none'"* ]] ||
   fail "the page's Content-Security-Policy is '$(header content-security-policy)'"
 [[ -n $(header referrer-policy) && -n $(header permissions-policy) ]] ||
   fail "the page has no Referrer-Policy or Permissions-Policy"
 pass "the page carries a Content-Security-Policy that refuses framing"
-# Whether it's React Aria's own hash is react/src/policy.test.ts's to say; with none, its style is refused.
+# With no hash, React Aria's style is refused.
 style_src=$(header content-security-policy | tr ';' '\n' | grep '^style-src' || true)
 [[ $style_src == *"'sha256-"* ]] || fail "the page's policy allows no style by its hash: '$style_src'"
 pass "the page's policy allows a style by its hash, as React Aria's needs"
@@ -83,7 +70,6 @@ if jq -e '. == null' "$work/body" >/dev/null; then
 else
   title=$(jq -er .title "$work/body") || fail "the terms have no title: $(head -c "$shown_bytes" "$work/body")"
   pass "the terms are served: $title, $(jq '.paragraphs | length' "$work/body") paragraphs"
-  # The app's own page, which asks for them: under the same policy as the landing.
   read -r status seconds < <(call "${browser[@]}" "$base/terms")
   [[ $status == 200 ]] && grep -q '<div id="root">' "$work/body" ||
     fail "the terms' page answered $status: $(head -c "$shown_bytes" "$work/body")"

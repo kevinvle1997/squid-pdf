@@ -1,5 +1,3 @@
-"""Upload a PDF, get every span back judged, view its pages, delete it."""
-
 from __future__ import annotations
 
 import asyncio
@@ -45,16 +43,10 @@ _HUGE_PT = 3000  # a page side past the pixel limit at every scale above 1
 
 
 def _kept() -> int:
-    """How many documents are on disk."""
     return len(os.listdir(store.root()))
 
 
 def _stored_then_named() -> bytes:
-    """Two pages in one font: its own copy stored on the first, only named on the second.
-
-    As a file merged from two sources can be. The second page is written in MuPDF's
-    Helvetica and given the first's name; nothing reads its letters' shapes.
-    """
     doc = pymupdf.open()
     stored = doc.new_page()
     stored.insert_font(fontname="own", fontbuffer=face_bytes(FACES["Liberation Serif Regular"]))
@@ -141,7 +133,6 @@ def test_each_span_says_the_face_that_draws_an_edit_to_it_not_its_fonts_first(mi
 
 @pytest.mark.parametrize("signed", SIGNED)
 def test_a_signed_upload_says_as_it_opens_that_a_change_breaks_its_signature(mine, signed):
-    """Signed, certified or kept checkable: each says so before the first edit, never after."""
     doc = upload(mine, with_hidden_copies([signed])).json()
 
     assert_true(doc["signed"], "whether the document is signed")
@@ -155,18 +146,13 @@ def test_a_signed_upload_says_as_it_opens_that_a_change_breaks_its_signature(min
 
 
 def _no_field_signed(kept: dict[str, str]) -> bytes:
-    """`with_hidden_copies`' page, no form field signed, its catalog keeping `kept`.
-
-    What checks a signature for years (DSS) can outlive the signatures it checked, and a
-    file's permissions (Perms) can name none, or be a signature with no field of its own.
-    """
+    """DSS can outlive the signatures it checked, and Perms can name none."""
     doc = pymupdf.open(stream=with_hidden_copies([]))
     for key, value in kept.items():
         doc.xref_set_key(doc.pdf_catalog(), key, value)
     return doc.tobytes()
 
 
-# A signature's dictionary, its value left out: nothing reads it.
 _SIGNATURE = "<</Type/Sig/Filter/Adobe.PPKLite/SubFilter/adbe.pkcs7.detached>>"
 
 
@@ -181,7 +167,6 @@ _SIGNATURE = "<</Type/Sig/Filter/Adobe.PPKLite/SubFilter/adbe.pkcs7.detached>>"
     ],
 )
 def test_only_a_signature_makes_a_file_signed_not_what_a_signed_file_keeps(mine, kept, signed):
-    """A signature in its permissions counts, with no field signed; what checks one doesn't."""
     doc = upload(mine, _no_field_signed(kept)).json()
 
     assert_equal(doc["signed"], signed, "whether the document is signed")
@@ -200,12 +185,10 @@ def test_the_font_list_names_every_face_we_ship_and_keeps_for_good(mine, doc):
     faces = {face["name"]: face for family in families.values() for face in family["faces"]}
     assert_equal(set(faces), set(FACES), "every face an insert can ask for")
     assert_equal(faces["Carlito Bold"]["style"], "bold", "Carlito Bold's style")
-    # The widths a span drawn in the face gets, so a preview matches the draw.
     named = next(font for font in doc["fonts"] if font["substitute"] is not None)
     drawn_in = faces[named["look_alike"]]
     assert_equal(drawn_in["glyphs"], named["glyphs"], "the widths of a face a span is drawn in")
 
-    # An old build still gets it, but not to keep.
     old = mine.get("/api/fonts", params={"build": "an-older-build"})
     assert_equal(old.headers["cache-control"], "no-store", "caching under an old build")
 
@@ -220,10 +203,9 @@ def test_a_page_is_a_png_the_browser_keeps_for_an_hour(mine, doc):
     )
     pix = pymupdf.Pixmap(response.content)
     assert_equal((pix.width, pix.height), (595 * 2, 842 * 2), "pixels at scale 2")
-    # No alpha: the page is white in both themes (Rule 2).
+    # No alpha: the page is white in both themes.
     assert_equal((pix.alpha, set(pix.pixel(0, 0))), (0, {255}), "alpha, and the margin's ink")
 
-    # Under an old build it's still drawn, but not to keep.
     params = {"scale": 1, "build": "an-older-build"}
     old = mine.get(f"/api/documents/{doc['id']}/pages/0", params=params)
     assert_equal(old.headers["cache-control"], "no-store", "caching under an old build")
@@ -270,17 +252,12 @@ _AES_256 = 5  # pymupdf.PDF_ENCRYPT_AES_256, which its type stubs leave out
 
 
 def _locked() -> bytes:
-    """A real one-page PDF that opens only with a password."""
     doc = pymupdf.open()
     doc.new_page()
     return doc.tobytes(encryption=_AES_256, user_pw="user", owner_pw="owner")
 
 
 def _written_out(objects: list[str]) -> bytes:
-    """A PDF written by hand from its objects, numbered from 1, with a true index of them.
-
-    Everything else about it is sound, so what the test gives it is its only fault.
-    """
     out = bytearray(b"%PDF-1.7\n")
     offsets = []
     for number, body in enumerate(objects, start=1):
@@ -305,15 +282,11 @@ _SQUARES = (
     " /CharProcs << /H 5 0 R /i 5 0 R >> /Encoding << /Differences [72 /H 105 /i] >>"
     f" /FirstChar 72 /LastChar 105 /Widths [500 {'0 ' * 32}500] >>"
 )
-_SQUARE = "500 0 0 0 400 600 d1 0 0 400 600 re f"  # the square both letters draw
+_SQUARE = "500 0 0 0 400 600 d1 0 0 400 600 re f"
 
 
 def _in_place(fonts: dict[str, str], drawn: str) -> bytes:
-    """One page drawing `drawn`, its resources holding each of `fonts` in place, by name.
-
-    Written in place: the font's dictionary is inside the page's resources, not an object
-    of its own. Object 5 is the square a Type3 font's letters draw, and 6 a Helvetica object.
-    """
+    """Object 5 is the square a Type3 font's letters draw, and 6 a Helvetica object."""
     named = " ".join(f"/{resource} {font}" for resource, font in fonts.items())
     page = (
         "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R"
@@ -327,7 +300,6 @@ def _in_place(fonts: dict[str, str], drawn: str) -> bytes:
 
 
 def test_a_font_written_in_place_not_as_an_object_goes_by_its_name(mine):
-    """It has no object, so its text goes by its name, as a font no page lists does."""
     sent = _in_place({"F1": _HELVETICA}, "BT /F1 12 Tf 72 700 Td (Hello world) Tj ET")
 
     uploaded = upload(mine, sent)
@@ -341,11 +313,7 @@ def test_a_font_written_in_place_not_as_an_object_goes_by_its_name(mine):
 
 
 def _in_a_comment(font: str, drawn: str) -> bytes:
-    """One page whose comment draws `drawn`, its drawing's resources holding `font` in place.
-
-    The page's own list of fonts leaves out a comment's. Object 4 is the comment, 5 the square
-    a Type3 font's letters draw, and 6 the comment's drawing.
-    """
+    """Object 4 is the comment, 5 the square a Type3 font's letters draw, 6 its drawing."""
     page = "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Annots [4 0 R] >>"
     pages = "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"
     comment = "<< /Type /Annot /Subtype /Square /Rect [72 500 172 520] /AP << /N 6 0 R >> >>"
@@ -357,7 +325,7 @@ def _in_a_comment(font: str, drawn: str) -> bytes:
     return _written_out([_CATALOG, pages, page, comment, square, drawing])
 
 
-_HI = "BT /T1 12 Tf 2 4 Td (Hi) Tj ET"  # "Hi" in the font named T1
+_HI = "BT /T1 12 Tf 2 4 Td (Hi) Tj ET"
 
 
 @pytest.mark.parametrize(
@@ -366,10 +334,6 @@ _HI = "BT /T1 12 Tf 2 4 Td (Hi) Tj ET"  # "Hi" in the font named T1
     ids=["on the page", "in a comment's drawing, which the page's list leaves out"],
 )
 def test_an_unnamed_type3_font_written_in_place_goes_by_a_name_saying_it_has_none(mine, sent):
-    """Its text names it by an object it doesn't have, which would name nothing in the file.
-
-    Its resource name is never shown.
-    """
     doc = upload(mine, sent).json()
 
     spans = [(span["text"], span["font"]) for span in doc["spans"]]
@@ -378,14 +342,12 @@ def test_an_unnamed_type3_font_written_in_place_goes_by_a_name_saying_it_has_non
     assert_equal(fonts, [("Type3 (no name)", "Type3 (no name)")], "the fonts it lists")
 
 
-# Two lines: the first in a font named `name`, the second in the Helvetica object, F2.
 _TWO_LINES = (
     "BT /{name} 12 Tf 72 700 Td (Hello world) Tj ET BT /F2 12 Tf 72 650 Td (Second line) Tj ET"
 )
 
 
 def _second_line_edited(client, doc: dict) -> pymupdf.Document:
-    """The file downloaded with its second line made "Second time", opened."""
     edit = {"kind": "replace", "span_id": doc["spans"][1]["id"], "text": "Second time"}
     response = client.post(f"/api/documents/{doc['id']}/export", json={"edits": [edit]})
     assert_equal(response.status_code, 200, response.text[:200])
@@ -393,17 +355,12 @@ def _second_line_edited(client, doc: dict) -> pymupdf.Document:
 
 
 def test_a_font_written_in_place_keeps_its_resource_name_from_a_font_an_edit_adds(mine):
-    """An edit adds its face under a name of its own, past every name the page uses.
-
-    So a font written in place under the name the face would take still draws its line.
-    """
     plain = upload(
         mine, _in_place({"F1": _HELVETICA, "F2": "6 0 R"}, _TWO_LINES.format(name="F1"))
     )
     substitute = plain.json()["spans"][1]["substitute"]
     with _second_line_edited(mine, plain.json()) as saved:
         listed = saved[0].get_fonts(full=True)
-    # The name its face goes under where the page uses none like it.
     face_name = next(
         resource for _o, _t, _k, name, resource, *_ in listed if name == substitute
     )
@@ -420,16 +377,13 @@ def test_a_font_written_in_place_keeps_its_resource_name_from_a_font_an_edit_add
     ("body", "problem", "status"),
     [
         (NOT_A_PDF, "not_a_pdf", 415),
-        # Starts like a PDF, then every byte value over and over: no PDF inside.
         (b"%PDF-1.7\n" + bytes(range(256)) * 8, "damaged", 422),
         (_locked(), "encrypted", 422),
-        # The page list holds itself: reading it never ends.
         (
             _written_out([_CATALOG, "<< /Type /Pages /Kids [2 0 R 3 0 R] /Count 2 >>", _PAGE]),
             "damaged",
             422,
         ),
-        # It says five pages and has one.
         (
             _written_out([_CATALOG, "<< /Type /Pages /Kids [3 0 R] /Count 5 >>", _PAGE]),
             "damaged",
@@ -465,7 +419,6 @@ def test_a_file_that_wont_open_is_refused_and_nothing_kept(mine, body, problem, 
 def test_an_upload_not_sent_as_a_pdf_is_refused_so_no_other_site_can_send_one(
     mine, pdf_bytes, headers
 ):
-    """Another site can send these unasked; as a PDF, it must ask first, and the API says no."""
     before = _kept()
     response = mine.post("/api/documents", content=pdf_bytes, headers=headers)
     assert_problem(response, "not_sent_as_pdf", 415)
@@ -475,7 +428,7 @@ def test_an_upload_not_sent_as_a_pdf_is_refused_so_no_other_site_can_send_one(
 def test_a_file_over_the_limit_is_refused_while_it_streams(mine, pdf_bytes, monkeypatch):
     monkeypatch.setattr(constants, "MAX_FILE_BYTES", len(pdf_bytes) // 2)
     before = _kept()
-    chunks = iter([pdf_bytes[:1024], pdf_bytes[1024:]])  # no length up front: it streams
+    chunks = iter([pdf_bytes[:1024], pdf_bytes[1024:]])
     response = mine.post(
         "/api/documents", content=chunks, headers={"content-type": "application/pdf"}
     )
@@ -486,7 +439,6 @@ def test_a_file_over_the_limit_is_refused_while_it_streams(mine, pdf_bytes, monk
 
 
 def test_an_upload_is_refused_while_the_disk_is_nearly_full(mine, pdf_bytes, monkeypatch):
-    """The server says so and keeps nothing, rather than fill the disk every document is on."""
     whole_disk = shutil.disk_usage(store.root()).total
     monkeypatch.setattr(constants, "MIN_FREE_BYTES", whole_disk + 1)
     before = _kept()
@@ -495,21 +447,16 @@ def test_an_upload_is_refused_while_the_disk_is_nearly_full(mine, pdf_bytes, mon
 
 
 async def _uploads_at_once(app: FastAPI, pdf_bytes: bytes, *, count: int) -> list[int]:
-    """The statuses of `count` uploads held partway at once, then of one upload after them.
-
-    On the server's own loop, since a TestClient sends each file whole before the next.
-    """
+    """On the server's own loop, since a TestClient sends each file whole before the next."""
     go_on = asyncio.Event()
 
     async def slow_file(asked_for_more: asyncio.Event) -> AsyncIterator[bytes]:
-        """The file, held back after its first chunk until the test lets it go on."""
         yield pdf_bytes[:1024]
         asked_for_more.set()
         await go_on.wait()
         yield pdf_bytes[1024:]
 
     async def held_partway(asked_for_more: asyncio.Event, sent: asyncio.Task) -> None:
-        """Until this upload passed its check and is writing, or was answered first."""
         writing = asyncio.ensure_future(asked_for_more.wait())
         await asyncio.wait({writing, sent}, return_when=asyncio.FIRST_COMPLETED)
         writing.cancel()
@@ -534,7 +481,6 @@ async def _uploads_at_once(app: FastAPI, pdf_bytes: bytes, *, count: int) -> lis
 def test_uploads_under_way_count_against_the_free_disk_floor(
     app, server: TestClient, pdf_bytes, monkeypatch
 ):
-    """Uploads at once pass only while each has room for a whole file."""
     disk = shutil.disk_usage(store.root())
     # Ten whole-disk files fit, not eleven; half a disk either way for other tests' writes.
     monkeypatch.setattr(constants, "MAX_FILE_BYTES", disk.total)
@@ -546,30 +492,24 @@ def test_uploads_under_way_count_against_the_free_disk_floor(
         pytest.fail("the app isn't started")
     statuses = server.portal.call(partial(_uploads_at_once, app, pdf_bytes, count=20))
 
-    # Ten fit and ten are refused; once they're in, there's room again.
     assert_equal(statuses, [*[201] * 10, *[503] * 10, 201], "twenty at once, then one after")
 
 
 def test_an_upload_refused_as_it_streams_gives_back_the_disk_it_held(
     mine, pdf_bytes, monkeypatch
 ):
-    """Refused after its check, an upload holds nothing: refusals never fill the floor."""
     disk = shutil.disk_usage(store.root())
-    # Room for one whole-disk file, not two; half a disk either way, as above.
     monkeypatch.setattr(constants, "MAX_FILE_BYTES", disk.total)
     monkeypatch.setattr(constants, "MIN_FREE_BYTES", disk.free - disk.total - disk.total // 2)
 
-    # Each passes the check and is refused only once its file is in.
     assert_problem(upload(mine, NOT_A_PDF), "not_a_pdf", 415)
     assert_problem(upload(mine, NOT_A_PDF), "not_a_pdf", 415)
     assert_equal(upload(mine, pdf_bytes).status_code, 201, "an upload after two refused")
 
 
 def test_an_upload_holds_the_size_it_states_against_the_floor(mine, pdf_bytes, monkeypatch):
-    """A small file passes where a whole one wouldn't; one stating no size holds a whole one."""
     disk = shutil.disk_usage(store.root())
     monkeypatch.setattr(constants, "MAX_FILE_BYTES", disk.total)
-    # Room for this file, not for a whole-disk one; half a disk either way, as above.
     monkeypatch.setattr(constants, "MIN_FREE_BYTES", disk.free - disk.total // 2)
 
     stated = upload(mine, pdf_bytes)
@@ -582,7 +522,6 @@ def test_an_upload_holds_the_size_it_states_against_the_floor(mine, pdf_bytes, m
 
 
 def test_uploads_under_way_that_forget_equal_fresh_ones():
-    """Forgetting the uploads under way leaves a fresh record."""
     under_way = _UploadsUnderWay()
     with under_way.holding(1024, free=constants.MIN_FREE_BYTES + 1024):
         assert_every_field_filled(under_way, _UploadsUnderWay(), "the record while one streams")
@@ -591,35 +530,27 @@ def test_uploads_under_way_that_forget_equal_fresh_ones():
 
 
 def _write_on_a_full_disk(*_args: object, **_kwargs: object) -> int:
-    """A write the disk has no room left for."""
     raise OSError(errno.ENOSPC, os.strerror(errno.ENOSPC))
 
 
 class _FileOnAFullDisk(io.FileIO):
-    """A file opened on a disk with no room left: every write is refused."""
-
     def write(self, _data: object, /) -> int:
-        """Refused: the disk is full."""
         return _write_on_a_full_disk()
 
 
 def _opened_on_a_full_disk(folder: Path) -> BinaryIO:
-    """The upload's original, opened on a disk with no room left for it."""
     return _FileOnAFullDisk(folder / store.ORIGINAL, "wb")
 
 
 def _owner_on_a_full_disk(_app: FastAPI, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Its owner's write refused: inside the store's create, which keeps nothing if it fails."""
     monkeypatch.setattr(Path, "write_text", _write_on_a_full_disk)
 
 
 def _original_on_a_full_disk(app: FastAPI, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Its original's write refused, by a store that opens it on a full disk."""
     full = StoreWith(opens_to_write=_opened_on_a_full_disk)
     monkeypatch.setattr(app.state, "documents", full)
 
 
-# An upload's first write is its owner's, and its largest its original's.
 @pytest.mark.parametrize(
     "fill_the_disk",
     [_owner_on_a_full_disk, _original_on_a_full_disk],
@@ -628,7 +559,6 @@ def _original_on_a_full_disk(app: FastAPI, monkeypatch: pytest.MonkeyPatch) -> N
 def test_a_disk_that_fills_up_as_an_upload_is_kept_is_server_full(
     app, mine, pdf_bytes, monkeypatch, fill_the_disk
 ):
-    """A disk that runs out past the floor's check is server_full, not a bug."""
     fill_the_disk(app, monkeypatch)
     before = _kept()
     assert_problem(upload(mine, pdf_bytes), "server_full", 503)
@@ -638,7 +568,6 @@ def test_a_disk_that_fills_up_as_an_upload_is_kept_is_server_full(
 def test_the_first_upload_makes_the_folder_documents_are_kept_in(
     mine, pdf_bytes, monkeypatch, tmp_path
 ):
-    """As on a server's first start, before anything was kept."""
     monkeypatch.setenv("SQUIDPDF_DATA", str(tmp_path / "not made yet"))
     assert_equal(upload(mine, pdf_bytes).status_code, 201, "status of the first upload")
 
@@ -647,7 +576,6 @@ def test_the_first_upload_makes_the_folder_documents_are_kept_in(
     "path", ["/api/documents", "/api/documents/any/render"], ids=["an upload", "an edit list"]
 )
 def test_a_body_whose_size_isnt_a_whole_number_is_a_bad_request(mine, pdf_bytes, path):
-    """A past bug: int() made "many" a 500. Uploads and edit lists each read it."""
     before = _kept()
     headers = {"content-type": "application/pdf", "content-length": "many"}
     response = mine.post(path, content=pdf_bytes, headers=headers)
@@ -656,7 +584,6 @@ def test_a_body_whose_size_isnt_a_whole_number_is_a_bad_request(mine, pdf_bytes,
 
 
 def _touch_then_lose(folder: Path, *, deleted: str) -> float:
-    """The folder store's touch, then the folder, or only its original, gone: a sweep midway."""
     expires = store.FOLDER_STORE.touch(folder)
     if deleted == "the whole folder":
         shutil.rmtree(folder)
@@ -679,7 +606,6 @@ def _touch_then_lose(folder: Path, *, deleted: str) -> float:
 def test_a_document_deleted_while_its_request_runs_is_not_found(
     app, mine, doc, monkeypatch, path, deleted
 ):
-    """The browser uploads again on not_found; a server error would leave it stuck."""
     # A module function: the store crosses to the workers with the request's job.
     losing = StoreWith(touches=partial(_touch_then_lose, deleted=deleted))
     monkeypatch.setattr(app.state, "documents", losing)
@@ -687,7 +613,6 @@ def test_a_document_deleted_while_its_request_runs_is_not_found(
 
 
 def test_a_read_says_when_the_document_now_expires_even_with_no_body(mine, doc):
-    """Reading restarts its hour; a 304 has no body to carry expires_at in, so a header does."""
     url = f"/api/documents/{doc['id']}"
     first = mine.get(url)
     again = mine.get(url, headers={"if-none-match": first.headers["etag"]})
@@ -702,8 +627,6 @@ def test_a_read_says_when_the_document_now_expires_even_with_no_body(mine, doc):
     assert_equal(first.headers["squid-expires-at"], said_in_body, "the header, beside the body")
 
 
-# What the browser says of an edit, a font, a download, Find's count and the bar's, filled in
-# there, and what joins two sentences it says at once.
 _FILLED_BY_THE_BROWSER = (
     "back_to",
     "changed_to",
@@ -775,7 +698,7 @@ _REWORDED = "{chars} isn't in this font, so the line is drawn in {font}"
         (
             lambda patch, now: patch.setattr(constants, "REPLY_VERSION", now),
             constants.REPLY_VERSION + 1,
-            None,  # not in the reply: the 200 alone shows it
+            None,
         ),
     ],
     ids=[
@@ -789,7 +712,6 @@ _REWORDED = "{chars} isn't in this font, so the line is drawn in {font}"
 def test_a_read_after_what_its_reply_is_made_of_changes_gets_a_new_body_not_a_304(
     mine, doc, monkeypatch, change, now, sent_as
 ):
-    """A deploy that changes a reply, with no new build, reaches every open document."""
     url = f"/api/documents/{doc['id']}"
     first = mine.get(url)
     change(monkeypatch, now)
@@ -802,13 +724,11 @@ def test_a_read_after_what_its_reply_is_made_of_changes_gets_a_new_body_not_a_30
 
 
 def test_a_read_the_browser_has_already_reads_no_analysis(mine, doc):
-    """A 304 carries no body, so its spans, nearly all of a long document, aren't read."""
     url = f"/api/documents/{doc['id']}"
     first = mine.get(url)
     folder = store.root() / doc["id"]
     analysis = [*folder.glob("*analysis-*.json"), *folder.glob("*spans-*.json")]
     assert_equal(len(analysis), 2, "the analysis's files kept, its facts and its spans")
-    # A folder where each was: reading one is an error, a 500, not a 304.
     for path in analysis:
         path.unlink()
         path.mkdir()
@@ -818,13 +738,11 @@ def test_a_read_the_browser_has_already_reads_no_analysis(mine, doc):
 
 
 def _a_new_build(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A deploy of another build."""
     monkeypatch.setattr(read, "BUILD", "a-later-build")
     monkeypatch.setattr(analyse, "BUILD", "a-later-build")
 
 
 def _a_new_analysis_format(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A deploy that changes how an analysis is kept."""
     monkeypatch.setattr(constants, "ANALYSIS_FORMAT", constants.ANALYSIS_FORMAT + 1)
 
 
@@ -834,11 +752,7 @@ def _a_new_analysis_format(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_a_deploy_that_retires_the_analysis_works_it_out_again_over_its_index(
     app, mine, doc, monkeypatch, deploy, capsys
 ):
-    """Open documents read on as before: never indexed again, so every span id holds.
-
-    The read that works it out says so on its line, the one spike a deploy makes.
-    """
-    monkeypatch.setattr(app.state, "pool", InProcess())  # so the patches below reach it
+    monkeypatch.setattr(app.state, "pool", InProcess())
     deploy(monkeypatch)
     folder = store.root() / doc["id"]
     [index_file] = folder.glob("*index.json")
@@ -864,24 +778,18 @@ def test_a_deploy_that_retires_the_analysis_works_it_out_again_over_its_index(
 
 
 class _NoWorkerAsked:
-    """A pool that fails the test if it's asked: a busy one would answer too_slow instead."""
+    """Fails the test if asked: a busy pool would answer too_slow instead."""
 
     async def run[T](self, _timeout: float, _task: Callable[[], T]) -> T:
-        """Fails the test."""
         pytest.fail("a worker was asked about a document already gone")
 
 
 def test_a_deploy_that_changes_how_spans_or_pages_are_kept_sends_open_documents_back(
     app, mine, doc, monkeypatch
 ):
-    """Not found, whatever is asked first and before any worker, so the browser opens it again.
-
-    An index is built only at upload, so no span id the browser holds moves. A page is
-    refused too: answered while a read worked the document out again, it would never load.
-    """
     monkeypatch.setattr(app.state, "pool", _NoWorkerAsked())
     monkeypatch.setattr(constants, "DOCUMENT_FORMAT", constants.DOCUMENT_FORMAT + 1)
-    with pytest.raises(Gone):  # the index kept before reads as not there
+    with pytest.raises(Gone):
         store.require_index(store.root() / doc["id"])
     url = f"/api/documents/{doc['id']}"
     page_params = {"scale": 1, "build": doc["build"]}
@@ -891,12 +799,10 @@ def test_a_deploy_that_changes_how_spans_or_pages_are_kept_sends_open_documents_
     assert_problem(mine.get(url), "not_found", 404)
     assert_problem(mine.post(f"{url}/render", json=whole_page), "not_found", 404)
     assert_problem(mine.post(f"{url}/export", json={"edits": []}), "not_found", 404)
-    # Nothing the read did brought it back.
     assert_problem(mine.get(f"{url}/pages/0", params=page_params), "not_found", 404)
 
 
 def test_an_upload_answers_exactly_what_a_read_does(mine, doc):
-    """Both send the spans as the analysis kept them, spliced in unread."""
     read_reply = mine.get(f"/api/documents/{doc['id']}").json()
     assert_equal(
         read_reply | {"expires_at": doc["expires_at"]}, doc, "the upload beside a read"
@@ -905,7 +811,6 @@ def test_an_upload_answers_exactly_what_a_read_does(mine, doc):
 
 
 def test_each_span_says_whether_its_line_is_turned(mine):
-    """The browser measures along a level line only: on a turned one, it covers all of it."""
     drawing = (
         "BT /F 12 Tf 72 100 Td (Level line) Tj ET "
         "BT /F 12 Tf 0 1 -1 0 300 300 Tm (Turned line) Tj ET"

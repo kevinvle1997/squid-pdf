@@ -1,9 +1,4 @@
-"""Where the words go in a font with no space of its own.
-
-pdfTeX's fonts have none: TeX moves the pen instead. Typing one draws the empty glyph, wider
-than the gap and read back as U+0000, so such a line is drawn word by word, each gap (the
-pen's move for one space, in ems) as wide as the file made it.
-"""
+"""pdfTeX's fonts have no space: typing one draws the empty glyph, read back as U+0000."""
 
 from __future__ import annotations
 
@@ -18,23 +13,16 @@ from squidpdf.core.types import Span, TextPiece
 
 @dataclass(frozen=True, slots=True)
 class Word:
-    """One word of a line, and how far from the line's start it begins, in points."""
-
     text: str
     offset: float
 
 
 def lacks_space(font: FontProgram) -> bool:
-    """Whether the font has no space of its own, so its words are placed one by one."""
     return not font.maps(" ")
 
 
 def _gaps_in(text: str, *, width: float, font: FontProgram, size: float) -> list[float]:
-    """The gap for each space in a piece of text `width` wide: one per space.
-
-    What its letters don't fill is gap, shared evenly: the piece doesn't say how
-    it was split. Kerning goes in too, so a redraw without it ends where the piece did.
-    """
+    """Kerning goes in too, so a redraw without it ends where the piece did."""
     spaces = text.count(" ")
     if not spaces:
         return []
@@ -43,7 +31,6 @@ def _gaps_in(text: str, *, width: float, font: FontProgram, size: float) -> list
 
 
 def span_gaps(span: Span, font: FontProgram) -> list[float]:
-    """The gap the file left for each space in the span's text, in order."""
     return [
         gap
         for fragment in span.fragments
@@ -52,10 +39,6 @@ def span_gaps(span: Span, font: FontProgram) -> list[float]:
 
 
 def usual_gap(pieces: Iterable[TextPiece], *, font: FontProgram) -> float:
-    """The median gap `pieces`, all in one font, leave for a space, measured in `font`.
-
-    With no gap to go by, the library's own figure.
-    """
     gaps = [
         gap
         for piece in pieces
@@ -73,19 +56,12 @@ def placed_words(
     usual: float,
     spacing: float,
 ) -> tuple[list[Word], float]:
-    """Each word of `text` where the pen reaches it, and where the pen ends.
-
-    A space draws nothing: the k-th moves the pen `gaps[k]`, any past those `usual`. Each
-    letter moves it `spacing` points more. The end is not the last word's: trailing spaces too.
-    """
     each_gap = chain(gaps, repeat(usual))
     words: list[Word] = []
     pen = 0.0
     for position, word in enumerate(text.split(" ")):
-        # Every piece after the first had a space before it.
         if position:
             pen += next(each_gap) * size
-        # Two spaces in a row leave an empty piece: nothing to draw.
         if word:
             words.append(Word(word, pen))
             pen += font.width(word, size) + spacing * len(word)

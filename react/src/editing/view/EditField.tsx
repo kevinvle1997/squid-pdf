@@ -32,34 +32,23 @@ import { fieldKeyDown } from "./fieldKeys";
 import { boxOf, fieldPartOf, fieldScaleOf, fieldWidthPt, points, spanTextStyle } from "./geometry";
 import { useLeaveTyping } from "./leaveTyping";
 
-/**
- * Typing in place: the span's text in the face that will draw it, checked as it's typed.
- * It stands where the span's mark stood, so Tab and Shift+Tab go on to the next span unaided.
- * The editor holds what's typed, so an export mid-word takes it too.
- */
 export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
   const editor = useEditor();
   const text = useEditorState((state) => spanDraftOf(state)?.text ?? "");
   const font = useEditorState((state) => fontOf(state.layout.fonts, span));
   const start = useEditorState((state) => textIn(state.reading, span));
-  // Words of it redacted already, boxed as on the page and said: what's left can be selected for more.
   const reading = useEditorState((state) => state.reading.spans.get(span.id));
   const ranges = redactedRangesOf(reading);
   const sentences = useEditorState((state) => state.doc.sentences);
   const face = font === undefined ? DEFAULT_FACE : previewFaceOf(span, { font, text });
-  // A letter the look-alike lacks sends the line to its broadest face, put on the page only once one does.
   useEffect(() => addFaces([face]), [face]);
   const placed = useRef(false);
   const glyphs = font?.glyphs ?? {};
-  // A line past its room offers the ways out, and the one chosen is drawn here at once, as the server will.
   const rules = useEditorState((state) => state.doc.fit);
   const asked = useEditorState((state) => spanDraftOf(state)?.strategy);
   const setting = settingOf(span, { font, text, asked, rules });
-  // Left long, a line past its room shows where the room ends: what to shorten it to.
   const fit = font === undefined ? undefined : fitOf(span, { font, text, rules });
   const pastRoom = fit !== undefined && setting.way === "as-is" && runsPast(fit.deltaPt, fit.roomPt, rules);
-  // What's typed comes to, worked out once a change: its troubles, a line each, the server's then the fit's own,
-  // and its verdict.
   const { trouble, fidelity, why, substitute, sameWidths } = useEditorState((state) => {
     const { sentences, verdict } = troublesIn(state, spanDraftOf(state)?.text ?? "");
     const comesTo = verdict ?? span;
@@ -67,33 +56,26 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
     return { trouble: sentences.join("\n"), fidelity, why, substitute, sameWidths };
   }, shallowEqual);
   const verdict = { fidelity, why, substitute, same_widths: sameWidths };
-  // A date or an amount in what's typed, the one the press that opened the field landed on, else the first.
   const press = useEditorState((state) => spanDraftOf(state)?.press ?? null);
   const dates = useEditorState((state) => state.dates);
-  // Held once its editor is opened or the field typed in, so the dates read later never swap it from under the user.
   const held = useEditorState((state) => spanDraftOf(state)?.value ?? null);
   const at = press === null ? undefined : selectionAt(start, press, { glyphs, span })[0];
-  // None in a span with some words redacted: any change to its words asks first, which typing does.
   const value = ranges.length > 0 ? undefined : editableValueIn(text, { dates, at, held });
-  // Sent back from the value's editor in the slip, the field takes focus again.
   const refocus = useEditorState((state) => {
     const { focusTo } = state;
     return focusTo !== null && "spanId" in focusTo && focusTo.spanId === span.id ? focusTo : null;
   });
   const field = useRef<HTMLInputElement>(null);
   const chip = useRef<HTMLDivElement>(null);
-  // The page's layer for slips, which its sheet doesn't clip: a slip near the foot hangs past it, over the next page.
   const slipLayer = useContext(SlipLayerContext);
   const [scale, setScale] = useState(1);
   const [, measureAgain] = useReducer((times: number) => times + 1, 0);
   const leave = useLeaveTyping();
-  // As the page is shown wider or narrower, what the field scales by to show the span's size.
   const watchPage = useCallback(
     (input: HTMLInputElement | null) => {
       field.current = input;
       if (refocus !== null && input !== null) {
-        // Sent back while it has focus already, as its value's editor closes under the typing: no focus event comes
-        // to take it, so it's taken here.
+        // Sent back while it has focus already: no focus event comes to take it, so it's taken here.
         if (input === document.activeElement) focusMoved(editor);
         else input.focus();
       }
@@ -113,7 +95,6 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
     },
     [span.size, info.width, refocus, editor],
   );
-  // A font file dropped on the field is the user's copy of the span's font.
   const { dropProps } = useDrop({
     ref: field,
     onDrop: (event) => {
@@ -126,8 +107,6 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
     if (carriesFiles(event.dataTransfer)) handler?.(event);
   };
 
-  // Once, as the field takes focus: what the press that opened it selects, or everything from
-  // the keyboard. Later focus keeps the caret where the user put it.
   function place(event: FocusEvent<HTMLInputElement>) {
     if (editor.store.get().focusTo !== null) focusMoved(editor);
     if (placed.current) return;
@@ -135,7 +114,6 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
     const input = event.currentTarget;
     const draft = spanDraftOf(editor.store.get());
     const press = draft?.press;
-    // Typed in as it opened, after asking: the caret where the typing left it.
     if (draft?.caret != null) input.setSelectionRange(draft.caret, draft.caret);
     else if (press == null) input.select();
     else input.setSelectionRange(...selectionAt(start, press, { glyphs, span }));
@@ -160,7 +138,6 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
           onDragLeave={filesOnly(dropProps.onDragLeave)}
           onDrop={filesOnly(dropProps.onDrop)}
           ref={watchPage}
-          // A key pressed over words selected here may redact them (`selectedIn`).
           data-span-field=""
           autoFocus
           onFocus={place}
@@ -206,7 +183,6 @@ export function EditField({ span, info }: { span: SpanInfo; info: PageInfo }) {
         />
       ))}
       {value !== undefined && (
-        // The part the value's editor rewrites, ringed as Find rings the place it went to.
         <span
           className={styles.valueRing}
           aria-hidden="true"

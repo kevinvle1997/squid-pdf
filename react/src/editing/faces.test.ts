@@ -9,7 +9,6 @@ describe("preview faces", () => {
   });
 
   test("the face the server draws a span with is the one previewed: the span's own, not its font's first span's", () => {
-    // Stored on one page and only named on another: the font's first span has no similar font, this one has.
     const calibri = aFont("Calibri", { look_alike: "Carlito Regular" });
     const named = aSpan({ id: "named", font: "Calibri", substitute: "Carlito Regular" });
     expect(previewFaceOf(named, { font: calibri, text: named.text })).toBe("Carlito Regular");

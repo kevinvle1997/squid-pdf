@@ -1,9 +1,3 @@
-"""The one FastAPI app: shared plumbing, then each feature's router.
-
-The only module that imports a feature's `api.py`. Run it with
-`uvicorn squidpdf.api.app:create_app --factory`.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -32,8 +26,6 @@ from squidpdf.editing import api as editing_api
 from squidpdf.terms import api as terms_api
 from squidpdf.terms.terms_file import deployed_terms
 
-# Every route can answer with a Problem, so the OpenAPI says so and the browser's types have it.
-# `model` puts ProblemInfo in the schemas; the content names the type it's really sent as.
 _PROBLEM_RESPONSES: dict[int | str, dict[str, Any]] = {
     "default": {
         "model": ProblemInfo,
@@ -47,48 +39,37 @@ _PROBLEM_RESPONSES: dict[int | str, dict[str, Any]] = {
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Workers, the expiry sweeper and the font list's measuring start and stop with the app."""
     # Made here, in the server's one event loop: a pool works only in the loop it's made in.
     app.state.pool = start_pool()
-    # What each address has going, kept per app, so each app (a test's too) counts its own.
     app.state.recent_uploads = RecentStarts()
     app.state.recent_links = RecentStarts()
     app.state.recent_payment_pages = RecentStarts()
-    # What each inbox was sent, counted as long as a link works.
     app.state.recent_links_to = RecentStarts(window_s=accounts_constants.LINK_VALID_S)
     app.state.upload_turns = Turns()
     app.state.job_turns = Turns()
     sweeper = asyncio.create_task(documents_api.sweep_forever(app.state.documents))
-    # Started now, not waited for: the first browser after a deploy finds it measured.
     editing_api.measure_font_list_ahead(app.state.pool)
     try:
         yield
     finally:
         sweeper.cancel()
-        # Awaited, so it ends before the app does.
-        with suppress(asyncio.CancelledError):  # raised: it was cancelled
+        with suppress(asyncio.CancelledError):
             await sweeper
         await app.state.pool.close()
 
 
 def create_app(documents: DocumentStore = FOLDER_STORE) -> FastAPI:
-    """A fresh app, so each test gets its own, keeping its documents in `documents`."""
     LogController.configure()
     app = FastAPI(
         title="squid-pdf",
         lifespan=_lifespan,
-        # Everything lives under /api; the rest of the host is the frontend's.
         openapi_url="/api/openapi.json",
         docs_url="/api/docs",
         redoc_url=None,
     )
-    # Every controller and job opens its document through it: the driver factory is chosen here.
     app.state.documents = documents
-    # Read once, here: terms the page can't show stop the app starting; `squidpdf terms` checks.
     app.state.terms = deployed_terms()
-    # Read once, here too: a database named without the rest accounts need stops the start.
     accounts = app.state.accounts = deployed_accounts()
-    # Each upload asks its browser's meter: accounts' where the deployment sets an allowance.
     app.state.meters = (
         UNMETERED
         if accounts is None or accounts.allowance is None
@@ -100,26 +81,20 @@ def create_app(documents: DocumentStore = FOLDER_STORE) -> FastAPI:
     # Outside BodyLimit, so it sees the body come in however BodyLimit reads it.
     app.add_middleware(CancelOnDisconnect)
 
-    # Its docstring is the schema's description, which the browser's types copy.
     @app.get("/api/health", responses=_PROBLEM_RESPONSES)
     async def health(pool: Annotated[WorkerPool, Depends(current)]) -> dict[str, str]:
-        """Up and answering."""
-        # Up: a worker can take a task. A broken pool is replaced first; none can start: 503.
         if not await pool.ready():
             raise NoWorkers()
         return {"status": "ok"}
 
     # Just inside the access log, so a bug's 500 is logged by it, and never raised past it.
     app.add_middleware(BugBoundary)
-    # Outermost, so a request its browser left is logged too. The healthcheck's every
-    # 30 s isn't: a failing one shows in `docker ps`.
+    # Outermost, so a request its browser left is logged too.
     app.add_middleware(AccessLog, unlogged=frozenset([app.url_path_for(health.__name__)]))
     return app
 
 
 def _include_features(app: FastAPI) -> None:
-    """Each feature's routes, every one able to answer with a Problem."""
-    # Where only the invited may, each route that works asks first, before any body is read.
     invited = [Depends(accounts_api.admit_invited)]
     app.include_router(documents_api.router, responses=_PROBLEM_RESPONSES, dependencies=invited)
     app.include_router(editing_api.router, responses=_PROBLEM_RESPONSES, dependencies=invited)
@@ -131,10 +106,6 @@ def _include_features(app: FastAPI) -> None:
 
 
 def _streamed_routes() -> tuple[APIRoute, ...]:
-    """The routes that stream their own body, and check its size themselves: upload's two.
-
-    By the routes' names, so moving one can't quietly hold its body to the edit list's limit.
-    """
     streamed = {documents_api.upload.__name__, documents_api.attach_font.__name__}
     routes = tuple(
         route

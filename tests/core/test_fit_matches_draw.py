@@ -1,10 +1,3 @@
-"""The face the fit names is the face the saved file draws the line in (Rule 1).
-
-The fit and the draw once worked the face out apart: text typed with a
-separate accent, as macOS pastes it, got "drawn in Noto Sans" from the fit and
-Carlito in the file.
-"""
-
 from __future__ import annotations
 
 import unicodedata
@@ -16,10 +9,8 @@ from squidpdf.core import Engine, LineToDraw, Span, index_of, new_text, open_pdf
 from tests.conftest import each_span, name_two_byte_font, named_only, saved_as
 from tests.helpers import assert_equal
 
-# The own font: MuPDF's Nimbus Sans, stored trimmed and renamed Calibri, so its
-# look-alike is Carlito, which has é whole but no separate accent to put on an e.
 _OWN_TEXT = "Café Bistro"
-_OWN_READS_AS = "NimbusSans-Regular"  # the stored font's own name, which a redraw in it reads
+_OWN_READS_AS = "NimbusSans-Regular"
 _CALIBRI = "Calibri"
 _CARLITO = "Carlito Regular"
 _SIZE = 12.0
@@ -27,10 +18,8 @@ _INSERT_AT = (72.0, 300.0)
 
 
 def _own_font_file(path: str) -> str:
-    """One line in a stored, trimmed Nimbus Sans the file calls Calibri: C a f é and Bistro."""
     doc = pymupdf.open()
     page = doc.new_page()
-    # "own" is only the name the page files the font under.
     page.insert_font(fontname="own", fontbuffer=pymupdf.Font("helv").buffer)
     page.insert_text((72, 96), _OWN_TEXT, fontname="own", fontsize=_SIZE)
     doc.subset_fonts(verbose=False)
@@ -41,7 +30,6 @@ def _own_font_file(path: str) -> str:
 
 
 def _font_drawing(path: str, text: str) -> str:
-    """The font the saved file draws `text` in, read back from its first page."""
     wanted = unicodedata.normalize("NFC", text)
     [font] = {
         piece["font"]
@@ -52,11 +40,6 @@ def _font_drawing(path: str, text: str) -> str:
 
 
 def _named_by_fit(engine: Engine, span: Span, text: str) -> str | None:
-    """The face the fit names for `text` here; None when it says the own font draws it.
-
-    It names one when the own font can't be used at all, or when the line
-    switches: the own font lacks a letter that a face we ship has.
-    """
     [report] = engine.assess(index_of([span]))
     plan = engine.fit.plan_for(span, text)
     switches = [ch for ch in plan.missing if ch not in plan.left_out]
@@ -65,10 +48,6 @@ def _named_by_fit(engine: Engine, span: Span, text: str) -> str | None:
 
 
 def _redrawn(path: str, out: str, *, text: str, insert: bool) -> str | None:
-    """Redraw the file's first line as `text`, or add it as new text in Calibri, and save.
-
-    Returns the face the fit named first, as the fit is asked before the edit.
-    """
     with open_pdf(path) as engine:
         span = next(iter(engine.index()))
         if insert:

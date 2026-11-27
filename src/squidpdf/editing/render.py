@@ -1,7 +1,4 @@
-"""Render: the browser's edits drawn on the rows it's showing, with a fit for each.
-
-No web framework here, so a worker can import it.
-"""
+"""No web framework here, so a worker can import it."""
 
 from __future__ import annotations
 
@@ -66,10 +63,8 @@ from squidpdf.editing.types import (
 
 @dataclass(frozen=True, slots=True, eq=False)
 class RenderController:
-    """Render, from request to reply."""
-
-    workers: Workers  # where it draws, off the server's own thread
-    documents: DocumentStore  # where its document is kept, and what opens it
+    workers: Workers
+    documents: DocumentStore
 
     async def render(
         self,
@@ -80,17 +75,11 @@ class RenderController:
         scale: int,
         language: str,
     ) -> Reply[bytes]:
-        """Each region drawn with its page's edits, a fit per edit, and what was skipped.
-
-        A redaction pointing at nothing fails the whole request.
-        """
         check_edits(edits)
         _check_region_count(regions)
-        # Read and parsed from disk: off the server's thread.
         pages = await asyncio.to_thread(store.load_pages, doc.folder)
         strips = _checked_strips(regions, pages)
-        # Only the pages drawn go to the worker, so it needn't read the page list again,
-        # each at its page image's scale, so a strip and the image line up.
+        # Only the pages drawn go to the worker, each at its image's scale, so strips line up.
         drawn_pages = {
             number: DrawnPage(pages[number], page_scale(pages[number], scale))
             for number in strips
@@ -99,7 +88,6 @@ class RenderController:
         rendered = await self._enqueue_draw_regions(
             doc.folder, edits=edits, regions=regions, strips=strips, drawn_pages=drawn_pages
         )
-        # Off the server's thread: the images make it a large reply.
         body = await asyncio.to_thread(
             _reply_json, rendered, expires_at=doc.expires_at, language=language
         )
@@ -114,7 +102,6 @@ class RenderController:
         strips: dict[int, list[Rect]],
         drawn_pages: dict[int, DrawnPage],
     ) -> Rendered:
-        """Draw the regions on a worker."""
         task = partial(
             _draw_regions,
             self.documents,
@@ -136,17 +123,12 @@ def _draw_regions(
     strips: dict[int, list[Rect]],
     drawn_pages: dict[int, DrawnPage],
 ) -> Rendered:
-    """Apply the edits the regions show, then draw each region. Runs in a worker.
-
-    `strips` are the rows the regions ask for, and `drawn_pages` their pages, by number.
-    """
     index = store.require_index(folder)
     free_space = kept_free_space(documents, folder, index)
     with documents.open_original(folder) as engine:
         resolved = resolve(engine, index, free_space=free_space, edits=edits)
-        fits = fits_of(engine, resolved)  # before run: erasing can drop the fonts it measures
+        fits = fits_of(engine, resolved)
         steps = plan(engine, resolved, fits, strips=strips)
-        # Before run too: erasing can drop the fonts new text is measured with.
         redactions = redactions_of(
             engine, resolved, redacted_by(steps), edited=edited_by(steps)
         )
@@ -169,10 +151,7 @@ def _draw_regions(
 
 
 def _said_of_redactions(redactions: dict[str, Redaction]) -> list[Notice]:
-    """A notice for each redaction drawn whose words are left, or whose erase changed its line.
-
-    Said now, under the bar, while the user can still undo it: export refuses the first kind.
-    """
+    """Said now, while the user can still undo it: export refuses the first kind."""
     unredacted: list[Notice] = [
         SpanNotice(span_id, why_unredacted(redaction))
         for span_id, redaction in redactions.items()
@@ -188,14 +167,11 @@ def _said_of_redactions(redactions: dict[str, Redaction]) -> list[Notice]:
 
 
 def _check_region_count(regions: list[Region]) -> None:
-    """Refuse more regions than a render draws, before anything is read."""
-    # Read as a module attribute, so a test can lower the limit.
     if len(regions) > constants.MAX_REGIONS:
         raise InvalidRequest(debug=f"regions: {len(regions)}, at most {constants.MAX_REGIONS}")
 
 
 def _checked_strips(regions: list[Region], pages: list[Page]) -> dict[int, list[Rect]]:
-    """The rows each region asks for, by page; refuses rows it can't give or asks for twice."""
     strips: dict[int, list[Rect]] = {}
     for region in regions:
         if not is_page(region.page, len(pages)):
@@ -216,7 +192,6 @@ def _checked_strips(regions: list[Region], pages: list[Page]) -> dict[int, list[
 
 
 def _check_apart(page_number: int, strips: list[Rect]) -> None:
-    """Refuse two strips of a page that share rows: the browser joins those into one."""
     ordered = sorted(strips, key=lambda strip: strip.y0)
     for above, below in pairwise(ordered):
         if below.y0 < above.y1:
@@ -225,10 +200,7 @@ def _check_apart(page_number: int, strips: list[Rect]) -> None:
 
 
 def _check_rows(strips: dict[int, list[Rect]], drawn_pages: dict[int, DrawnPage]) -> None:
-    """Refuse a page's strips whose whole pixel rows add up past their limit.
-
-    Each is drawn out to whole rows, so thin slivers would add up to many times the page.
-    """
+    """Each is drawn out to whole rows, so thin slivers would add up to many times the page."""
     for number, page_strips in strips.items():
         page, scale = drawn_pages[number].page, drawn_pages[number].scale
         rows = sum(len(_pixel_rows(strip, scale)) for strip in page_strips)
@@ -240,19 +212,16 @@ def _check_rows(strips: dict[int, list[Rect]], drawn_pages: dict[int, DrawnPage]
 
 
 def _strip_of(region: Region, page: Page) -> Rect:
-    """The rows a region asks for, full width, cut to the page's own."""
     top = 0.0 if region.y0 is None else max(region.y0, 0.0)
     bottom = page.height if region.y1 is None else min(region.y1, page.height)
     return Rect(0.0, top, page.width, bottom)
 
 
 def _reply_json(rendered: Rendered, *, expires_at: float, language: str) -> bytes:
-    """What render worked out, as the JSON the browser gets, in the reader's words."""
     return orjson.dumps(_reply_body(rendered, expires_at=expires_at, language=language))
 
 
 def _reply_body(rendered: Rendered, *, expires_at: float, language: str) -> Render:
-    """What render worked out, as the browser gets it, in the reader's words."""
     return {
         "images": rendered.images,
         "fits": {
@@ -277,7 +246,6 @@ def _reply_body(rendered: Rendered, *, expires_at: float, language: str) -> Rend
 def _draw(
     engine: Engine, regions: list[Region], *, drawn_pages: dict[int, DrawnPage]
 ) -> list[ImageInfo]:
-    """Each region as a base64 PNG, in the order asked, drawing each page once."""
     on_page: dict[int, list[Region]] = {}
     for region in regions:
         on_page.setdefault(region.page, []).append(region)
@@ -291,30 +259,25 @@ def _draw(
 def _draw_page(
     engine: Engine, regions: list[Region], *, drawn_page: DrawnPage
 ) -> list[ImageInfo]:
-    """One page's regions as base64 PNGs: the whole page, or full-width strips of it."""
     page, scale = drawn_page.page, drawn_page.scale
     number = regions[0].page
     # No two regions of a page share rows (_check_apart), so a whole page is its only one.
     whole_page = regions[0].y0 is None and regions[0].y1 is None
     if whole_page:
         return [_image_of(number, 0.0, engine.page_image(number, scale))]
-    # Strips, out to whole pixels so their rows are the page image's rows.
     boxes = [_whole_rows(_strip_of(region, page), scale) for region in regions]
     pngs = engine.box_images(number, scale, boxes)
     return [_image_of(number, box.y0, png) for box, png in zip(boxes, pngs, strict=True)]
 
 
 def _whole_rows(strip: Rect, scale: float) -> Rect:
-    """The strip grown out to whole pixel rows at `scale`."""
     rows = _pixel_rows(strip, scale)
     return Rect(strip.x0, rows.start / scale, strip.x1, rows.stop / scale)
 
 
 def _pixel_rows(strip: Rect, scale: float) -> range:
-    """The page image's pixel rows the strip touches at `scale`."""
     return range(math.floor(strip.y0 * scale), math.ceil(strip.y1 * scale))
 
 
 def _image_of(page: int, y: float, png: bytes) -> ImageInfo:
-    """One image as the browser gets it: its page, its top, and the PNG in base64."""
     return {"page": page, "y": y, "image": base64.b64encode(png).decode()}

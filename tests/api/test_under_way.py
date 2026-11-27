@@ -1,5 +1,3 @@
-"""Each address may have so much going at once: jobs at work, and uploads streaming in."""
-
 from __future__ import annotations
 
 import asyncio
@@ -24,21 +22,17 @@ _PDF = {"content-type": "application/pdf"}
 
 @dataclass(slots=True)
 class _Held:
-    """A request whose body stops after its first chunk until the test lets it go on."""
-
     sent: asyncio.Task[httpx.Response]
-    reading: asyncio.Event  # set once the server asked for more than its first chunk
+    reading: asyncio.Event
     go_on: asyncio.Event
 
 
 def _held(
     send: Callable[[AsyncIterator[bytes]], Awaitable[httpx.Response]], body: bytes
 ) -> _Held:
-    """Start `send` with `body`, held back after its first byte."""
     reading, go_on = asyncio.Event(), asyncio.Event()
 
     async def held_back() -> AsyncIterator[bytes]:
-        """The body, stopped after its first byte until `go_on`."""
         yield body[:1]
         reading.set()
         await go_on.wait()
@@ -48,30 +42,23 @@ def _held(
 
 
 async def _until(condition: Callable[[], bool]) -> None:
-    """Let the server's loop run until `condition` holds."""
     while not condition():
         await asyncio.sleep(0.01)
 
 
 def _browser(app: FastAPI, address: str) -> httpx.AsyncClient:
-    """A browser at `address`, on the app's own loop.
-
-    Not `browser_on`: a TestClient sends each request whole before the next, and these overlap.
-    """
+    """Not `browser_on`: a TestClient sends each request whole before the next."""
     transport = httpx.ASGITransport(app=app, client=(address, 1))
     return httpx.AsyncClient(transport=transport, base_url=BASE_URL)
 
 
 @dataclass(slots=True)
 class _HeldPool:
-    """The app's pool, each job held at its worker until the test lets them all go on."""
-
-    pool: Any  # the app's own, which runs each job once it goes on
+    pool: Any
     go_on: asyncio.Event = field(default_factory=asyncio.Event)
-    at_work: int = 0  # jobs a worker has now
+    at_work: int = 0
 
     async def run[T](self, timeout: float, task: Callable[[], T]) -> T:
-        """`task` on the app's pool, once the test says so."""
         self.at_work += 1
         await self.go_on.wait()
         try:
@@ -80,12 +67,10 @@ class _HeldPool:
             self.at_work -= 1
 
     async def close(self) -> None:
-        """The app's pool closes as the app stops."""
         await self.pool.close()
 
 
 async def _jobs_past_the_turns(app: FastAPI, pdf_bytes: bytes) -> dict[str, Any]:
-    """One address's page images at work and waiting, then one more; another's meanwhile."""
     async with _browser(app, ONE_ADDRESS) as one, _browser(app, OTHER_ADDRESS) as other:
         docs = [
             (await browser.post("/api/documents", content=pdf_bytes, headers=_PDF)).json()
@@ -112,10 +97,6 @@ async def _jobs_past_the_turns(app: FastAPI, pdf_bytes: bytes) -> dict[str, Any]
 def test_an_address_past_its_jobs_at_work_waits_its_turn_and_past_those_waiting_is_refused(
     own_app, pdf_bytes
 ):
-    """One address can't hold every worker, and a browser's burst of page images still loads.
-
-    Another address's job goes to a worker while the first's waits: the wait holds none.
-    """
     with own_app.started(JOBS_AT_WORK=1, JOBS_WAITING=1) as server:
         if server.portal is None:
             pytest.fail("the app isn't started")
@@ -129,26 +110,21 @@ def test_an_address_past_its_jobs_at_work_waits_its_turn_and_past_those_waiting_
 
 
 def _depends_on(dependant: Dependant, call: Callable[..., Any]) -> bool:
-    """Whether `call` is among what `dependant` depends on, however deep."""
     return any(sub.call is call or _depends_on(sub, call) for sub in dependant.dependencies)
 
 
 def _api_routes(app: FastAPI) -> list[APIRoute]:
-    """Every route the app answers, its own and each included router's."""
     routes = list(app.routes)
     for route in app.routes:
-        # An included router is kept whole, with its routes inside it.
         if isinstance(inner := getattr(route, "original_router", None), APIRouter):
             routes += inner.routes
     return [route for route in routes if isinstance(route, APIRoute)]
 
 
 def test_every_route_that_runs_a_job_takes_a_turn(own_app):
-    """A route that reaches the workers can't skip its address's turn."""
     with_workers = [
         route
         for route in _api_routes(own_app.app)
-        # The health check sends no job; the font list's is the server's, once for everyone.
         if _depends_on(route.dependant, pool.current)
         and route.path not in ("/api/health", "/api/fonts")
     ]
@@ -161,7 +137,6 @@ def test_every_route_that_runs_a_job_takes_a_turn(own_app):
 async def _uploads_past_the_limit(
     app: FastAPI, pdf_bytes: bytes, font: bytes
 ) -> dict[str, Any]:
-    """A PDF under way, then a font; a font under way, then a PDF; another address meanwhile."""
     async with _browser(app, ONE_ADDRESS) as one, _browser(app, OTHER_ADDRESS) as other:
         doc = (await one.post("/api/documents", content=pdf_bytes, headers=_PDF)).json()
         font_url = f"/api/documents/{doc['id']}/fonts/Any"
@@ -192,8 +167,7 @@ async def _uploads_past_the_limit(
 def test_an_address_past_its_uploads_under_way_is_refused_pdfs_and_fonts_together(
     own_app, pdf_bytes
 ):
-    """A trickled upload holds disk against the floor: one address can't hold all of it."""
-    font = Path(__file__).read_bytes()  # never read as a font: refused or not by its count
+    font = Path(__file__).read_bytes()
     with own_app.started(UPLOADS_UNDER_WAY=1) as server:
         if server.portal is None:
             pytest.fail("the app isn't started")

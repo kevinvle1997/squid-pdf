@@ -1,7 +1,6 @@
 import styles from "./Mascot.module.css";
 
-// The squid's outline, drawn twice: once wide in the paper's white, a cut-out's edge that keeps it apart from
-// either mat, then in ink. Its mantle, fins at its crown, and five arms, the outer two curling.
+// Drawn twice: once wide in the paper's white, a cut-out's edge that keeps it apart from either mat, then in ink.
 const SHAPES = [
   { d: "M61 102c-2 12-12 17-15 27-2 7 4 12 10 8", arm: true },
   { d: "M99 102c2 12 12 17 15 27 2 7-4 12-10 8", arm: true },
@@ -13,7 +12,6 @@ const SHAPES = [
   { d: "M80 10c14 13 26 32 26 54v26c0 8-6 14-14 14H68c-8 0-14-6-14-14V64c0-22 12-41 26-54Z", arm: false },
 ];
 
-/** The squid that stands on the landing's sheet: paper, cut out and drawn in ink, the same in both themes. */
 export function Mascot({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 160 160" aria-hidden="true">

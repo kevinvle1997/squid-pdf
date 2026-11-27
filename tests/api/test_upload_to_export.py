@@ -1,10 +1,3 @@
-"""The path a person takes, end to end: upload, check a fix, download it.
-
-Every other test checks one step. This one checks they add up to the promise:
-a fix judged before it's made (Rule 1) comes out in the file's own font, and a
-redaction is gone from the file downloaded (Rule 4).
-"""
-
 from __future__ import annotations
 
 import base64
@@ -21,17 +14,14 @@ _SCALE = 2
 
 
 def _rect(box: dict) -> pymupdf.Rect:
-    """A box from the JSON, as MuPDF takes it."""
     return pymupdf.Rect(box["x0"], box["y0"], box["x1"], box["y1"])
 
 
 def _pixels(png: bytes) -> bytes:
-    """An image's pixels in red, green and blue, however it was written: grey is one channel."""
     return pymupdf.Pixmap(pymupdf.csRGB, pymupdf.Pixmap(png)).samples
 
 
 def _drawn_rows(page: pymupdf.Page, region: dict) -> bytes:
-    """The pixels of `region`'s rows of a page, drawn as render draws a strip."""
     top = math.floor(region["y0"] * _SCALE) / _SCALE
     bottom = math.ceil(region["y1"] * _SCALE) / _SCALE
     rows = pymupdf.Rect(0, top, page.rect.width, bottom)
@@ -41,7 +31,6 @@ def _drawn_rows(page: pymupdf.Page, region: dict) -> bytes:
 
 
 def _strip(client, doc: dict, edits: list[dict], span: dict) -> bytes:
-    """The strip over `span`'s line, drawn with `edits`, as the browser asks for it."""
     body = {"edits": edits, "scale": _SCALE, "regions": [around(span)]}
     rendered = client.post(f"/api/documents/{doc['id']}/render", json=body).json()
     return base64.b64decode(rendered["images"][0]["image"])
@@ -52,7 +41,6 @@ def test_a_fix_checked_before_it_is_made_downloads_in_the_documents_own_font(
 ):
     mine = browser()
 
-    # Upload: every span is judged before any edit, and each font lists what it draws.
     uploaded = upload(mine, pdf_bytes)
     assert_equal(uploaded.status_code, 201, "upload status")
     doc = uploaded.json()
@@ -68,7 +56,6 @@ def test_a_fix_checked_before_it_is_made_downloads_in_the_documents_own_font(
     substitute = (times["substitute"], times["same_widths"])
     assert_equal(substitute, ("Liberation Serif Regular", True), "the named font's substitute")
 
-    # Check: the browser draws the fix and is told it fits, before anything is saved.
     text = delivery["text"].replace("14 March", "2 March")
     replace = {"kind": "replace", "span_id": delivery["id"], "text": text}
     body = {"edits": [replace], "scale": _SCALE, "regions": []}
@@ -79,13 +66,11 @@ def test_a_fix_checked_before_it_is_made_downloads_in_the_documents_own_font(
     preview = _strip(mine, doc, [replace], delivery)
     changed = preview != _strip(mine, doc, [], delivery)
     assert_true(changed, "the strip over the line shows the fix")
-    # A letter no copy of the font has: drawn in the face the browser previews it in.
     accented = {**replace, "text": text.replace("March", "Mars é")}
     body = {"edits": [accented], "scale": _SCALE, "regions": []}
     said = mine.post(f"/api/documents/{doc['id']}/render", json=body).json()["fits"]
     assert_in(own["look_alike"], said[delivery["id"]]["message"], "the face that draws é")
 
-    # Download: the fix and a redaction, applied to the file itself.
     redact = {"kind": "redact", "span_id": invoices["id"]}
     body = {"edits": [replace, redact]}
     response = mine.post(f"/api/documents/{doc['id']}/export", json=body)
@@ -101,13 +86,9 @@ def test_a_fix_checked_before_it_is_made_downloads_in_the_documents_own_font(
     assert_not_in("14 March", edited_text, "the edited page's text")
     everything = "".join(page.get_text() for page in pdf.pages())
     assert_not_in(invoices["text"], everything, "the file's text after the redaction")
-    # Not only the whole line: nothing at all is left where it was.
     left = "".join(pdf[1].get_textbox(_rect(invoices["bbox"])).split())
     assert_equal(left, "", "letters left in the redacted line's box")
-    # What you see is what exports (Rule 2): the preview is the file's own rows, exactly.
     exported = _drawn_rows(pdf[1], around(delivery))
     assert_equal(_pixels(preview), exported, "the preview strip and the exported page's rows")
-    # The one number tracked: the fix kept the document's own font, as the check said.
-    # A substitute would be a second font on the page; there's only the one the file had.
     on_page = {strip_subset(name) for _xref, _ext, _kind, name, *_ in pdf[1].get_fonts()}
     assert_equal(on_page, {strip_subset(delivery["font"])}, "fonts on the edited page")

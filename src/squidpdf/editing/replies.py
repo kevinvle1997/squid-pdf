@@ -1,5 +1,3 @@
-"""What render and export worked out, as the browser gets it: in the reader's words."""
-
 from __future__ import annotations
 
 from typing import assert_never
@@ -22,7 +20,6 @@ from squidpdf.editing.types import (
 
 
 def fit_info(fit: FitReport, verdict: Verdict, language: str) -> FitInfo:
-    """A fit and its edit's verdict, as the browser gets them: option names, not sentences."""
     parts = fit.describe()
     substituted = verdict.fidelity == "substitute"
     return {
@@ -41,14 +38,12 @@ def fit_info(fit: FitReport, verdict: Verdict, language: str) -> FitInfo:
 
 
 def _approximate_why(verdict: Verdict) -> ApproximateInfo | None:
-    """How an approximate edit won't match the text around it, in no language; else None."""
     if verdict.why is None:
         return None
     return {"code": reason_of(verdict.why), "params": verdict.why.params}
 
 
 def redaction_info(redaction: Redaction, language: str) -> RedactionInfo:
-    """A redaction drawn, as the browser gets it: its places by name, and what to say of it."""
     return {
         "verified": redaction.verified,
         "hidden_copies": redaction.hidden_copies,
@@ -64,27 +59,19 @@ def redaction_info(redaction: Redaction, language: str) -> RedactionInfo:
 
 
 def _said_of(redaction: Redaction, language: str) -> list[Message]:
-    """What to say of a redaction drawn: its words still there, else what else it changed."""
-    # Still in the file: the download is refused.
     if not redaction.verified:
         return [why_unredacted(redaction)]
-    # What the erase did to the rest of its line: said first, as it's on the page.
     said = rest_of_line_said(redaction)
     copy_places = [place for place in redaction.hidden_copies if place in COPY_PLACES]
     named = [words.sentence(f"place_{place}", language) for place in copy_places]
     if named:
         said.append(Message("hidden_copies", {"places": named}))
-    # A signed file: the redaction takes every signature, whatever it holds.
     if "signatures" in redaction.hidden_copies:
         said.append(Message("signatures_removed"))
     return said
 
 
 def rest_of_line_said(redaction: Redaction) -> list[Message]:
-    """What to say of what a redaction's erase did to the rest of its line; nothing in place.
-
-    Where: its words, and its page, as the reader counts them.
-    """
     rest = redaction.rest
     where: dict[str, Param] = {"text": redaction.words, "page": redaction.page + 1}
     if rest == "in_place":
@@ -97,8 +84,6 @@ def rest_of_line_said(redaction: Redaction) -> list[Message]:
 
 
 def why_unredacted(redaction: Redaction) -> Message:
-    """Why a redaction can't download: new text over it, its words left, or other text moved."""
-    # What the check read in the box may be the new text's: the user's to move.
     if redaction.covered:
         return Message("covered_by_new_text")
     where: dict[str, Param] = {"text": redaction.words, "page": redaction.page + 1}
@@ -110,7 +95,6 @@ def why_unredacted(redaction: Redaction) -> Message:
 
 
 def skipped_info(skipped: Skipped, language: str) -> SkippedInfo:
-    """An edit left out, as the browser gets it: why, in words and unsaid."""
     return {
         "edit": skipped.position,
         "type": skipped.type,
@@ -119,15 +103,9 @@ def skipped_info(skipped: Skipped, language: str) -> SkippedInfo:
 
 
 def notice_info(notice: Notice, language: str) -> NoticeInfo:
-    """What came out other than asked, as the browser gets it: why, in words and unsaid.
-
-    `kind` says what it's about, so the browser knows which name to read.
-    """
     said = words.said(notice.detail, language)
-    # A replace or a redaction: named by its span.
     if isinstance(notice, SpanNotice):
         return {"kind": "span", "span_id": notice.span_id, **said}
-    # An insert, which has no span: named by its place in the list the browser sent.
     if isinstance(notice, InsertNotice):
         return {"kind": "insert", "edit": notice.position, **said}
     if isinstance(notice, FileNotice):

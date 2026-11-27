@@ -1,5 +1,3 @@
-"""Analysis of an upload: what it judges, what it refuses, and that only it downloads."""
-
 from __future__ import annotations
 
 import io
@@ -28,11 +26,11 @@ from squidpdf.documents.types import KeptAnalysis
 from tests.conftest import POPPINS, drawn_with, name_two_byte_font, type3_copies_at
 from tests.helpers import assert_at_most, assert_equal
 
-# Three of Google's families, each its own file there; Montserrat's is variable, so it'd be cut.
+# Montserrat's is variable, so it'd be cut.
 _FAMILIES = ("Poppins-Regular", "Lato-Regular", "Montserrat-Regular")
-_WANTED = "Yearly Hello"  # Y, a and y are in no trimmed copy
+_WANTED = "Yearly Hello"
 _DEADLINE_S = 0.1  # the fetch deadline in these tests, for GitHub's 5 s
-_HANG_S = 2.0  # the longest a hanging download hangs: far past the deadline
+_HANG_S = 2.0
 
 
 def _analysed_upload(documents: DocumentStore, folder: Path) -> KeptAnalysis:
@@ -47,7 +45,6 @@ def _analysed_upload(documents: DocumentStore, folder: Path) -> KeptAnalysis:
 
 @pytest.fixture
 def folder(pdf):
-    """A stored document holding the sample as its original."""
     _, folder = FOLDER_STORE.create("owner")
     shutil.copy(pdf, folder / store.ORIGINAL)
     return folder
@@ -55,12 +52,7 @@ def folder(pdf):
 
 @pytest.fixture
 def in_google_families():
-    """A stored document with one line in each of three Google families.
-
-    Each is a copy of Poppins trimmed to its line, then named as the family: only
-    the name picks Google's file. Each line has a letter of its own, so no two
-    copies read as one font. None of them has a Y, so each looks to Google's copy.
-    """
+    """Each line has a letter of its own, so no two read as one; none has a Y."""
     doc = pymupdf.open()
     page = doc.new_page()
     for number in range(len(_FAMILIES)):
@@ -75,7 +67,6 @@ def in_google_families():
 
 
 def _trimmed(line: str) -> bytes:
-    """Poppins cut down to the letters `line` draws."""
     trimmer = Subsetter(Options())
     trimmer.populate(text=line)
     font = TTFont(POPPINS)
@@ -87,8 +78,6 @@ def _trimmed(line: str) -> bytes:
 
 @dataclass(frozen=True, slots=True)
 class _Google:
-    """A store whose Google is a test's download, and what that download is asked."""
-
     store: FolderStore
     asked: list[str]
 
@@ -98,11 +87,9 @@ type GoogleThrough = Callable[[Callable[[str], bytes]], _Google]
 
 @pytest.fixture
 def google_through(monkeypatch) -> GoogleThrough:
-    """Lets a test reach Google through a download of its own, fresh as a new worker."""
     monkeypatch.setattr(constants, "FETCH_TIMEOUT_S", _DEADLINE_S)
 
     def through(download: Callable[[str], bytes]) -> _Google:
-        """A store whose downloads go to `download`, with no failure remembered."""
         asked: list[str] = []
 
         def counted(url: str) -> bytes:
@@ -115,7 +102,6 @@ def google_through(monkeypatch) -> GoogleThrough:
 
 
 def _render_fit(documents: FolderStore, folder: Path, family: str) -> list[str]:
-    """What a render's fit says the line in `family` can't draw of _WANTED."""
     with documents.open_original(folder) as engine:
         span = next(span for span in engine.index() if span.font.endswith(family))
         return engine.fit.plan_for(span, _WANTED).missing
@@ -124,7 +110,6 @@ def _render_fit(documents: FolderStore, folder: Path, family: str) -> list[str]:
 def test_with_github_not_answering_an_upload_waits_once_and_a_render_never(
     in_google_families, google_through
 ):
-    """One fetch deadline however many families, inside the analysis's; renders never fetch."""
     released = threading.Event()
 
     def hanging(url: str) -> bytes:
@@ -149,7 +134,6 @@ def test_with_github_not_answering_an_upload_waits_once_and_a_render_never(
 def test_a_render_lends_what_the_analysis_fetched_and_no_more(
     in_google_families, google_through
 ):
-    """Only analysis downloads, into the store's own cache; a render reads that cache alone."""
     poppins = POPPINS.read_bytes()
     google = google_through(lambda _url: poppins)  # only Poppins' file has its hash
     _analysed_upload(google.store, in_google_families)
@@ -164,7 +148,6 @@ def test_a_render_lends_what_the_analysis_fetched_and_no_more(
 
 
 def test_in_development_an_analysis_is_kept_under_the_code_that_judged_it(monkeypatch):
-    """With SQUIDPDF_DEV_REJUDGE set, one kept by other code is worked out again on its read."""
     _, folder = FOLDER_STORE.create("owner")
     drawn_with(str(folder / store.ORIGINAL))
     _analysed_upload(FOLDER_STORE, folder)
@@ -177,12 +160,10 @@ def test_in_development_an_analysis_is_kept_under_the_code_that_judged_it(monkey
 
 
 def test_a_retune_judges_the_saved_index_again(monkeypatch):
-    """A retune with no new build judges every document again, each span keeping its id."""
     _, folder = FOLDER_STORE.create("owner")
     drawn_with(str(folder / store.ORIGINAL), setting="80 Tz")
     [before] = orjson.loads(_analysed_upload(FOLDER_STORE, folder).spans)
     loose = 1000.0
-    # A deploy's retune: what judges the line, and the tuning its analysis is kept under.
     monkeypatch.setattr(constants, "TOLERANCE_PT", loose)
     monkeypatch.setattr(store, "ANALYSIS_TUNING", ANALYSIS_TUNING | {"tolerance_pt": loose})
 
@@ -208,7 +189,6 @@ def test_a_span_that_wont_come_back_as_it_looks_says_how_and_its_font_stays_usab
 
 
 def test_two_type3_copies_of_one_font_share_the_name_the_reader_knows_them_by():
-    """Text names each Type3 copy by its object; their descriptions name the font they share."""
     _, folder = FOLDER_STORE.create("owner")
     type3_copies_at(str(folder / store.ORIGINAL))
 
@@ -222,27 +202,21 @@ def test_two_type3_copies_of_one_font_share_the_name_the_reader_knows_them_by():
 
 @dataclass(frozen=True, slots=True)
 class _UnreadPagesDriver:
-    """MuPDF's driver, failing if anything reads every page's size."""
-
     driver: PdfDriver
 
     def pages(self) -> list[Page]:
-        """Stands in for reading every page's size, to fail if anything does."""
         raise AssertionError("the pages were read")
 
     def __getattr__(self, name: str) -> Any:
-        """Every other call, as the real driver answers it."""
         return getattr(self.driver, name)
 
 
 def _unread_pages(path: str) -> PdfDriver:
-    """A driver factory for the store: MuPDF's, failing if the pages' sizes are read."""
     # A PdfDriver through __getattr__, which mypy reads and ty doesn't yet.
     return cast(PdfDriver, _UnreadPagesDriver(open_driver(path)))
 
 
 def test_a_document_past_the_page_limit_is_refused_before_its_pages_are_read(folder):
-    """Counted, not read: a huge file mustn't cost the reading it's refused to save."""
     with pytest.raises(TooManyPages):
         analyse.analyse_upload(  # the sample has two pages
             FolderStore(_unread_pages), folder, 1, most_shares=1, spans_per_share=1

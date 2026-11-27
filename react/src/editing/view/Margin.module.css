@@ -1,5 +1,4 @@
 .margin { composes: ground from "../../ui/Ground.module.css"; position: relative; }
-/* Level with its span: centred on it, a full hit area tall, the visible mark small. */
 .place { position: absolute; inset-inline: 0; transform: translateY(-50%); }
 .note {
   display: flex; align-items: center; justify-content: flex-end; gap: var(--s1);
@@ -10,31 +9,24 @@
   animation: penned var(--dur-move) var(--ease-out);
 }
 .note[data-focus-visible] { outline: 2px solid var(--change); outline-offset: 2px; }
-/* The undo arrow keeps its room before the note's words, inside the note and its focus ring, so
-   showing it moves nothing. It comes on hover and keyboard focus, and goes faster than it came. */
 .undoMark { flex: none; display: flex; }
 .undoMark svg { opacity: 0; transition: opacity var(--dur-press) var(--ease-out); }
 .note[data-hovered] .undoMark svg, .note[data-focus-visible] .undoMark svg { opacity: 1; transition-duration: var(--dur-quick); }
-/* The words the change took out, struck through in blue pencil, as an editor strikes them on a proof. */
 .old {
   display: inline-flex; min-width: 0; overflow: hidden; white-space: nowrap;
   color: var(--ink-lo);
 }
-/* Each run of words struck on its own, ending in an ellipsis of its own where it's cut: the others still show. */
 .run {
   min-width: 0; overflow: hidden; text-overflow: ellipsis;
   text-decoration-line: line-through; text-decoration-color: var(--change); text-decoration-thickness: 1.5px;
 }
-/* What sits between two runs was never there: nothing to strike, nor to cut. */
 .between { flex: none; white-space: pre; }
 .note[data-hovered] .old, .note[data-focus-visible] .old { color: var(--change); }
-/* Words only added, in the pencil, after the caret a proof marks an insertion with: nothing struck, since nothing went. */
 .added {
   display: inline-flex; align-items: baseline; gap: var(--s1);
   min-width: 0; overflow: hidden; white-space: nowrap;
   color: var(--change);
 }
-/* A box of their own, past the caret, to end in an ellipsis: a flex box draws none. */
 .addedWords { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .caret { flex: none; align-self: center; }
 .now { color: var(--ink); }
@@ -42,19 +34,15 @@
 @keyframes penned { from { opacity: 0; transform: translateX(var(--s2)); } }
 .list { composes: ground from "../../ui/Ground.module.css"; display: none; }
 .list ul { list-style: none; margin: 0; padding: 0; }
-/* A row per change: the words it took out over the words it put in, each whole, and Undo beside them. */
 .list .note {
   display: grid; grid-template-columns: var(--s3) minmax(0, 1fr) auto;
   align-items: baseline; align-content: center; gap: var(--s1) var(--s2);
   padding-block: var(--s1);
   text-align: start;
-  /* Focus brings a row into view clear of the zoom slip at the window's foot, its ring too: the slip's gap to the
-     foot and a control's height, then its padding and the ring, with room to spare. */
   scroll-margin-block-end: calc(var(--s4) + var(--hit) + var(--s7) + env(safe-area-inset-bottom, 0px));
 }
 .list .bar { grid-row: 1; grid-column: 1; align-self: center; }
 .list .old, .now { grid-column: 2; white-space: normal; }
-/* Under the page a note has the width to wrap: every word shows, struck where it went. */
 .list .old { display: block; }
 .list .run { overflow: visible; }
 .undo {

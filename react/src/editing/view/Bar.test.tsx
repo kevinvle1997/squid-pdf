@@ -55,6 +55,5 @@ test("before any change, the count is the server's sentence, warned whole", asyn
   );
   const count = screen.getByRole("button", { name: "EDITS IN 1 PLACE WILL USE A SIMILAR FONT" });
   await expect.element(count).toBeVisible();
-  // The warning is the whole sentence, as Find's is: never a number marked inside words that aren't.
   await expect.element(count.getByText("EDITS IN 1 PLACE WILL USE A SIMILAR FONT", { exact: true })).toBeVisible();
 });

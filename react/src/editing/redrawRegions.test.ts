@@ -69,7 +69,6 @@ describe("pages to redraw", () => {
 
   test("a failed render leaves its page stale, so the next asks for it again", () => {
     const first = readingOf(aReplace(top.id));
-    // The render of `first` never landed; now page 1 is edited too.
     const next = readingOf(aReplace(top.id), aReplace(other.id));
     expect(stalePages(next, new Map([[1, first]]))).toEqual(new Set([0, 1]));
   });
@@ -84,7 +83,6 @@ describe("a strip the server drew", () => {
     ];
     expect(bottomOf({ page: 0, y: 297.75 }, regions, A4)).toBe(314);
     expect(bottomOf({ page: 0, y: 98 }, regions, A4)).toBe(114);
-    // A region with no bottom is the rest of the page.
     expect(bottomOf({ page: 1, y: 98 }, regions, A4)).toBe(A4.height);
   });
 

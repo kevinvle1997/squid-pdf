@@ -1,9 +1,4 @@
-"""A request whose browser leaves before its answer stops; one being answered runs on.
-
-At the ASGI level, not through TestClient: TestClient's browser can't leave.
-The messages here are what uvicorn sends: the body, then `http.disconnect`
-when the browser goes (or when the answer is done).
-"""
+"""At the ASGI level, not through TestClient: TestClient's browser can't leave."""
 
 from __future__ import annotations
 
@@ -24,7 +19,6 @@ _HTTP: Scope = {"type": "http", "method": "POST", "path": "/api/documents/x/rend
 
 
 def _browser_that_leaves() -> Receive:
-    """Sends an empty body, then leaves a moment later."""
     sent_body = False
 
     async def receive() -> Message:
@@ -38,15 +32,13 @@ def _browser_that_leaves() -> Receive:
     return receive
 
 
-async def _nowhere(_message: Message) -> None:
-    """A browser that's gone: what's sent goes nowhere."""
+async def _nowhere(_message: Message) -> None: ...
 
 
 def test_work_for_a_browser_that_left_is_stopped():
     stopped = False
 
     async def slow(_scope: Scope, receive: Receive, _send: Send) -> None:
-        """Reads the body, then works far longer than the browser waits."""
         nonlocal stopped
         await receive()
         try:
@@ -64,18 +56,15 @@ def test_work_for_a_browser_that_left_is_stopped():
 
 
 def test_an_answer_already_begun_runs_to_its_end():
-    """Once the answer has started, the browser leaving is its end, not a reason to stop."""
     sent: list[str] = []
 
     async def answers_then_finishes(_scope: Scope, receive: Receive, send: Send) -> None:
-        """Starts its answer at once, then takes a moment over the rest."""
         await receive()
         await send({"type": "http.response.start", "status": 200, "headers": []})
         await asyncio.sleep(_LEAVES_AFTER_S * 4)
         await send({"type": "http.response.body", "body": b"done"})
 
     async def record(message: Message) -> None:
-        """Note what the app sent."""
         sent.append(message["type"])
 
     asyncio.run(
@@ -86,21 +75,17 @@ def test_an_answer_already_begun_runs_to_its_end():
 
 
 def test_a_request_the_server_cancels_after_its_browser_left_ends_cancelled():
-    """The browser left mid-answer, which isn't why it stops: the cancel is the server's own."""
-
     async def answers_slowly(_scope: Scope, receive: Receive, send: Send) -> None:
-        """Starts its answer at once, then takes far longer over the rest."""
         await receive()
         await send({"type": "http.response.start", "status": 200, "headers": []})
         await asyncio.sleep(_WORK_S)
 
     async def cancelled_by_the_server() -> bool:
-        """Whether the request, cancelled after its browser left, ended cancelled."""
         watched = CancelOnDisconnect(answers_slowly)
         request = asyncio.ensure_future(watched(_HTTP, _browser_that_leaves(), _nowhere))
-        await asyncio.sleep(_LEAVES_AFTER_S * 4)  # the browser has left, mid-answer
+        await asyncio.sleep(_LEAVES_AFTER_S * 4)
         request.cancel()
-        with contextlib.suppress(asyncio.CancelledError):  # raised: the server cancelled it
+        with contextlib.suppress(asyncio.CancelledError):
             await request
         return request.cancelled()
 
@@ -108,17 +93,15 @@ def test_a_request_the_server_cancels_after_its_browser_left_ends_cancelled():
 
 
 def test_a_get_whose_browser_left_is_stopped(tmp_path, monkeypatch):
-    """Through the whole app: its route reads no body, so the app's own read starts it."""
     monkeypatch.setenv("SQUIDPDF_DATA", str(tmp_path))
     app = create_app()
     stopped = False
 
     async def slow_get() -> None:
-        """Works far longer than the browser waits, as a page image could on a heavy page."""
         nonlocal stopped
         try:
             await asyncio.sleep(_WORK_S)
-        except asyncio.CancelledError:  # raised by the watcher once the browser has left
+        except asyncio.CancelledError:
             stopped = True
             raise
 

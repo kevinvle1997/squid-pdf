@@ -41,7 +41,6 @@ describe("where a key was pressed", () => {
 });
 
 describe("a press on a slip", () => {
-  /** Whether a press on `target` would still move focus: the browser's own default, not prevented. */
   function movesFocus(target: Element): boolean {
     const press = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
     target.dispatchEvent(press);

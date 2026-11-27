@@ -32,7 +32,6 @@ describe("what differs from a page's strips", () => {
 });
 
 describe("a redaction of some words of a span", () => {
-  // The first letter is one code point, and two of the field's units.
   const card = aSpan({ id: "card", text: "\u{1D400} 12 34 56" });
   const readCard = (...edits: Edit[]) =>
     project({ spans: [card], pages: [A4] }, entriesOf(add(EMPTY_HISTORY, ...edits)));
@@ -93,8 +92,6 @@ describe("what the document reads as", () => {
   });
 
   test("a span changed and changed back reads as untouched, and nothing is sent for it", () => {
-    // Otherwise the server redraws it, in a substitute if the file's font can't be used,
-    // while the page says nothing changed.
     const reading = read(add(add(EMPTY_HISTORY, aReplace("a", "one")), aReplace("a", "was a")));
     expect(reading.spans.has("a")).toBe(false);
     expect(reading.pages.size).toBe(0);

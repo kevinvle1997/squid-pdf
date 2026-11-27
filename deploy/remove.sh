@@ -1,14 +1,5 @@
 #!/usr/bin/env bash
-# Takes people's accounts off a running stack, each address its own argument, as
-# `squidpdf remove` does inside the app. Run beside .env, once the stack is up.
-#
-#   deploy/remove.sh them@example.com [more@example.com ...]
-#
-# Each is signed out of every browser at once, and their account and its count are gone;
-# their documents go when their hour runs out, as everyone's do. Where only the invited may
-# sign in, they're out until invited again; where anyone may, they can sign up afresh. An
-# account whose month is paid is kept: cancel its subscription in Stripe first. Stops at the
-# first address the app has no account for, or keeps; those before it are gone.
+# An account whose month is paid is kept: cancel its subscription in Stripe first.
 set -euo pipefail
 
 usage() {
@@ -20,11 +11,9 @@ cd "$(dirname "$0")/.."
 
 (( $# > 0 )) || usage
 for email in "$@"; do
-  # An option here is a typo, not an address.
   [[ $email == -* ]] && usage
 done
 
 for email in "$@"; do
-  # -T: no terminal is asked for, so it runs the same from a script or CI as by hand.
   docker compose exec -T app squidpdf remove "$email"
 done

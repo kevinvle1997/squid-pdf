@@ -1,5 +1,3 @@
-"""Hand-built PDFs with the odd fonts real files carry, shared by the core tests."""
-
 from __future__ import annotations
 
 import io
@@ -18,27 +16,23 @@ from tests.conftest import to_unicode, type3_copies_at
 
 _SYMBOL_OFFSET = 0xF000  # a (3,0) cmap files code c under U+F000 + c
 _EM = 1000
-_OFFSET_BOX = "[100 50 712 842]"  # a mediabox not at 0,0
+_OFFSET_BOX = "[100 50 712 842]"
 
-# Glyph ids: A 1, B 2, space 3, C 4. C's outline is emptied, as a subset leaves one.
 _GLYPHS = [".notdef", "A", "B", "space", "C"]
 
-# Codes numbered by first use, as Chrome writes them: 0x20 is A.
 _BY_FIRST_USE = {0x20: "A", 0x21: "B", 0x22: "space", 0x23: "C"}
 
 # Advances in the font dict, not the font program's own 600, so a test can tell them apart.
-# test_fidelity.py's _ADVANCES are these, by letter.
 _WIDTHS = "500 550 250 600"
 
-# The gapped fixture: its words, their size, and the gap between them, in ems.
 _GAPPED_TEXT = "AB BA AB"
 _LONE_WORD = "BA"
 GAPPED_SIZE = 12.0
-_GAPPED_LINES = (700, 650, 600)  # each line's baseline, in PDF space
+_GAPPED_LINES = (700, 650, 600)
 GAP_EM = 0.3  # not MuPDF's 0.26 guess for a missing space, nor .notdef's 0.6: a test can tell
-_ADVANCE = 600  # every glyph's advance in _truetype's fonts, per 1000 em
+_ADVANCE = 600
 
-TRANSLUCENT = 0.6  # the translucent fixtures' opacity: 153 of 255, as MuPDF reads it back
+TRANSLUCENT = 0.6
 
 _DESCRIPTOR = (
     "<</Type/FontDescriptor/FontName/{name}/Flags 4/FontBBox[0 -200 600 800]"
@@ -47,11 +41,6 @@ _DESCRIPTOR = (
 
 
 def square(width: int = 500) -> Glyph:
-    """A plain filled box, `width` wide and 700 tall, 50 in from the left.
-
-    The tests only ask whether a letter has a shape, or how wide it is, not
-    what it looks like.
-    """
     pen = TTGlyphPen(None)
     pen.moveTo((50, 0))
     pen.lineTo((50, 700))
@@ -67,11 +56,6 @@ def finished_font(
     family: str,
     before_saving: Callable[[FontBuilder], None] | None = None,
 ) -> bytes:
-    """`builder`'s font, given the header, names, OS/2 and post every test font has, saved.
-
-    `before_saving` changes what those need first: a variable font's axes are
-    named in the name table, and OS/2 reads the letter table (cmap) whole.
-    """
     builder.setupHorizontalHeader(ascent=800, descent=-200)
     builder.setupNameTable({"familyName": family, "styleName": "Regular"})
     builder.setupOS2()
@@ -86,12 +70,6 @@ def finished_font(
 def _truetype(
     cmap: dict[int, str] | None, symbol: bool = True, family: str = "Symbolic"
 ) -> bytes:
-    """A tiny made-up TrueType font, built fresh for the tests.
-
-    A and B are squares; space, C and .notdef have no shape, C as a trimmed font leaves a
-    letter it didn't need. `cmap` is its letter lookup: a (3,0) symbol one, a Unicode one when
-    `symbol` is False, or none.
-    """
     builder = FontBuilder(_EM, isTTF=True)
     builder.setupGlyphOrder(_GLYPHS)
     builder.setupCharacterMap(cmap or {})
@@ -100,7 +78,6 @@ def _truetype(
     builder.setupHorizontalMetrics({n: (_ADVANCE, 50) for n in _GLYPHS})
 
     def as_asked(built: FontBuilder) -> None:
-        """Its letter table as `cmap` and `symbol` ask: gone, or a symbol one alone."""
         if cmap is None:
             del built.font["cmap"]
             return
@@ -112,8 +89,7 @@ def _truetype(
     return finished_font(builder, family=family, before_saving=as_asked)
 
 
-# The fixtures below write a one-page PDF by hand, object by object, so the
-# font is stored exactly the way the problem PDFs store theirs.
+# Written by hand, object by object, so the font is stored as the problem PDFs store theirs.
 
 
 def _embed_by_hand(
@@ -125,11 +101,6 @@ def _embed_by_hand(
     resources: str = "",
     resource: str = "F1",
 ) -> str:
-    """One page drawing streams["content"] in dicts["font"], filed under the name `resource`.
-
-    Each dict names another object as {its key}; the font program is {file}.
-    `resources` goes into the page's resources beside the font.
-    """
     doc = pymupdf.open()
     page = doc.new_page()
     xref = {name: doc.get_new_xref() for name in [*streams, *dicts]}
@@ -154,7 +125,6 @@ def _embed_by_hand(
 
 @pytest.fixture(scope="module")
 def symbolic(tmp_path_factory) -> str:
-    """One line in an embedded symbol-cmap TrueType with no ToUnicode."""
     return _embed_by_hand(
         str(tmp_path_factory.mktemp("symbolic") / "symbolic.pdf"),
         {
@@ -177,7 +147,6 @@ def _in_coded_symbol(
     resources: str = "",
     resource: str = "F1",
 ) -> str:
-    """One page drawing `content` in a symbol-cmap TrueType coded by first use."""
     return _embed_by_hand(
         path,
         {
@@ -202,7 +171,6 @@ def _in_coded_symbol(
 
 @pytest.fixture(scope="module")
 def coded_symbol(tmp_path_factory) -> str:
-    """ABBA in a symbol-cmap TrueType, codes by first use, with a ToUnicode, as tickets are."""
     return _in_coded_symbol(
         str(tmp_path_factory.mktemp("coded") / "symbol.pdf"),
         b"BT /F1 12 Tf 172 700 Td <20212120> Tj ET",
@@ -211,11 +179,6 @@ def coded_symbol(tmp_path_factory) -> str:
 
 
 def coded_under(path: str, resource: str) -> str:
-    """The symbol fixture's ABBA, and BA below it, in a font under the resource name `resource`.
-
-    `resource` is written as a PDF writes a name, a space as #20. Two lines, so
-    that erasing one leaves the font on the page, under that name.
-    """
     return _in_coded_symbol(
         path,
         f"BT /{resource} 12 Tf 172 700 Td <20212120> Tj ET"
@@ -226,7 +189,6 @@ def coded_under(path: str, resource: str) -> str:
 
 @pytest.fixture(scope="module")
 def coded_translucent(tmp_path_factory) -> str:
-    """The symbol fixture's ABBA, painted at TRANSLUCENT opacity by a graphics state (/GS1)."""
     return _in_coded_symbol(
         str(tmp_path_factory.mktemp("coded") / "translucent.pdf"),
         b"q /GS1 gs BT /F1 12 Tf 172 700 Td <20212120> Tj ET Q",
@@ -236,14 +198,9 @@ def coded_translucent(tmp_path_factory) -> str:
 
 @pytest.fixture(scope="module")
 def translucent(tmp_path_factory) -> str:
-    """One line in a stored Times Roman, trimmed and painted at TRANSLUCENT opacity.
-
-    Trimmed, so a letter it didn't use sends a redraw to the substitute.
-    """
     path = str(tmp_path_factory.mktemp("translucent") / "translucent.pdf")
     doc = pymupdf.open()
     page = doc.new_page()
-    # "emb" is only the name the page files the font under; "tiro" is MuPDF's Times Roman.
     page.insert_font(fontname="emb", fontbuffer=pymupdf.Font("tiro").buffer)
     page.insert_text(
         (72, 700), "Valid until March", fontname="emb", fontsize=12, fill_opacity=TRANSLUCENT
@@ -255,7 +212,6 @@ def translucent(tmp_path_factory) -> str:
 
 @pytest.fixture(scope="module")
 def coded_type0(tmp_path_factory) -> str:
-    """ABBA in a Type0 Identity-H TrueType with no cmap table, as the order file is, turned."""
     return _embed_by_hand(
         str(tmp_path_factory.mktemp("coded") / "type0.pdf"),
         {
@@ -282,12 +238,6 @@ def coded_type0(tmp_path_factory) -> str:
 
 @pytest.fixture(scope="module")
 def type0_listed_apart(tmp_path_factory) -> str:
-    """ABBA in a Type0 whose list of inner fonts is an object of its own, as some writers do.
-
-    Its description says serif (Flags 34) and slanted (ItalicAngle -12), which
-    only a font read through that list learns: a letter it lacks then draws in
-    a serif italic.
-    """
     return _embed_by_hand(
         str(tmp_path_factory.mktemp("coded") / "listed-apart.pdf"),
         {
@@ -319,12 +269,6 @@ def type0_listed_apart(tmp_path_factory) -> str:
     ids=["its list of inner fonts", "its inner font"],
 )
 def type0_pointing_nowhere(tmp_path_factory, request) -> str:
-    """coded_under's ABBA and BA, with a damaged Type0 of the same name listed first.
-
-    The Type0's list of inner fonts, or the inner font in it, points past the
-    file's last object, as a damaged file can. Listed first under the name the
-    line's font has, it's the font asked for a description.
-    """
     folder = tmp_path_factory.mktemp("nowhere")
     doc = pymupdf.open(coded_under(str(folder / "coded.pdf"), "F1"))
     page = doc[0]
@@ -343,7 +287,6 @@ def type0_pointing_nowhere(tmp_path_factory, request) -> str:
 
 @pytest.fixture(scope="module")
 def corrupt(tmp_path_factory) -> str:
-    """ABBA in a stored TrueType whose font program is garbage: MuPDF can't open it."""
     return _embed_by_hand(
         str(tmp_path_factory.mktemp("corrupt") / "corrupt.pdf"),
         {
@@ -360,12 +303,7 @@ def corrupt(tmp_path_factory) -> str:
 
 @pytest.fixture(scope="module")
 def type3(tmp_path_factory) -> str:
-    """The word Hi in a Type3 font that names itself only in its description, as a Bold.
-
-    Each letter is the same square drawing: nothing reads the shapes. Only H and
-    i have a width; the codes between are unused. /BaseFont isn't read for a
-    Type3 font's text, and with no /Name its text calls it by its object.
-    """
+    """A Type3's /BaseFont isn't read; with no /Name its text calls it by its object."""
     return _embed_by_hand(
         str(tmp_path_factory.mktemp("type3") / "type3.pdf"),
         {
@@ -384,19 +322,12 @@ def type3(tmp_path_factory) -> str:
     )
 
 
-# A numbered list's marker in a Type3 font with two periods, as Chrome prints tabular
-# figures: the narrow one running text uses, and a tabular one as wide as a figure.
 _NARROW_PERIOD, TABULAR_PERIOD = 0x2E, 0x2F
 LIST_MARKER = "1.2."
 
 
 @pytest.fixture(scope="module")
 def tabular_period(tmp_path_factory) -> str:
-    """LIST_MARKER in a Type3 font whose letter list reads two codes as a period.
-
-    Each letter is the same square drawing: only widths and codes are read. The
-    narrow period is the lower code, and the page draws the tabular one.
-    """
     marker = f"31{TABULAR_PERIOD:02X}32{TABULAR_PERIOD:02X}"
     periods = (_NARROW_PERIOD, TABULAR_PERIOD)
     pairs = " ".join(f"<{code:02X}> <002E>" for code in periods) + " <31> <0031> <32> <0032>"
@@ -423,34 +354,25 @@ def tabular_period(tmp_path_factory) -> str:
 
 @pytest.fixture(scope="module")
 def type3_copies(tmp_path_factory) -> str:
-    """Hello, then Yellow, each line in its own Type3 copy of one font (`type3_copies_at`)."""
     return type3_copies_at(str(tmp_path_factory.mktemp("type3") / "copies.pdf"))
 
 
 @pytest.fixture(scope="module")
 def gapped(tmp_path_factory) -> str:
-    """Words in a stored font with no space, GAP_EM apart, as pdfTeX writes them.
-
-    The font maps A and B but no space. Three lines, each a way MuPDF reads gaps: _GAPPED_TEXT
-    word by word (a piece per gap), _GAPPED_TEXT in one TJ run (spaces inside one piece), and
-    _LONE_WORD (no gap but the page's).
-    """
     path = str(tmp_path_factory.mktemp("gapped") / "gapped.pdf")
     doc = pymupdf.open()
     page = doc.new_page()
     font = _truetype({ord("A"): "A", ord("B"): "B"}, symbol=False, family="Gapped")
-    # "gap" is only the name the page files the font under; MuPDF writes it by glyph id.
     page.insert_font(fontname="gap", fontbuffer=font)
     [(_xref, _ext, _kind, _name, resource, _encoding)] = page.get_fonts()
     words = _GAPPED_TEXT.split()
     step = (len(words[0]) * _ADVANCE / _EM + GAP_EM) * GAPPED_SIZE
     start = f"BT /{resource} {GAPPED_SIZE} Tf"
-    # PDF space: y counts up from the bottom of the page.
     one_by_one = [
         f"{start} {72 + i * step} {_GAPPED_LINES[0]} Td <{_ids(word)}> Tj ET"
         for i, word in enumerate(words)
     ]
-    gap = -round(GAP_EM * _EM)  # a TJ number moves the pen back, in thousandths of an em
+    gap = -round(GAP_EM * _EM)
     one_run = f" {gap} ".join(f"<{_ids(word)}>" for word in words)
     content = [
         *one_by_one,
@@ -466,18 +388,14 @@ def gapped(tmp_path_factory) -> str:
 
 
 def _ids(word: str) -> str:
-    """A word as the glyph ids the gapped fixture writes: A is 1, B is 2 (see _GLYPHS)."""
     return "".join(f"{_GLYPHS.index(letter):04x}" for letter in word)
 
 
 @pytest.fixture(params=["coded_symbol", "coded_type0"])
 def coded(request) -> str:
-    """A font the file reaches only by code, in either shape."""
     return request.getfixturevalue(request.param)
 
 
-# The merged fixtures' two pages: each copy draws only its own page's letters.
-# Pooled, "Yearly Hello" draws; "Yes" never can, since neither page drew an s.
 MERGED_TEXTS = ("Hello there", "Yearly quiz")
 _MERGED_SIZE = 14.0
 
@@ -485,21 +403,13 @@ _MERGED_SIZE = 14.0
 def _merged(
     path: str, fonts: tuple[bytes, bytes], texts: tuple[str, str] = MERGED_TEXTS
 ) -> str:
-    """Two one-page PDFs, each with its own trimmed copy of a font, joined into one.
-
-    As merging leaves them: each page keeps its copy, trimmed (subset) to its letters, under
-    the same name with another subset prefix. Page 0 draws texts[0] in fonts[0], page 1
-    texts[1] in fonts[1].
-    """
     merged = pymupdf.open()
     for text, font in zip(texts, fonts, strict=True):
         single = pymupdf.open()
         page = single.new_page()
-        # "own" is only the name the page files the font under.
         page.insert_font(fontname="own", fontbuffer=font)
         page.insert_text((72, 96), text, fontname="own", fontsize=_MERGED_SIZE)
         single.subset_fonts(verbose=False)
-        # Saved and reopened, as two real files would be, before joining.
         merged.insert_pdf(pymupdf.open("pdf", single.tobytes()))
     merged.save(path)
     return path
@@ -507,34 +417,19 @@ def _merged(
 
 @pytest.fixture(scope="module")
 def merged(tmp_path_factory) -> str:
-    """Two pages, each with its own trimmed copy of Times, reached by letter.
-
-    MuPDF's Times ("tiro") is a CFF font, which keeps its letter table when
-    trimmed, so the engine writes it by letter. Not a face we ship, so the
-    substitute (Liberation Serif) can't be mistaken for it.
-    """
     times = pymupdf.Font("tiro").buffer
     return _merged(str(tmp_path_factory.mktemp("merged") / "letters.pdf"), (times, times))
 
 
 @pytest.fixture(scope="module")
 def merged_coded(tmp_path_factory) -> str:
-    """Two pages, each with its own trimmed copy of Liberation Sans, reached only by code.
-
-    MuPDF drops a TrueType's letter table (cmap) when it trims one, so only the letter list
-    (ToUnicode) says which code draws each letter. Both keep every glyph at its number, empty
-    if unused: the same code draws Y in page 1's copy and nothing in page 0's.
-    """
+    """MuPDF drops a TrueType's cmap when trimming: only ToUnicode says what a code draws."""
     sans = face_bytes(FACES["Liberation Sans Regular"])
     return _merged(str(tmp_path_factory.mktemp("merged") / "codes.pdf"), (sans, sans))
 
 
 @pytest.fixture(scope="module")
 def merged_apart(tmp_path_factory) -> str:
-    """The merged file, but page 1 draws only "Yak": no letter in common with page 0.
-
-    Nothing to check its widths against, so nothing says it's the same font.
-    """
     times = pymupdf.Font("tiro").buffer
     path = str(tmp_path_factory.mktemp("merged") / "apart.pdf")
     return _merged(path, (times, times), texts=(MERGED_TEXTS[0], "Yak"))
@@ -542,11 +437,6 @@ def merged_apart(tmp_path_factory) -> str:
 
 @pytest.fixture(scope="module")
 def merged_unlike(tmp_path_factory) -> str:
-    """The merged file, but page 1's copy is Helvetica given page 0's name.
-
-    Two different fonts under one name, as two releases of a font or a
-    renamed one leave them: page 1's e, l and r are wider than Times'.
-    """
     times, helvetica = pymupdf.Font("tiro").buffer, pymupdf.Font("helv").buffer
     path = _merged(str(tmp_path_factory.mktemp("merged") / "unlike.pdf"), (times, helvetica))
     doc = pymupdf.open(path)
@@ -560,7 +450,6 @@ def merged_unlike(tmp_path_factory) -> str:
 
 
 def placeholders(entry: words.CatalogEntry) -> frozenset[str]:
-    """The `{name}`s a sentence takes, in any of its forms if it takes a count."""
     forms = [entry] if isinstance(entry, str) else entry.values()
     return frozenset(
         name for form in forms for _text, name, _spec, _conv in Formatter().parse(form) if name

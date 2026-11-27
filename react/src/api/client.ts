@@ -1,4 +1,3 @@
-// Every call the browser makes. Routes are in decisions/api.md; shapes come from schema.d.ts.
 import type {
   AccountState,
   Document,
@@ -14,7 +13,6 @@ import type {
   Terms,
 } from "./types";
 
-/** What the server said went wrong. `detail` is shown to the user as it is. */
 export class ProblemError extends Error {
   readonly problem: Problem;
 
@@ -25,7 +23,6 @@ export class ProblemError extends Error {
   }
 }
 
-/** Whether the server answered that it no longer has the document: a 404. */
 export function isGone(error: unknown): boolean {
   return error instanceof ProblemError && error.problem.status === 404;
 }
@@ -54,7 +51,6 @@ async function send(url: string, init: RequestInit): Promise<Response> {
   try {
     response = await fetch(url, init);
   } catch (error) {
-    // fetch rejects only when no reply came: aborted by us, or the network is down.
     if (error instanceof DOMException && error.name === "AbortError") throw error;
     throw new ProblemError(UNREACHABLE);
   }
@@ -62,7 +58,7 @@ async function send(url: string, init: RequestInit): Promise<Response> {
   return response;
 }
 
-/** Upload a PDF as the raw body. XMLHttpRequest, not fetch: only it reports bytes sent. */
+/** XMLHttpRequest, not fetch: only it reports bytes sent. */
 export function upload(file: Blob, onProgress: (sent: number, total: number) => void): Promise<Document> {
   return new Promise((resolve, reject) => {
     const request = new XMLHttpRequest();
@@ -80,27 +76,20 @@ export function upload(file: Blob, onProgress: (sent: number, total: number) => 
   });
 }
 
-/** The document as the server keeps it now, in the reader's language. Its `Squid-Expires-At` isn't read, as below. */
 export async function documentOf(docId: string): Promise<Document> {
   const response = await send(`/api/documents/${docId}`, { method: "GET" });
   return (await response.json()) as Document;
 }
 
-/**
- * Whether the server still has the document: false once its hour has run out, or a deploy retired it.
- * Its `Squid-Expires-At` isn't read: nothing shows the hour.
- */
 export async function stillThere(docId: string): Promise<boolean> {
   try {
     await send(`/api/documents/${docId}`, { method: "GET" });
     return true;
   } catch (error) {
-    // Only a 404 says it's gone; any other failure says nothing either way.
     return !isGone(error);
   }
 }
 
-/** The user's own copy of one of the document's fonts, by its listed name; the document judged again. */
 export async function putFont(docId: string, fontName: string, file: Blob): Promise<Document> {
   const response = await send(`/api/documents/${docId}/fonts/${encodeURIComponent(fontName)}`, {
     method: "PUT",
@@ -109,7 +98,6 @@ export async function putFont(docId: string, fontName: string, file: Blob): Prom
   return (await response.json()) as Document;
 }
 
-/** The user's copy of one of the document's fonts removed; the document judged again. */
 export async function deleteFont(docId: string, fontName: string): Promise<Document> {
   const response = await send(`/api/documents/${docId}/fonts/${encodeURIComponent(fontName)}`, {
     method: "DELETE",
@@ -117,71 +105,61 @@ export async function deleteFont(docId: string, fontName: string): Promise<Docum
   return (await response.json()) as Document;
 }
 
-/** Every face we ship, by family, under `build`: the same for every document, and kept by the browser as long as the build. */
 export async function fontList(build: string): Promise<FontList> {
   const response = await send(`/api/fonts?${new URLSearchParams({ build })}`, { method: "GET" });
   return (await response.json()) as FontList;
 }
 
-/** The service's terms, as its deployment wrote them; null where it wrote none, as a self-hosted copy has. */
 export async function terms(): Promise<Terms | null> {
   const response = await send("/api/terms", { method: "GET" });
   return (await response.json()) as Terms | null;
 }
 
-/** Whether this server keeps accounts, whether only the invited may open documents, and who's signed in here. */
 export async function account(): Promise<AccountState> {
   const response = await send("/api/account", { method: "GET" });
   return (await response.json()) as AccountState;
 }
 
-/** Ask for a link that signs in as `email`, sent there; the server's sentence saying where it went. */
 export async function askForLink(email: string): Promise<LinkSent> {
   const response = await send("/api/account/link", json({ email }));
   return (await response.json()) as LinkSent;
 }
 
-/** Sign this browser in with the token a link carried; the account it's now signed in to. */
 export async function signIn(token: string): Promise<AccountState> {
   const response = await send("/api/account/sign-in", json({ token }));
   return (await response.json()) as AccountState;
 }
 
-/** Sign this browser out. */
 export async function signOut(): Promise<AccountState> {
   const response = await send("/api/account/sign-out", { method: "POST" });
   return (await response.json()) as AccountState;
 }
 
-/** Stripe's checkout, where this browser's account pays monthly for no document limit. */
 export async function checkout(): Promise<PaymentPage> {
   const response = await send("/api/account/checkout", { method: "POST" });
   return (await response.json()) as PaymentPage;
 }
 
-/** Stripe's portal, where this browser's account manages what it pays. */
 export async function billingPortal(): Promise<PaymentPage> {
   const response = await send("/api/account/billing-portal", { method: "POST" });
   return (await response.json()) as PaymentPage;
 }
 
-/** A POST of `body` as JSON. */
 function json(body: object): RequestInit {
   return { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) };
 }
 
-/** A page of the original, unrotated, `scale` pixels per point. Cached for the hour. */
+/** Unrotated, `scale` pixels per point. */
 export function pageUrl(doc: Document, page: number, scale: number): string {
   const query = new URLSearchParams({ scale: String(scale), build: doc.build });
   return `/api/documents/${doc.id}/pages/${page}?${query}`;
 }
 
-/** Ask for a page image again, only to learn why it failed: its Problem is thrown, as every call's is. */
+/** Asked again only to learn why it failed. */
 export async function pageImage(doc: Document, page: number, scale: number): Promise<void> {
   await send(pageUrl(doc, page, scale), { method: "GET" });
 }
 
-/** The edits drawn on these strips of their pages, and what the server makes of each. */
 export async function renderStrips(docId: string, body: RenderBody, signal: AbortSignal): Promise<Render> {
   const response = await send(`/api/documents/${docId}/render`, {
     method: "POST",
@@ -194,11 +172,10 @@ export async function renderStrips(docId: string, body: RenderBody, signal: Abor
 
 export interface Exported {
   pdf: Blob;
-  skipped: number[]; // positions in the edit list the server left out
-  notices: FileNoticeInfo[]; // what saving did to the whole file other than asked
+  skipped: number[];
+  notices: FileNoticeInfo[];
 }
 
-/** The edited document as a PDF, every page or `pages` in that order. The body is the file, so the rest comes in headers. */
 export async function exportPdf(
   docId: string,
   edits: Edit[],

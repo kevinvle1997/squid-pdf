@@ -1,8 +1,4 @@
-"""Turn an edit list into engine calls, in named steps.
-
-`core` knows no Replace, so it imports no feature. The steps, in order: `resolve`,
-`fits_of`, `plan`, then `run`.
-"""
+"""`core` knows no Replace, so it imports no feature."""
 
 from __future__ import annotations
 
@@ -66,16 +62,12 @@ from squidpdf.editing.types import (
 
 @dataclass(frozen=True, slots=True)
 class _EditedSpan:
-    """A span's last edit in the list, with the span it points at."""
-
     edit: SpanEdit
     span: Span
 
 
 @dataclass(frozen=True, slots=True, eq=False)
 class _EditedLine:
-    """A line's last edit in the list, with its spans, left to right, and the line's room."""
-
     edit: ReplaceRuns
     spans: tuple[Span, ...]
     room_pt: float
@@ -83,46 +75,30 @@ class _EditedLine:
 
 @dataclass(frozen=True, slots=True)
 class _ListedInsert:
-    """An insert on a page the document has, with its place in the list the browser sent."""
-
     position: int
     insert: Insert
 
 
 @dataclass(frozen=True, slots=True)
 class Resolved:
-    """An edit list checked against the document: what each edit points at."""
-
-    # The last edit to each span, in the order spans were first edited.
     span_edits: list[_EditedSpan]
-    # The last edit to each line, where it's the last edit to each of its spans.
     line_edits: list[_EditedLine]
     inserts: list[_ListedInsert]
-    # Edits that point at nothing, left out and said why.
     skipped: list[Skipped]
-    # Each edited span's room, read from the original page, by id.
     rooms: dict[str, float]
-    # How many pages the original has, numbered from 0.
     page_count: int
-    # The pages the page ops leave, in the order they leave them, by original number.
     order: list[int]
-    # How far each page the ops turn is turned on top of its own turn, by original number.
     turns: dict[int, QuarterTurn]
-    # What each redacted span loses, worked out once from its page, by id, in edit order.
     redacted: dict[str, Redacted]
 
 
 @dataclass(frozen=True, slots=True)
 class _Erase:
-    """A redaction: the words it takes of a span, and their links, go; nothing is drawn."""
-
     redacted: Redacted
 
 
 @dataclass(frozen=True, slots=True, eq=False)
 class _Redraw:
-    """A replace: the span's text goes, and `text` is drawn in its place, as its fit says."""
-
     span: Span
     text: str
     fitted: Fitted
@@ -130,35 +106,24 @@ class _Redraw:
 
 @dataclass(frozen=True, slots=True, eq=False)
 class _RedrawRuns:
-    """A line's edit: its runs changed or moved go, and each is drawn where its fit puts it."""
-
     fitted: LineFitted
 
 
 @dataclass(frozen=True, slots=True, eq=False)
 class _Place:
-    """An insert: new text drawn where there was none, as its fit says, turned with its page."""
-
     position: int
     span: Span
     fitted: Fitted
     turn_ccw: QuarterTurn
 
 
-# What happens to the page for one edit.
 type Step = _Erase | _Redraw | _RedrawRuns | _Place
 
 
 def resolve(
     engine: Engine, index: SpanIndex, *, free_space: FreeSpace, edits: Sequence[Edit]
 ) -> Resolved:
-    """The list checked against the document: each edit with what it points at.
-
-    A redaction of nothing raises BadReference, of words its text lacks BadRange, and a replace
-    after a redaction of the same text RedactionConflict: the order can't undo one. A span
-    edited twice is drawn once, as its last edit leaves it; its redactions take words together.
-    `free_space` is what the caller read from the original: each span's room, and its lines.
-    """
+    """A replace after a redaction of its text raises RedactionConflict: order can't undo it."""
     page_count = engine.page_count()
     listed = _EditList(
         page_count,
@@ -173,7 +138,6 @@ def resolve(
         skipped += [Skipped(position, "bad_reference", why) for why in left_out]
     latest = listed.spans.latest.values()
     span_edits = [edited for edited in latest if isinstance(edited, _EditedSpan)]
-    # A line's edit is the last of each of its spans: kept once, where its first was.
     line_edits = list(
         dict.fromkeys(edited for edited in latest if isinstance(edited, _EditedLine))
     )
@@ -183,7 +147,6 @@ def resolve(
         line_edits=line_edits,
         inserts=listed.inserts,
         skipped=skipped,
-        # Of the rooms the caller read from the original, only the edited spans'.
         rooms={edited_span.span.id: rooms[edited_span.span.id] for edited_span in span_edits},
         page_count=page_count,
         order=listed.pages.order,
@@ -197,35 +160,25 @@ def resolve(
 
 @dataclass(slots=True)
 class _EditList:
-    """The edit list read so far, by kind: span edits, inserts and page ops."""
-
     page_count: int
     spans: _SpanEdits
     pages: _PageOps
     inserts: list[_ListedInsert]
-    lines: dict[tuple[str, ...], Line]  # the document's lines, by their spans' ids in order
+    lines: dict[tuple[str, ...], Line]
 
     def read(self, edit: Edit, *, index: SpanIndex, position: int) -> list[Message]:
-        """Read one more edit; returns why it's left out, if it is."""
-        # Folded into the pages kept, in list order.
         if isinstance(edit, PageOp) and _names_pages(edit, self.page_count):
             return self.pages.fold(edit)
-        # A page op naming a page it doesn't have.
         if isinstance(edit, PageOp):
             return [Message("no_page")]
         if isinstance(edit, Insert) and is_page(edit.page, self.page_count):
             self.inserts.append(_ListedInsert(position, edit))
             return []
-        # An insert on a page it doesn't have.
         if isinstance(edit, Insert):
             return [Message("no_page")]
-        # An edit of a span: its last so far, if the document has the span.
         if isinstance(edit, SpanEdit):
-            # .get: the browser can send a span id this document doesn't have.
             return self.spans.add(edit, index.by_id.get(edit.span_id), position=position)
-        # An edit of a line: the last of each of its spans, if the document has the line.
         if isinstance(edit, ReplaceRuns):
-            # .get: the browser can name spans that aren't one of this document's lines.
             line = self.lines.get(tuple(run.span_id for run in edit.runs))
             if line is None:
                 return [Message("not_one_line")]
@@ -238,26 +191,16 @@ class _EditList:
 
 @dataclass(slots=True)
 class _SpanEdits:
-    """The span edits read so far: each span's last, and what its redactions take, by id.
-
-    In the order first edited.
-    """
-
     latest: dict[str, _EditedSpan | _EditedLine]
-    # The code points each span's redactions so far take, merged, by id, in edit order.
     redacted_ranges: dict[str, tuple[range, ...]]
 
     def add(self, edit: SpanEdit, span: Span | None, *, position: int) -> list[Message]:
-        """Read one more edit of a span; returns why it's left out, if it is."""
         # Skipping it would be a leak.
         if isinstance(edit, Redact) and span is None:
             raise BadReference(edit.span_id)
-        # A replace of text it doesn't have.
         if span is None:
             return [Message("no_span")]
-        # A redaction of text the document has, with the span's others: nothing undoes it.
         if isinstance(edit, Redact):
-            # .get: the span's first redaction.
             earlier = self.redacted_ranges.get(edit.span_id, ())
             ranges = merged_ranges([*earlier, range_of(edit, span)])
             self.redacted_ranges[edit.span_id] = ranges
@@ -269,7 +212,6 @@ class _SpanEdits:
             raise RedactionConflict(
                 debug=f"edit {position} replaces span {edit.span_id}, redacted before"
             )
-        # A replace of text the document has. Overwriting a key keeps its first place.
         if isinstance(edit, Replace):
             self._forget_line_of(edit.span_id)
             self.latest[edit.span_id] = _EditedSpan(edit, span)
@@ -277,9 +219,7 @@ class _SpanEdits:
         assert_never(edit)
 
     def add_line(self, edited_line: _EditedLine, *, position: int) -> list[Message]:
-        """Read one more edit of a line: the last of each of its spans, the earlier gone."""
         redacted = [span.id for span in edited_line.spans if self._redacted(span.id)]
-        # A line's edit over redacted text: the browser undoes a redaction by leaving it out.
         if redacted:
             raise RedactionConflict(
                 debug=f"edit {position} replaces span {redacted[0]}, redacted before"
@@ -290,11 +230,7 @@ class _SpanEdits:
         return []
 
     def _forget_line_of(self, span_id: str) -> None:
-        """Forget the line edit `span_id` is last in, for every span of its line.
-
-        A line is drawn whole or not at all: a later edit of one of its spans takes all of it.
-        """
-        # .get: a span not edited yet.
+        """A line is drawn whole or not: a later edit to any of its spans takes it all."""
         last = self.latest.get(span_id)
         if not isinstance(last, _EditedLine):
             return
@@ -302,36 +238,24 @@ class _SpanEdits:
             del self.latest[span.id]
 
     def _redacted(self, span_id: str) -> bool:
-        """Whether the span's last edit so far is a redaction: none after it can replace it."""
-        # .get: a span not edited yet.
         last = self.latest.get(span_id)
         return isinstance(last, _EditedSpan) and isinstance(last.edit, Redact)
 
 
 def _names_pages(op: PageOp, page_count: int) -> bool:
-    """Whether every page a page op names is one the document has."""
     before = op.before if isinstance(op, MovePage) else None
     return is_page(op.page, page_count) and (before is None or is_page(before, page_count))
 
 
 @dataclass(slots=True)
 class _PageOps:
-    """The page ops folded so far: the pages kept, in order, and how far each is turned."""
-
     order: list[int]
     turns: dict[int, QuarterTurn]
 
     def fold(self, op: PageOp) -> list[Message]:
-        """Fold one more op in; returns why it was left out, if it was.
-
-        An op on a page deleted before it is moot, and ignored, as an edit on it is.
-        """
-        # A page deleted earlier in the list: there's nothing left to turn or move.
         if op.page not in self.order:
             return []
-        # On top of any earlier ones, a whole turn coming back to none.
         if isinstance(op, RotatePage):
-            # .get: the page's first turn.
             self.turns[op.page] = turn_added(self.turns.get(op.page, 0), op.degrees)
             return []
         # The last page left: a file can't have none.
@@ -340,17 +264,12 @@ class _PageOps:
         if isinstance(op, DeletePage):
             self.order.remove(op.page)
             return []
-        # Before another page, or to the end.
         if isinstance(op, MovePage):
             self._move(op.page, before=op.before)
             return []
         assert_never(op)
 
     def _move(self, page: int, *, before: int | None) -> None:
-        """Put `page` just before `before`, or last when it's None.
-
-        Before itself, or before a page deleted earlier, it stays where it is: moot.
-        """
         if before == page or (before is not None and before not in self.order):
             return
         self.order.remove(page)
@@ -358,12 +277,7 @@ class _PageOps:
 
 
 def page_order(resolved: Resolved, pages: Sequence[int] | None) -> list[int]:
-    """The pages the saved file has, in order, by their numbers in the original.
-
-    Worked out once, so the pages kept and the redaction check read the same
-    order: `pages` when the request names them, else the order the page ops leave.
-    `pages` is the final order, so it may not name a page an edit deleted.
-    """
+    """Worked out once, so the pages kept and the redaction check read the same order."""
     if pages is None:
         return list(resolved.order)
     deleted = sorted(set(pages) - set(resolved.order))
@@ -373,16 +287,10 @@ def page_order(resolved: Resolved, pages: Sequence[int] | None) -> list[int]:
 
 
 def redacted_in(resolved: Resolved) -> tuple[Redacted, ...]:
-    """What each span whose last edit is a redaction loses, numbered as in the original."""
     return tuple(resolved.redacted.values())
 
 
 def new_text_turns(engine: Engine, resolved: Resolved) -> list[QuarterTurn]:
-    """How far new text is turned on each page, so it reads upright as the page is shown.
-
-    Turned back as far as its page turns, an edit's turn included.
-    """
-    # .get: most pages have no turn among the edits.
     return [
         turn_added(page.turn_cw, resolved.turns.get(number, 0))
         for number, page in enumerate(engine.pages())
@@ -390,10 +298,7 @@ def new_text_turns(engine: Engine, resolved: Resolved) -> list[QuarterTurn]:
 
 
 def fits_of(engine: Engine, resolved: Resolved) -> EditFits:
-    """A fit, with its plan, for each replace, line edit and insert left, drawn or not.
-
-    Measurement only. Call it before `run`: erasing can drop the fonts it measures with.
-    """
+    """Call it before `run`: erasing can drop the fonts it measures with."""
     fits = {
         edited_span.span.id: _fit_of(
             engine, edited_span, room_pt=resolved.rooms[edited_span.span.id]
@@ -413,7 +318,6 @@ def fits_of(engine: Engine, resolved: Resolved) -> EditFits:
 
 
 def _fit_of(engine: Engine, edited_span: _EditedSpan, *, room_pt: float) -> Fitted | None:
-    """What a span edit will look like, in its room; None for one that draws nothing to fit."""
     edit = edited_span.edit
     if isinstance(edit, Replace):
         span = edited_span.span
@@ -424,7 +328,6 @@ def _fit_of(engine: Engine, edited_span: _EditedSpan, *, room_pt: float) -> Fitt
 
 
 def _line_fit_of(engine: Engine, edited_line: _EditedLine) -> LineFitted:
-    """What a line's edit will look like, run by run, in the line's room."""
     edit = edited_line.edit
     if isinstance(edit, ReplaceRuns):
         texts = [run.text for run in edit.runs]
@@ -445,12 +348,7 @@ def plan(
     *,
     strips: Mapping[int, list[Rect]] | None = None,
 ) -> list[Step]:
-    """The steps the edits shown take, each drawn with its fit's plan.
-
-    `strips` are the rows drawn, by page, or None for every edit. An edit of text shows where
-    one of its spans' rows meets a strip; turned text, redrawn level, and inserts anywhere on
-    a drawn page. A page with a redaction shown runs all of them: the check's is export's.
-    """
+    """A page with a redaction shown runs all of them: the check's is export's."""
     shown_in_strips = [
         edited_span
         for edited_span in resolved.span_edits
@@ -489,13 +387,10 @@ def plan(
 
 
 def _in_strips(strips: Mapping[int, list[Rect]] | None, span: Span) -> bool:
-    """Whether an edit to `span` shows in what's drawn: anywhere, when `strips` is None."""
     return strips is None or _shows(strips, span)
 
 
 def _shows(strips: Mapping[int, list[Rect]], span: Span) -> bool:
-    """Whether an edit to `span` shows in the strips drawn on its page."""
-    # .get: a page with no strip drawn on it shows no edit.
     on_page = strips.get(span.page, [])
     # Turned text is redrawn level, so its box says little of where: anywhere on a drawn page.
     if on_page and span.turned:
@@ -509,7 +404,6 @@ def _shows(strips: Mapping[int, list[Rect]], span: Span) -> bool:
 def _step_for(
     edited: _EditedSpan | _EditedLine, fits: EditFits, *, redacted: Mapping[str, Redacted]
 ) -> Step:
-    """What one edit of text does to the page; `redacted` is what each redaction takes."""
     if isinstance(edited, _EditedLine):
         return _line_step_for(edited, fits)
     edit = edited.edit
@@ -522,7 +416,6 @@ def _step_for(
 
 
 def _line_step_for(edited_line: _EditedLine, fits: EditFits) -> Step:
-    """What one line edit does to the page."""
     edit = edited_line.edit
     if isinstance(edit, ReplaceRuns):
         return _RedrawRuns(fits.lines[edited_line.spans[0].id])
@@ -531,28 +424,16 @@ def _line_step_for(edited_line: _EditedLine, fits: EditFits) -> Step:
 
 @dataclass(frozen=True, slots=True)
 class Ran:
-    """What doing the steps came out with: what came out other than asked, and each draw.
-
-    `redrawn` is each replace, and each run of a line's edit, drawn, by span id, and `placed`
-    each insert, by its place: the face we ship that drew it, None for its own font (new
-    text's face, where it draws). An edit the erase couldn't clear isn't drawn, so isn't there.
-    """
-
     notices: list[Notice]
     redrawn: dict[str, Face | None]
     placed: dict[int, Face | None]
 
 
 def run(engine: Engine, steps: Sequence[Step]) -> Ran:
-    """Do the steps; returns what came out other than asked, and what drew each edit.
-
-    Every erase happens in one pass before any draw: PyMuPDF erases a page at a
-    time, and an erase after a redraw would take the new text too.
-    """
+    """Every erase before any draw: PyMuPDF erases a page at a time, new text included."""
     erased = [span for step in steps for span in _erased_by(step)]
     drawn = [line for step in steps for line in _drawn_by(step)]
     # Old text the erase couldn't clear, as a form field's: the field draws it, not the page.
-    # Only a redraw reads it: a redaction's is checked where it's said, by RedactionController.
     stuck = {span.id for span in engine.remove(erased, then_drawn=drawn)}
     redacted = redacted_by(steps)
     runs = runs_of(redacted)
@@ -568,7 +449,6 @@ def run(engine: Engine, steps: Sequence[Step]) -> Ran:
 
 
 def edited_by(steps: Sequence[Step]) -> dict[int, EditedPage]:
-    """What the steps erase and draw, by page: what the redaction check allows for."""
     erased = [span for step in steps for span in _erased_by(step)]
     lines = [line for step in steps for line in _lines_drawn_by(step)]
     pages = {span.page for span in erased} | {page for page, _line in lines}
@@ -582,7 +462,6 @@ def edited_by(steps: Sequence[Step]) -> dict[int, EditedPage]:
 
 
 def _lines_drawn_by(step: Step) -> list[tuple[int, DrawnLine]]:
-    """What a step draws, a line a run, and each one's page: none for one that only erases."""
     if isinstance(step, _Erase):
         return []
     if isinstance(step, _Redraw):
@@ -600,33 +479,27 @@ def _lines_drawn_by(step: Step) -> list[tuple[int, DrawnLine]]:
 
 
 def _origin_of(run: RunFitted) -> tuple[float, float]:
-    """Where a line's run is drawn: where the runs before it leave it, on its own baseline."""
     _x, baseline = run.span.origin
     return run.x, baseline
 
 
 def redacted_by(steps: Sequence[Step]) -> list[Redacted]:
-    """What the steps redact, span by span, in order."""
     return [step.redacted for step in steps if isinstance(step, _Erase)]
 
 
 def _erased_by(step: Step) -> list[Span]:
-    """The text a step erases first, as spans: none for one that only draws."""
     if isinstance(step, _Erase):
         return list(step.redacted.runs)
     if isinstance(step, _Redraw):
         return [step.span]
-    # Where each run was: a moved one's old place is cleared too.
     if isinstance(step, _RedrawRuns):
         return [run.span for run in step.fitted.redrawn]
-    # An insert: there was no text there.
     if isinstance(step, _Place):
         return []
     assert_never(step)
 
 
 def _drawn_by(step: Step) -> list[LineToDraw]:
-    """What a step draws once the erasing is done: none for one that only erases."""
     if isinstance(step, _Erase):
         return []
     if isinstance(step, _Redraw):
@@ -639,10 +512,6 @@ def _drawn_by(step: Step) -> list[LineToDraw]:
 
 
 def _finish_step(engine: Engine, step: Step, *, stuck: set[str]) -> Ran:
-    """Do what a step does once the erasing is done; returns what came out, as `run` does.
-
-    `stuck` are the spans whose text the erase couldn't clear.
-    """
     if isinstance(step, _Erase):
         return Ran([], redrawn={}, placed={})
     # A replace of text the erase couldn't clear: drawn, it would sit on the old text.
@@ -671,7 +540,6 @@ def _finish_step(engine: Engine, step: Step, *, stuck: set[str]) -> Ran:
         drawn = engine.draw(
             step.span, step.span.text, plan=step.fitted.plan, turn_ccw=step.turn_ccw
         )
-        # New text in a face we ship is in its own font where that face draws it.
         asked = drawn.face is not None and drawn.face.name == step.span.font
         face = None if asked else drawn.face
         insert_notices: list[Notice] = [
@@ -682,7 +550,6 @@ def _finish_step(engine: Engine, step: Step, *, stuck: set[str]) -> Ran:
 
 
 def _draw_runs(engine: Engine, fitted: LineFitted) -> Ran:
-    """Draw each run a line's edit changed or moved, where its fit puts it."""
     notices: list[Notice] = []
     redrawn: dict[str, Face | None] = {}
     for run in fitted.redrawn:
@@ -697,7 +564,6 @@ def _draw_runs(engine: Engine, fitted: LineFitted) -> Ran:
 
 
 def _put_back(engine: Engine, fitted: LineFitted, *, stuck: set[str]) -> Ran:
-    """Draw back as it was each run of a line the erase cleared, since one it couldn't."""
     for run in fitted.redrawn:
         if run.span.id not in stuck:
             engine.draw(run.span, run.span.text, plan=run.put_back)
@@ -711,20 +577,16 @@ def _put_back(engine: Engine, fitted: LineFitted, *, stuck: set[str]) -> Ran:
 
 @dataclass(frozen=True, slots=True, eq=False)
 class Planned:
-    """Every edit's fit, and the steps they take on every page: worked out once, then run."""
-
     fits: EditFits
     steps: list[Step]
 
 
 def planned_of(engine: Engine, resolved: Resolved) -> Planned:
-    """The fits and the steps of every edit. Before any is run: erasing can drop fonts."""
     fits = fits_of(engine, resolved)
     return Planned(fits, plan(engine, resolved, fits))
 
 
 def apply_edits(engine: Engine, resolved: Resolved, planned: Planned) -> Applied:
-    """Apply every edit on every page, as `planned`, in memory. Nothing is written."""
     fits = planned.fits
     rewritten = _rewritten(resolved)
     # Before run: erasing can drop the fonts a font's name is read from.
@@ -740,11 +602,7 @@ def apply_edits(engine: Engine, resolved: Resolved, planned: Planned) -> Applied
 
 
 def _rewritten(resolved: Resolved) -> list[Span]:
-    """Each span whose last edit replaces its words with others, alone or in its line.
-
-    One that types a span's own words back draws it as it was, or only moves it: no edit to
-    count.
-    """
+    """One that types a span's own words back draws it as it was: no edit to count."""
     replaced = [
         edited_span.span
         for edited_span in resolved.span_edits
@@ -762,18 +620,12 @@ def _rewritten(resolved: Resolved) -> list[Span]:
 
 @dataclass(frozen=True, slots=True)
 class Verdicts:
-    """How each edit came out: a replace, or a line's run, by span id; an insert by place."""
-
     replaces: dict[str, Verdict]
     inserts: dict[int, Verdict]
 
 
 def verdicts_of(fits: EditFits, ran: Ran) -> Verdicts:
-    """How each edit came out: as drawn where `run` drew it, else as planned.
-
-    The one way render and export judge an edit, so the note and the export's log agree.
-    """
-    # .get: an edit on a page this run didn't draw has only its plan to go by.
+    """The one way render and export judge an edit, so the note and the export's log agree."""
     in_lines = {
         run.span.id: _as_drawn(run.verdict, ran.redrawn.get(run.span.id))
         for fitted in fits.lines.values()
@@ -793,5 +645,4 @@ def verdicts_of(fits: EditFits, ran: Ran) -> Verdicts:
 
 
 def _as_drawn(planned: Verdict, face: Face | None) -> Verdict:
-    """An edit as it was drawn: a face that drew it, the page having refused the font, too."""
     return planned if face is None else replace(planned, fidelity="substitute", why=None)

@@ -1,4 +1,2 @@
-/* What the sheet says when drawing failed, under its heading: the one screen that replaces the app. */
 .fine { margin: var(--s3) 0 0; font-size: var(--fs-sm); color: var(--ink-lo); text-wrap: balance; }
-/* The crash screen's one call to act, as Choose a PDF is the landing's. */
 .reload { composes: act from "./ui/Sheet.module.css"; }

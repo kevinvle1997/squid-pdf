@@ -1,5 +1,4 @@
-// The performance probe, `npm run perf`: typing, the render settling and scrolling on a long contract, the CPU
-// slowed and the network a desk's. It logs and asserts nothing: numbers are compared by hand, kept out of here.
+// It logs and asserts nothing: numbers are compared by hand, kept out of here.
 import { execFileSync } from "node:child_process";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -11,34 +10,33 @@ import { test } from "./policy";
 const LINE = "This agreement is made on 14 March 2026 between";
 const PAGES = 30; // "tens of pages": the size the editor is built for
 const SLOWDOWN = 4; // DevTools' "mid-tier mobile"; a laptop on battery is close
-// A fast network, as the budgets promise: broadband at a desk, not a train, where the settle
-// would fail by construction. The API is local, so every byte of the delay is these.
-const LATENCY_MS = 40; // a round trip to a server a country away
-const DOWN_MBIT = 10; // broadband's slower end
+// A desk's broadband, as the budgets promise: on a train the settle would fail by construction.
+const LATENCY_MS = 40;
+const DOWN_MBIT = 10;
 const UP_MBIT = 5;
 const BYTES_PER_MBIT = 1_000_000 / 8;
 const TYPED = "abcdefghijklmnopqrst";
-const REST_MS = 400; // the pointer on Export before the press: a nominal reach, since the probe can't time a person's
+const REST_MS = 400; // a nominal reach to Export, since the probe can't time a person's
 const REPO = fileURLToPath(new URL("../..", import.meta.url));
 
 test.skip(!process.env.PERF, "the probe runs on its own: npm run perf");
 
 interface Probe {
-  count: boolean; // walk the tree on each commit: costs time, so not while timing
-  prime: () => void; // take the tree as it stands, for the first commit counted to compare against
+  count: boolean;
+  prime: () => void;
   commits: number;
-  rendered: number[]; // components each commit rendered
-  latencies: number[]; // keydown to the frame after it
+  rendered: number[];
+  latencies: number[];
   longTasks: number[];
-  presses: number[]; // when each key or pointer went down
-  requests: Asked[]; // each render and export asked for
+  presses: number[];
+  requests: Asked[];
 }
 
 interface Asked {
-  kind: string; // "render" or "export"
+  kind: string;
   start: number;
-  end: number; // 0 while it's out
-  aborted: boolean; // dropped by the app before its answer was read
+  end: number;
+  aborted: boolean;
 }
 
 declare global {
@@ -47,10 +45,9 @@ declare global {
   }
 }
 
-/** Installed before the app loads: React reports every commit to a DevTools hook, in production too. */
+/** React reports every commit to a DevTools hook, in production too. */
 function instrument() {
   type Fiber = { tag: number; flags: number; child: Fiber | null; sibling: Fiber | null };
-  // Function, class, forwardRef, memo and simple memo components.
   const COMPONENTS = new Set([0, 1, 11, 14, 15]);
   const PERFORMED_WORK = 1;
   let before = new WeakSet<Fiber>();
@@ -90,8 +87,6 @@ function instrument() {
         probe.commits++;
         last = root;
         if (!probe.count) return;
-        // A fiber that rendered in this commit is new to the tree and did work; one React
-        // skipped is the very object that was there last time.
         const now = new WeakSet<Fiber>();
         let rendered = 0;
         walk(root, (fiber) => {
@@ -106,7 +101,6 @@ function instrument() {
   new PerformanceObserver((list) => {
     for (const entry of list.getEntries()) probe.longTasks.push(entry.duration);
   }).observe({ type: "longtask" });
-  // Each render and export, from its request to the last byte of its answer.
   const fetched = window.fetch.bind(window);
   window.fetch = async (input, init) => {
     const kind = (input instanceof Request ? input.url : String(input)).match(/\/(render|export)$/)?.[1];
@@ -125,7 +119,6 @@ function instrument() {
     }
   };
   window.addEventListener("pointerdown", () => probe.presses.push(performance.now()), true);
-  // To the frame after the key: after the next animation frame, once its task has run.
   window.addEventListener(
     "keydown",
     () => {
@@ -148,7 +141,6 @@ function summary(values: number[]) {
   return { n: sorted.length, median: round(at(0.5)), p95: round(at(0.95)), max: round(sorted.at(-1) ?? 0) };
 }
 
-/** Where Chrome's main thread spent its time, in ms: script, layout, style. */
 async function busy(cdp: CDPSession) {
   const { metrics } = await cdp.send("Performance.getMetrics");
   const of = (name: string) => (metrics.find((metric) => metric.name === name)?.value ?? 0) * 1000;
@@ -178,7 +170,6 @@ async function reset(page: Page, count: boolean) {
   }, count);
 }
 
-/** From the next press, of a pointer or a key, to `selector` matching in the page, in ms. */
 function timeTo(page: Page, selector: string) {
   return page.evaluate(
     (wanted) =>
@@ -202,7 +193,6 @@ function timeTo(page: Page, selector: string) {
   );
 }
 
-/** Once every request asked for since the last reset is answered or dropped: how many, and when, from the last press. */
 async function answered(page: Page) {
   await expect
     .poll(
@@ -235,7 +225,6 @@ async function openField(page: Page) {
   return field;
 }
 
-/** The long contract, open in the built app, and its marks at rest; then the CPU and the network slowed. */
 async function openContract(page: Page) {
   const pdf = join(mkdtempSync(join(tmpdir(), "squidpdf-perf-")), "dense.pdf");
   execFileSync("uv", ["run", "squidpdf", "fixture", pdf, "--pages", String(PAGES)], { cwd: REPO });
@@ -266,7 +255,6 @@ test("typing, the render settling and scrolling on a long contract", async ({ pa
   test.setTimeout(180_000);
   const { cdp, marks } = await openContract(page);
 
-  // Timed with nothing else running in the page.
   let field = await openField(page);
   await reset(page, false);
   const typingFrom = await busy(cdp);
@@ -281,7 +269,6 @@ test("typing, the render settling and scrolling on a long contract", async ({ pa
   await field.pressSequentially(TYPED, { delay: 120 });
   const counted = await page.evaluate(() => ({ ...window.probe }));
 
-  // Enter to the server's strip in place of the preview.
   const settled = page.evaluate(
     () =>
       new Promise<number>((resolve) => {
@@ -297,7 +284,6 @@ test("typing, the render settling and scrolling on a long contract", async ({ pa
   await field.press("Enter");
   const settle = await settled;
 
-  // Top to bottom, a wheel notch at a time.
   await page.mouse.move(400, 400);
   await reset(page, false);
   const height = await page.evaluate(() => document.documentElement.scrollHeight);
@@ -338,7 +324,6 @@ test("change all, a burst of undos and export on a long contract", async ({ page
   await openContract(page);
   const firstPageStrip = 'section[aria-label="Page 1"] img[data-strip]';
 
-  // A heading on every page: one render draws them all, the first page's strip with the rest.
   await page.keyboard.press("ControlOrMeta+f");
   await page.getByRole("textbox", { name: "Find" }).fill("Schedule");
   await page.getByRole("textbox", { name: "Change to" }).fill("Annex");
@@ -350,14 +335,12 @@ test("change all, a burst of undos and export on a long contract", async ({ page
   const allPages = { pressToFirstPageStripMs: Math.round(await changedToStrip), ...(await answered(page)) };
   await page.getByRole("button", { name: /^Close/ }).click();
 
-  // One line changed alone, for the first page's strip when a render draws only it.
   let field = await openField(page);
   await field.pressSequentially(" too");
   await reset(page, false);
   await field.press("Enter");
   const onePage = await answered(page);
 
-  // Four more lines, then undo one, then three in a burst, as fast as a held key.
   const lines = page.locator('section[aria-label="Page 1"] [data-span]');
   for (const line of [3, 5, 7, 9]) {
     await lines.nth(line).focus();
@@ -378,7 +361,6 @@ test("change all, a burst of undos and export on a long contract", async ({ page
   }
   const undoBurst = await answered(page);
 
-  // Export from the keyboard, which gives no warning; then by the pointer, which rests on Export first.
   await reset(page, false);
   let downloaded = page.waitForEvent("download");
   let pressed = Date.now();

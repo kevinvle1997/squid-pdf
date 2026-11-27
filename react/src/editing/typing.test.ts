@@ -36,7 +36,6 @@ import { fill } from "./words";
 
 vi.mock(import("../api/client"), async (original) => ({ ...(await original()), renderStrips: vi.fn() }));
 
-// Its sentences are the server's, in a language made up for tests, so any the browser writes itself stands out.
 const DOC = aDoc({
   sentences: PSEUDO_SENTENCES,
   spans: [
@@ -70,7 +69,6 @@ const typed = (spanId: string, text: string) => {
 
 describe("an edit", () => {
   test("as its field takes focus, what an edit there warns of is heard, until its font's warning is muted", () => {
-    // Its font has every letter it reads, so the warning is all there is to hear.
     const glyphs = halfWideGlyphs("was similar");
     const similar = aSpan({
       id: "similar",
@@ -98,10 +96,8 @@ describe("an edit", () => {
     editor = createEditor(FILE, aDoc({ sentences: PSEUDO_SENTENCES, spans: [own], fonts }), 2);
     setWarningMuted(editor, "Kept", { muted: true });
     edit(editor, "own", null);
-    // No font we have draws it: the file's own font draws the rest, and the line won't match. Its trouble is heard first.
     typeInto(editor, "abc\u2713");
     expect(editor.store.get().announcement.text).toMatch(/ \/ THIS EDIT WILL LOOK DIFFERENT\.$/);
-    // Its copy lacks it, and a face we ship draws the line.
     typeInto(editor, "abcz");
     expect(editor.store.get().announcement.text).toMatch(/ \/ THIS EDIT WILL USE A SIMILAR FONT\.$/);
     typeInto(editor, "abc");
@@ -120,11 +116,10 @@ describe("an edit", () => {
   });
 
   test("a trouble is announced as it appears or changes, not as its numbers tick by with each letter", () => {
-    const glyphs = { a: 500, b: 500 }; // 5 pt each at 10 pt
+    const glyphs = { a: 500, b: 500 };
     const doc = aDoc({ spans: [aSpan({ id: "ab", text: "ab" })], fonts: [aFont("Times-Roman", { glyphs })] });
     editor = createEditor(FILE, doc, 2);
     edit(editor, "ab", null);
-    // 10 pt past a 10 pt line, then 15: the share ticks up, and what was announced stands.
     const doubled = "about 100% too long for its place: shorten it, or it runs into what's beside it";
     typeInto(editor, "abab");
     expect(editor.store.get().announcement.text).toBe(doubled);
@@ -136,7 +131,6 @@ describe("an edit", () => {
 
   test("a letter no font we ship draws is said to be left out before Enter, as the render will say it after", () => {
     const glyphs = halfWideGlyphs("abcdefghijklmnopqrstuvwxyz ");
-    // Room after it, so the space typed doesn't run it long: the letter is the one thing to say.
     const similar = aSpan({ id: "named", text: "abc", substitute: "Liberation Serif Bold", room_pt: 50 });
     const font = aFont("Times-Roman", { look_alike: "Liberation Serif Bold", glyphs });
     editor = createEditor(FILE, aDoc({ spans: [similar], fonts: [font] }), 2);
@@ -165,19 +159,16 @@ describe("an edit", () => {
   });
 
   test("Up or Down chooses how a long line fits, and the edit takes it while it's offered", () => {
-    // Twenty letters at 5 pt each is 100 pt; one more runs 5 pt past, where every way out is offered.
     const glyphs = halfWideGlyphs("abcdefghijklmnopqrstuvwxyz");
     const long = aSpan({ id: "long", text: "abcdefghijklmnopqrst" });
     const doc = aDoc({ sentences: PSEUDO_SENTENCES, spans: [long], fonts: [aFont("Times-Roman", { glyphs })] });
     editor = createEditor(FILE, doc, 2);
     edit(editor, "long", null);
     typeInto(editor, `${long.text}u`);
-    // Joined as the server joins what's said at once.
     expect(editor.store.get().announcement.text).toBe(
       "about 5% too long for its place: shorten it, or it runs into what's beside it / Up or Down chooses how it fits",
     );
 
-    // From leaving it long, the last, round to the first.
     expect(stepWayOut(editor, 1)).toBe(true);
     expect(editor.store.get().announcement.text).toBe(SENTENCES.options.shrink?.label);
     expect(troublesIn(editor.store.get(), `${long.text}u`).sentences).toEqual([]);
@@ -186,7 +177,6 @@ describe("an edit", () => {
       { kind: "replace", span_id: "long", text: `${long.text}u`, strategy: "shrink" },
     ]);
 
-    // Far longer, only leaving it long is offered: nothing to choose, and the edit is drawn as typed.
     edit(editor, "long", null);
     typeInto(editor, `${long.text}uvwxyz`);
     expect(stepWayOut(editor, 1)).toBe(false);
@@ -223,7 +213,6 @@ describe("an edit", () => {
   });
 
   test("a pasted tab or line separator becomes a space, and a bidi control is dropped, since the server refuses new text with one", () => {
-    // As pasted: a chat wraps a phone number in bidi controls; Pages breaks lines with U+2028.
     typed("own", "\u202A+1 555\t0100\u202C Invoices are\u2028due\u2029by\u0085May");
     expect(editor.store.get().reading.spans.get("own")?.text).toBe("+1 555 0100 Invoices are due by May");
   });
@@ -236,7 +225,6 @@ describe("an edit", () => {
     const announcement = editor.store.get().announcement;
     enter(editor);
     expect(editor.store.get().draft?.text).toBe("  ");
-    // Announced again, for a screen reader pressing Enter: the field stays.
     expect(editor.store.get().announcement.text).toBe(SENTENCES.empty);
     expect(editor.store.get().announcement.count).not.toBe(announcement.count);
     typeInto(editor, "now");
@@ -257,7 +245,6 @@ describe("an edit", () => {
     finish(editor, true, { returnFocus: true, inPlace: true });
     expect(editor.store.get().focusTo).toEqual({ newTextId: 2, inPlace: true });
 
-    // Nothing typed, on a page with no text: its own control.
     editor = createEditor(FILE, { ...DOC, pages: [A4, A4] }, 2);
     openNewTextAt(editor, 1, [300, 300]);
     finish(editor, true, { returnFocus: true, inPlace: true });
@@ -283,7 +270,6 @@ describe("an edit", () => {
 });
 
 describe("a signed document", () => {
-  // Its font has every letter it reads, so what's heard is the signature's sentence alone.
   const glyphs = halfWideGlyphs("was signed is");
   const SIGNED = aDoc({
     spans: [aSpan({ id: "signed", font: "Kept" }), aSpan({ id: "later", page: 1, font: "Kept" })],
@@ -291,7 +277,6 @@ describe("a signed document", () => {
     signed: true,
   });
 
-  /** What's heard as the field on the span "signed" takes focus, the field left as it was after. */
   const heardOnFocus = () => {
     edit(editor, "signed", null);
     fieldFocused(editor);

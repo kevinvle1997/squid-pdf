@@ -1,5 +1,3 @@
-"""Turning edits into real changes: replace, redact, and verify."""
-
 from __future__ import annotations
 
 import io
@@ -79,30 +77,26 @@ from tests.helpers import (
     assert_true,
 )
 
-_LONGER = "!!"  # a few points past the original: within reach of shrink and condense
-_FAR_LONGER = " and Co. Ltd"  # a fifth past it: too far to condense
-_EDGE_PT = 0.5  # how far past the original's end a fitted run may land, in points
+_LONGER = "!!"
+_FAR_LONGER = " and Co. Ltd"
+_EDGE_PT = 0.5
 _HEIGHT_PT = 0.1  # finer than the shrink changes a line's height, coarser than rounding
-_SAME_WIDTH_PT = 0.25  # how far a same-width redraw's ends may move: far below visible
-_SAME_START_PT = 0.25  # how far a redrawn line's start may move: far below visible
-_ONE_EDIT_ADDS_AT_MOST = 20_000  # bytes an edit in one of our faces may add to the file
-# A TrueType font's hinting: code that snaps letters to the screen's pixels.
+_SAME_WIDTH_PT = 0.25
+_SAME_START_PT = 0.25
+_ONE_EDIT_ADDS_AT_MOST = 20_000
 _HINTING = ("fpgm", "prep", "cvt ")
 
 
 def _resolved(engine, index: SpanIndex, edits: Sequence[Edit]) -> Resolved:
-    """`edits` checked against the document, with every span's room read from its page."""
     return resolve(engine, index, free_space=engine.free_space(index), edits=edits)
 
 
 def _apply(engine, edits: Sequence[Edit], index: SpanIndex) -> Applied:
-    """Apply `edits` on every page in memory, as export does before it saves."""
     resolved = _resolved(engine, index, edits)
     return apply_edits(engine, resolved, planned_of(engine, resolved))
 
 
 def _drawn(path, page: int, needle: str) -> dict:
-    """The span on a saved page whose text contains `needle`, as MuPDF reads it back."""
     blocks = pymupdf.open(path)[page].get_text("dict")["blocks"]
     for span in each_span(blocks):
         if needle in span["text"]:
@@ -111,12 +105,10 @@ def _drawn(path, page: int, needle: str) -> dict:
 
 
 def _said(notices: list[Notice]) -> list[tuple[str | int | None, str]]:
-    """Each notice as the user reads it in English, with what it's about."""
     return [(_about(notice), words.render(notice.detail)) for notice in notices]
 
 
 def _about(notice: Notice) -> str | int | None:
-    """What a notice names: its span, an insert's place in the list, or nothing for the file."""
     if isinstance(notice, SpanNotice):
         return notice.span_id
     if isinstance(notice, InsertNotice):
@@ -127,7 +119,6 @@ def _about(notice: Notice) -> str | int | None:
 
 
 def _stored_file(path: str, page: int, font: str) -> bytes:
-    """The font file a saved page stores under the name `font`."""
     doc = pymupdf.open(path)
     [font_object] = [
         font_object
@@ -139,7 +130,6 @@ def _stored_file(path: str, page: int, font: str) -> bytes:
 
 
 def _assert_cut(path, page: int, face: str, text: str) -> None:
-    """`face` is stored cut down, still draws `text`, and keeps its hinting."""
     cut = _stored_file(str(path), page, face)
     shipped = face_bytes(FACES[face])
     assert_at_most(len(cut), len(shipped) - 1, f"bytes {face} stored, cut from {len(shipped)}")
@@ -150,12 +140,10 @@ def _assert_cut(path, page: int, face: str, text: str) -> None:
 
 
 def _squashed(font: str) -> str:
-    """A font's name, subset prefix aside, in lower case with only letters and digits."""
     return "".join(ch for ch in strip_subset(font).lower() if ch.isalnum())
 
 
 def _insert_as_span(insert: Insert) -> Span:
-    """An insert as the span it's measured and drawn as."""
     return new_text(
         insert.page,
         origin=insert.origin,
@@ -167,14 +155,12 @@ def _insert_as_span(insert: Insert) -> Span:
 
 
 def _substituted(engine) -> Span:
-    """A span in a font the file only references, drawn by its look-alike."""
     return next(
         s for s in engine.index() if s.page == REFERENCED_PAGE and s.text.startswith("Made")
     )
 
 
 def test_redaction_really_removes_the_text(engine, tmp_path):
-    """A covering rectangle would pass a visual check and fail this."""
     index = engine.index()
     span = next(s for s in index if s.page == EMBEDDED_PAGE)
     edits = [Redact(span.id)]
@@ -191,14 +177,12 @@ def test_redaction_really_removes_the_text(engine, tmp_path):
     saved = pymupdf.open(tmp_path / "redacted.pdf")
     text = "".join(page.get_text() for page in saved.pages())
     assert_not_in(span.text, text, "the saved page after a redact")
-    # Not only the whole line: nothing at all is left where it was.
     box = pymupdf.Rect(span.bbox.x0, span.bbox.y0, span.bbox.x1, span.bbox.y1)
     left = "".join(saved[span.page].get_textbox(box).split())
     assert_equal(left, "", "letters left in the redacted span's box")
 
 
 def test_text_under_a_black_box_is_not_gone(pdf, tmp_path):
-    """What verified redaction is for: covered text is still in the file."""
     with open_pdf(pdf) as engine:
         span = next(iter(engine.index()))
     covered = tmp_path / "covered.pdf"
@@ -220,7 +204,6 @@ def test_text_under_a_black_box_is_not_gone(pdf, tmp_path):
 
 
 def test_redraws_in_one_font_embed_it_once_per_page(engine, tmp_path):
-    """A resource per redrawn span piled up on the page."""
     index = engine.index()
     embedded = [s for s in index if s.page == EMBEDDED_PAGE]
     assert_at_least(len(embedded), 2, "spans in one font on page 2")
@@ -240,7 +223,7 @@ def test_an_underline_under_a_replaced_span_survives(tmp_path):
     doc = pymupdf.open()
     page = doc.new_page()
     page.insert_text((72, 100), "Total due: 48,500", fontname="tiro", fontsize=11)
-    page.draw_line((73, 101.5), (148, 101.5))  # just under the baseline, inside the text's box
+    page.draw_line((73, 101.5), (148, 101.5))
     doc.save(path)
 
     with open_pdf(str(path)) as engine:
@@ -257,11 +240,6 @@ def test_an_underline_under_a_replaced_span_survives(tmp_path):
 def test_a_character_the_font_lacks_draws_the_whole_run_in_the_substitute(
     engine, pdf, tmp_path
 ):
-    """The subset has no é. Drawn in it, the letter would be blank.
-
-    No face we ship has 中, so that is left out, and the user is told.
-    Only Liberation Serif is cut; the document's own font is left alone.
-    """
     index = engine.index()
     span = next(s for s in index if s.page == EMBEDDED_PAGE and "14 March" in s.text)
     out, unedited = tmp_path / "accented.pdf", tmp_path / "unedited.pdf"
@@ -281,7 +259,6 @@ def test_a_character_the_font_lacks_draws_the_whole_run_in_the_substitute(
     )
     added = out.stat().st_size - unedited.stat().st_size
     assert_at_most(added, _ONE_EDIT_ADDS_AT_MOST, "bytes the edit added to the file")
-    # The document's own font still draws the other line, and nothing in it changed.
     own = strip_subset(span.font)
     [own_name] = [f[3] for f in pymupdf.open(pdf)[EMBEDDED_PAGE].get_fonts() if own in f[3]]
     assert_equal(
@@ -292,10 +269,6 @@ def test_a_character_the_font_lacks_draws_the_whole_run_in_the_substitute(
 
 
 def test_a_look_alike_with_the_same_widths_moves_nothing(engine, tmp_path, monkeypatch):
-    """Times is only named here; Liberation Serif redraws it and ends where it did.
-
-    Here the face can't be cut, so it goes in whole, and save says so.
-    """
     monkeypatch.setattr(Subsetter, "subset", cannot_cut)
     index = engine.index()
     span = _substituted(engine)
@@ -317,7 +290,6 @@ def test_a_look_alike_with_the_same_widths_moves_nothing(engine, tmp_path, monke
 
 
 def test_letters_the_look_alike_lacks_draw_the_whole_line_in_the_broadest_face(tmp_path):
-    """Caladea has no Greek, so the line goes to Noto Serif, whole, and the fit said so."""
     path = named_only(str(tmp_path / "cambria.pdf"), "Cambria")
     out = str(tmp_path / "greek.pdf")
     with open_pdf(path) as engine:
@@ -338,11 +310,6 @@ def test_letters_the_look_alike_lacks_draw_the_whole_line_in_the_broadest_face(t
 
 
 def test_new_text_in_a_pages_font_as_its_text_names_it_is_drawn_in_that_font(tmp_path):
-    """An insert named as the text reads its font (the file's inside name) is the page's own.
-
-    The page lists the font as Liberation Serif Regular; its text, and so the browser, reads
-    LiberationSerif, the name inside the font's file.
-    """
     doc = pymupdf.open()
     page = doc.new_page()
     page.insert_font(fontname="own", fontbuffer=face_bytes(FACES["Liberation Serif Regular"]))
@@ -364,16 +331,13 @@ def test_new_text_in_a_pages_font_as_its_text_names_it_is_drawn_in_that_font(tmp
 @pytest.mark.parametrize(
     ("font", "text", "face", "said"),
     [
-        # A face we ship draws it, as asked.
         ("Caveat Bold", "Signed", "Caveat Bold", None),
-        # It lacks Greek: the whole line goes to the broadest face of its kind.
         (
             "Caveat Bold",
             "Signed Ω",
             "Noto Sans Bold",
             words.sentence("missing").format(chars="Ω", font="Noto Sans Bold"),
         ),
-        # A name that's neither ours nor on the page: a look-alike, and the fit says so.
         (
             "Comic Sans",
             "Signed",
@@ -401,9 +365,8 @@ def test_new_text_is_drawn_in_the_face_its_fit_names(engine, tmp_path, font, tex
 
 
 def test_a_space_the_face_lacks_sends_the_line_to_one_that_has_it(engine, tmp_path):
-    """Liberation Mono has no narrow no-break space: it drew as .notdef and ran 8 pt long."""
     out = tmp_path / "spaced.pdf"
-    text = "15\u202f000 EUR"  # French thousands, with a narrow no-break space
+    text = "15\u202f000 EUR"
     insert = Insert(REFERENCED_PAGE, (72.0, 700.0), text, 20.0, "Liberation Mono Regular")
 
     fit = insert_fit(engine, insert).report
@@ -434,7 +397,6 @@ def test_a_fitting_strategy_ends_the_run_where_the_original_did(
 
     _apply(engine, [Replace(span.id, span.text + _LONGER, strategy)], index)
     engine.save(str(out))
-    # The same text left long, for its height: the look-alike's box, not the original's.
     with open_pdf(pdf) as plain:
         _apply(plain, [Replace(span.id, span.text + _LONGER)], plain.index())
         plain.save(str(as_is))
@@ -466,9 +428,7 @@ def test_a_strategy_not_offered_is_drawn_as_is(engine, tmp_path):
 def test_new_text_with_a_letter_no_font_has_is_drawn_without_it_as_its_fit_said(
     engine, tmp_path
 ):
-    """What the fit promised is what was drawn: Caveat, 中 left out and said so."""
     out = tmp_path / "signed.pdf"
-    # New text in the face the user chose; 中 no font of ours can draw.
     signed = Insert(REFERENCED_PAGE, (72.0, 700.0), "Signed: Zoë 中", 12.0, "Caveat Regular")
 
     fit = insert_fit(engine, signed).report
@@ -484,12 +444,7 @@ def test_new_text_with_a_letter_no_font_has_is_drawn_without_it_as_its_fit_said(
 
 
 def _three_lines(path: str, *, spacing: float, font: str) -> str:
-    """Three 12 pt lines, `spacing` times their size apart, in one of MuPDF's own fonts.
-
-    Word and LaTeX set lines about 1.15 to 1.2 times their size apart; at that,
-    each letter's box (from its font's ascender to its descender) reaches the
-    lines above and below.
-    """
+    """At 1.15 to 1.2 times their size apart, as Word sets them, letters reach the next line."""
     doc = pymupdf.open()
     page = doc.new_page()
     for number, line in enumerate(_LINES):
@@ -527,7 +482,6 @@ def test_an_edit_leaves_the_lines_above_and_below_alone(tmp_path, edit, font, sp
 
 
 def test_an_edit_leaves_the_text_under_the_files_own_redaction_mark(tmp_path):
-    # The file holds a redaction mark over the last line, never applied: its owner's to apply.
     doc = pymupdf.open(_three_lines(str(tmp_path / "lines.pdf"), spacing=1.2, font="helv"))
     page = doc[0]
     page.add_redact_annot(page.search_for(_LINES[2])[0], fill=(0, 0, 0))
@@ -552,7 +506,6 @@ def test_an_edit_leaves_the_text_under_the_files_own_redaction_mark(tmp_path):
 
 
 def test_an_edit_leaves_a_touching_word_in_another_font_alone(tmp_path):
-    # "Jones" starts half a point inside the colon's box, as kerning leaves it.
     doc = pymupdf.open()
     page = doc.new_page()
     page.insert_text((72, 100), "Total:", fontname="helv", fontsize=_LINE_SIZE)
@@ -573,7 +526,6 @@ def test_an_edit_leaves_a_touching_word_in_another_font_alone(tmp_path):
 
 
 def test_an_edit_to_turned_text_leaves_the_lines_beside_it_alone(tmp_path):
-    # Three lines reading bottom to top, as a margin note or a stamp is set.
     doc = pymupdf.open()
     page = doc.new_page()
     for number, line in enumerate(_LINES):
@@ -594,22 +546,20 @@ def test_an_edit_to_turned_text_leaves_the_lines_beside_it_alone(tmp_path):
     assert_not_in("48,500", left, "the redacted line")
 
 
-_INK = 128  # a pixel darker than this, out of 255, is text drawn, not paper
+_INK = 128
 _ROUND_ONE = "Made on 15 June 2026 between Wescott and Rowe."
-_ROUND_TWO = "Signed by Quinn Jakobsz, 16 June 2026."  # letters round one didn't use
-_ROUND_FACE = "Liberation Serif Regular"  # what draws round one: the page's Times, only named
+_ROUND_TWO = "Signed by Quinn Jakobsz, 16 June 2026."
+_ROUND_FACE = "Liberation Serif Regular"
 
 
 def _inked(path: str, page: int, text: str) -> bool:
-    """Whether `text` on the page puts ink down, not only reads back."""
     drawn = pymupdf.open(path)[page]
     [box] = drawn.search_for(text)
     return min(drawn.get_pixmap(clip=box).samples) < _INK
 
 
 def test_an_export_edited_again_keeps_both_rounds_drawn(pdf, tmp_path):
-    # Round two adds text on the same page in round one's face: it must not write into
-    # round one's copy, cut to round one's letters, nor cut that copy again to its own.
+    # Round two must not write into round one's copy, cut to its letters, nor cut it again.
     first, second = str(tmp_path / "first.pdf"), str(tmp_path / "second.pdf")
     with open_pdf(pdf) as engine:
         index = engine.index()
@@ -629,7 +579,6 @@ def test_an_export_edited_again_keeps_both_rounds_drawn(pdf, tmp_path):
 
 
 def test_a_letter_no_font_has_leaves_the_line_in_its_own_font(engine, tmp_path):
-    """No face we ship has 中. Switching the line's font wouldn't draw it either."""
     index = engine.index()
     span = next(s for s in index if s.page == EMBEDDED_PAGE and s.text.startswith("Invoices"))
     text = span.text.replace("thirty", "中 thirty")
@@ -640,7 +589,6 @@ def test_a_letter_no_font_has_leaves_the_line_in_its_own_font(engine, tmp_path):
     engine.save(str(out))
 
     drawn = _drawn(out, EMBEDDED_PAGE, "Invoices")
-    # Spelled "NimbusRoman-Regular" once redrawn, "Nimbus Roman Regular" as found.
     assert_equal(_squashed(drawn["font"]), _squashed(span.font), "the font that drew it")
     left_out = words.sentence("will_leave_out").format(letters="中")
     assert_equal([words.render(part) for part in fit.describe()], [left_out], "the fit")
@@ -648,34 +596,19 @@ def test_a_letter_no_font_has_leaves_the_line_in_its_own_font(engine, tmp_path):
     assert_equal(_said(applied.notices), [notice], "what render tells the user")
 
 
-# The links on `_linked`'s page, each filed under a name (/NM) saying what it is, as the
-# file writes what it looks like and what it does.
 _LINKS = {
-    # The edited line's three, side by side along it.
-    # A border and a colour of its own, which a link remade from PyMuPDF's list lost.
     "address": "/Border[0 0 2]/C[1 0 0]/A<</S/URI/URI(mailto:sales@example.com)>>",
-    # A script, which PyMuPDF's list of links leaves out: it never came back.
+    # A script, which PyMuPDF's list of links leaves out.
     "script": "/A<</S/JavaScript/JS(print\\(\\))>>",
-    # A page that's gone, as a tool that deletes pages leaves it: it came back as page 1.
     "gone": "/Dest[null/XYZ 0 0 0]",
-    # The other line's, which no edit touches: a form reset, which PyMuPDF's list leaves
-    # out too, so a link looked for in that list was never found to delete.
     "reset": "/A<</S/ResetForm>>",
 }
-# Where the page is shown from: not from 0,0, and past the paper (its MediaBox) on two sides.
 _CROPPED = "[20 30 640 900]"
 
 
 def _linked(path: str, turn_cw: QuarterTurn) -> str:
-    """A line covered by three links of different kinds, and a link on a second line.
-
-    Each written by hand, as `_LINKS` says; the page is cropped and turned after, so their
-    areas are in the PDF's own coordinates. The lines' font is stored in the file, trimmed,
-    so a replace draws in the file's own codes.
-    """
     doc = pymupdf.open()
     page = doc.new_page()
-    # "emb" is only the font's resource name.
     page.insert_font(fontname="emb", fontbuffer=face_bytes(FACES["Liberation Sans Regular"]))
     page.insert_text((72, 100), "Contact: sales@example.com", fontname="emb", fontsize=12)
     page.insert_text((72, 200), "Clear the form", fontname="emb", fontsize=12)
@@ -690,7 +623,7 @@ def _linked(path: str, turn_cw: QuarterTurn) -> str:
     ]
     references = []
     for (name, written), area in zip(_LINKS.items(), areas, strict=True):
-        x0, y0, x1, y1 = area * page.transformation_matrix  # in the PDF's own coordinates
+        x0, y0, x1, y1 = area * page.transformation_matrix
         link_xref = doc.get_new_xref()
         doc.update_object(
             link_xref,
@@ -706,18 +639,12 @@ def _linked(path: str, turn_cw: QuarterTurn) -> str:
 
 
 def _line_starts(path: str) -> dict[str, tuple[float, float]]:
-    """Where each line on the first page starts, on its baseline, by its first word."""
     blocks = pymupdf.open(path)[0].get_text("dict")["blocks"]
     return {span["text"].split()[0]: span["origin"] for span in each_span(blocks)}
 
 
 def _annotations_on(path: str) -> list[tuple[str, str]]:
-    """Each annotation on the first page, in the page's order: its name (/NM), its object.
-
-    The object is as the file writes it, so it's compared whole. The order is the page's
-    tab order, and decides which link a click follows where two overlap, so an edit keeps
-    it too.
-    """
+    """In the page's order: it decides which link a click follows where two overlap."""
     doc = pymupdf.open(path)
     return [
         (doc.xref_get_key(xref, "NM")[1], doc.xref_object(xref, compressed=True))
@@ -740,7 +667,6 @@ def _annotations_on(path: str) -> list[tuple[str, str]]:
 def test_an_edit_takes_only_its_line_and_keeps_the_links_it_should(
     tmp_path, edit, kept, words, turn_cw
 ):
-    """An edit takes only its line; a replace keeps each link, a redaction drops those on it."""
     path = _linked(str(tmp_path / "linked.pdf"), turn_cw)
     out = str(tmp_path / "out.pdf")
     with open_pdf(path) as engine:
@@ -761,7 +687,6 @@ def test_an_edit_takes_only_its_line_and_keeps_the_links_it_should(
     )
     said = sorted(pymupdf.open(out)[0].get_text().split())
     assert_equal(said, words, "the edited line's words gone, and the other line's kept")
-    # A line redrawn in the file's own codes starts where the old one did.
     original_starts = _line_starts(path)
     for first_word, (x, y) in _line_starts(out).items():
         original_x, original_y = original_starts[first_word]
@@ -777,10 +702,6 @@ def test_an_edit_takes_only_its_line_and_keeps_the_links_it_should(
     ids=["file 90", "file 180", "file 270", "an edit's 90", "file 90 and an edit's 180"],
 )
 def test_new_text_reads_upright_on_a_page_the_viewer_turns(tmp_path, file_turn, edit_turn):
-    """Page boxes are unrotated; new text is turned back, so it reads as the page is shown.
-
-    A turn an edit adds counts as the file's own does.
-    """
     doc = pymupdf.open()
     doc.new_page().set_rotation(file_turn)
     path, out = str(tmp_path / "turned.pdf"), str(tmp_path / "out.pdf")
@@ -809,18 +730,12 @@ def test_new_text_reads_upright_on_a_page_the_viewer_turns(tmp_path, file_turn, 
 
 @dataclass(frozen=True, slots=True)
 class _Restyle:
-    """An edit kind the code doesn't know: a span restyled. The browser can't send it."""
-
     span_id: str
     text: str
     kind: Literal["restyle"] = "restyle"
 
 
 def test_an_edit_of_a_kind_nothing_handles_fails_loudly(engine):
-    """It used to be erased and never redrawn, and nothing said so.
-
-    mypy names every place a new kind must be handled; this is the same, at run time.
-    """
     span = _substituted(engine)
     restyle = cast(Edit, _Restyle(span.id, span.text))
 
@@ -829,7 +744,6 @@ def test_an_edit_of_a_kind_nothing_handles_fails_loudly(engine):
 
 
 def _three_pages(path: str) -> str:
-    """Three pages, one line each; the middle one's line is the one to redact."""
     doc = pymupdf.open()
     for line in ("Cover page", "SECRET 4111 2222", "Appendix"):
         doc.new_page().insert_text((72, 96), line, fontname="helv", fontsize=12)
@@ -839,37 +753,27 @@ def _three_pages(path: str) -> str:
 
 @dataclass(frozen=True, slots=True)
 class _NotErasingDriver:
-    """MuPDF's driver, whose erase leaves every letter and says it left none."""
-
     driver: PdfDriver
 
     def erase_text(self, page: int, boxes: list[Rect]) -> list[str]:
-        """Nothing erased, and nothing read as left in any box."""
         return ["" for _box in boxes]
 
     def __getattr__(self, name: str) -> Any:
-        """Every other call, as the real driver answers it."""
         return getattr(self.driver, name)
 
 
 def _not_erasing(path: str) -> PdfDriver:
-    """A driver factory for `open_pdf`: MuPDF's, with an erase that erases nothing."""
     # A PdfDriver through __getattr__, which mypy reads and ty doesn't yet.
     return cast(PdfDriver, _NotErasingDriver(open_driver(path)))
 
 
 def test_the_redaction_check_reads_each_span_where_the_page_order_put_it(tmp_path):
-    """Whoever renumbers the pages, the check reads the order worked out once.
-
-    The erase is what's broken here: the text really is still in the file, one
-    page earlier than it was, so reading it on its old page would pass.
-    """
     path, out = _three_pages(str(tmp_path / "three.pdf")), str(tmp_path / "out.pdf")
     with open_pdf(path, driver_factory=_not_erasing) as engine:
         index = engine.index()
         [secret] = [span for span in index if span.text.startswith("SECRET")]
         resolved = _resolved(engine, index, [Redact(secret.id)])
-        order = page_order(resolved, [1, 2])  # the cover page left out
+        order = page_order(resolved, [1, 2])
         planned = planned_of(engine, resolved)
         edited = edited_by(planned.steps)
         redactions = redactions_of(engine, resolved, redacted_in(resolved), edited=edited)
@@ -885,13 +789,10 @@ def test_the_redaction_check_reads_each_span_where_the_page_order_put_it(tmp_pat
 
 @dataclass(frozen=True, slots=True)
 class _KeepingDriver:
-    """MuPDF's driver, whose erase leaves the letters of a box holding `at`, and says so."""
-
     driver: PdfDriver
     at: tuple[float, float]
 
     def erase_text(self, page: int, boxes: list[Rect]) -> list[str]:
-        """A box holding `at` left as it is, still reading its letters; the others erased."""
         kept = [box for box in boxes if self._holds(box)]
         still = iter(self.driver.text_in(page, kept))
         left = iter(
@@ -900,17 +801,14 @@ class _KeepingDriver:
         return [next(still) if self._holds(box) else next(left) for box in boxes]
 
     def _holds(self, box: Rect) -> bool:
-        """Whether `box` holds the point whose letters are kept."""
         x, y = self.at
         return box.x0 <= x <= box.x1 and box.y0 <= y <= box.y1
 
     def __getattr__(self, name: str) -> Any:
-        """Every other call, as the real driver answers it."""
         return getattr(self.driver, name)
 
 
 def test_a_line_one_of_whose_runs_the_erase_cannot_clear_is_put_back_as_it_was(tmp_path):
-    """Drawn moved, its runs would sit apart from the one left: the line goes back whole."""
     path, out = str(tmp_path / "line.pdf"), str(tmp_path / "out.pdf")
     doc = pymupdf.open()
     places = write_runs(doc.new_page(), SENTENCE, origin=(72, 100), size=10)
@@ -939,17 +837,15 @@ def test_a_line_one_of_whose_runs_the_erase_cannot_clear_is_put_back_as_it_was(t
 
 
 def _keeping(path: str, *, at: tuple[float, float]) -> PdfDriver:
-    """A driver factory for `open_pdf`: MuPDF's, whose erase leaves the letters at `at`."""
     # A PdfDriver through __getattr__, which mypy reads and ty doesn't yet.
     return cast(PdfDriver, _KeepingDriver(open_driver(path), at))
 
 
-# The cases the browser reads its pages shown from too (react/src/editing/project.test.ts).
+# The browser's tests read these cases too.
 _PAGE_ORDER = json.loads(Path(__file__).with_name("page_order_cases.json").read_text())
 
 
 def _blank_pages(path: str, count: int) -> str:
-    """`count` empty pages: the order is all a case asks of them."""
     doc = pymupdf.open()
     for _ in range(count):
         doc.new_page()
@@ -959,7 +855,6 @@ def _blank_pages(path: str, count: int) -> str:
 
 @pytest.mark.parametrize("case", _PAGE_ORDER["cases"], ids=lambda case: case["what"])
 def test_the_pages_kept_are_the_ones_the_browser_shows(case, tmp_path):
-    """A download needs a page: a delete of the last page left is skipped, as shown."""
     edits = [DeletePage(edit["page"]) for edit in case["edits"]]
     with open_pdf(_blank_pages(str(tmp_path / "pages.pdf"), case["page_count"])) as engine:
         resolved = _resolved(engine, engine.index(), edits)

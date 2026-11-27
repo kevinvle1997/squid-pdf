@@ -1,9 +1,3 @@
-"""The rules the docstrings state, checked: what may import, what runs on the loop, and state.
-
-Read from the source, so a rule holds however deep an import hides, even one
-inside a function.
-"""
-
 from __future__ import annotations
 
 import ast
@@ -24,7 +18,6 @@ _SRC = _ROOT / "src"
 
 
 def _imports(tree: ast.Module) -> set[str]:
-    """Every module a file imports, counting `P.N` for each `from P import N`."""
     names: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -36,7 +29,6 @@ def _imports(tree: ast.Module) -> set[str]:
 
 
 def _module(path: Path) -> str:
-    """`src/squidpdf/core/pdf/mupdf.py` -> `squidpdf.core.pdf.mupdf`."""
     parts = path.relative_to(_SRC).with_suffix("").parts
     return ".".join(parts[:-1] if parts[-1] == "__init__" else parts)
 
@@ -58,7 +50,6 @@ _WEB = [
 
 
 def _within(name: str, package: str) -> bool:
-    """Whether module `name` is `package` or inside it."""
     return name == package or name.startswith(package + ".")
 
 
@@ -119,7 +110,6 @@ def test_the_import_rule_holds(importers, imported, allowed):
 
 
 def test_only_logcontroller_calls_the_event_loops_exception_handler():
-    """asyncio logs what that handler is given, past LogController and the import rule above."""
     breaking = [
         module
         for module, tree in _TREES.items()
@@ -131,47 +121,38 @@ def test_only_logcontroller_calls_the_event_loops_exception_handler():
 
 
 def _in_body(function: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterator[ast.AST]:
-    """Every node a function runs itself, not those of a function defined inside it."""
     waiting: list[ast.AST] = list(function.body)
     while waiting:
         node = waiting.pop()
         yield node
-        # Defined here but run elsewhere: its body isn't the coroutine's.
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
             continue
         waiting.extend(ast.iter_child_nodes(node))
 
 
-# The modules that read and write a document's folder: the store, and the user's font copies.
 _DISK_MODULES = ("store", "attached")
-# What a controller or a job calls the store object by: `documents`, or `self.documents`.
 _STORE_OBJECT = "documents"
 
 
 def _disk_name_called(node: ast.AST) -> str | None:
-    """The disk module's or the store object's `<name>` a node calls; None if neither."""
     if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)):
         return None
     called = node.func
     holder = called.value
-    # A module named for the disk, or the store object by name.
     if isinstance(holder, ast.Name) and holder.id in (*_DISK_MODULES, _STORE_OBJECT):
         return f"{holder.id}.{called.attr}"
-    # The store object as a field: `self.documents`.
     if isinstance(holder, ast.Attribute) and holder.attr == _STORE_OBJECT:
         return f"{_STORE_OBJECT}.{called.attr}"
     return None
 
 
 def _helper_called(node: ast.AST) -> str | None:
-    """The plain function a node calls by name, as `_read(folder)`; None if not such a call."""
     if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
         return node.func.id
     return None
 
 
 def _disk_helpers(functions: list[ast.FunctionDef]) -> dict[str, str]:
-    """Each of these sync functions that reaches the disk, itself or through another of them."""
     reaching: dict[str, str] = {}
     while True:
         found = {
@@ -187,12 +168,10 @@ def _disk_helpers(functions: list[ast.FunctionDef]) -> dict[str, str]:
 
 
 def _disk_calls(tree: ast.Module) -> Iterator[tuple[str, str]]:
-    """Each coroutine in `tree`, and each disk call it makes on the loop, or a helper of it."""
     module_level = [node for node in tree.body if isinstance(node, ast.FunctionDef)]
     for function in ast.walk(tree):
         if not isinstance(function, ast.AsyncFunctionDef):
             continue
-        # Sync functions it may call by name: the module's, and those it defines.
         defined = [node for node in ast.walk(function) if isinstance(node, ast.FunctionDef)]
         helpers = _disk_helpers(module_level + defined)
         for node in _in_body(function):
@@ -205,7 +184,6 @@ def _disk_calls(tree: ast.Module) -> Iterator[tuple[str, str]]:
 
 
 def test_a_coroutine_reaches_the_store_only_through_a_thread():
-    """A coroutine never calls the store, nor the font copies, itself or through a helper."""
     breaking = [
         f"{module}.{coroutine}: {name}"
         for module, tree in _TREES.items()
@@ -214,12 +192,10 @@ def test_a_coroutine_reaches_the_store_only_through_a_thread():
     assert_equal(breaking, [], "disk calls on the event loop, not through asyncio.to_thread")
 
 
-# The command line opens the files it's handed in core's default driver: it injects none.
 _OPENS_IN_THE_DEFAULT = ("squidpdf.core", "squidpdf.cli")
 
 
 def _names_for(tree: ast.Module, name: str) -> set[str]:
-    """`name`, and each name `tree` imports it as."""
     imported_as = {
         alias.asname
         for node in ast.walk(tree)
@@ -231,7 +207,6 @@ def _names_for(tree: ast.Module, name: str) -> set[str]:
 
 
 def _opens_without_a_driver(tree: ast.Module) -> Iterator[int]:
-    """The line of each `open_pdf(...)`, by any name, that names no driver of its own."""
     names = _names_for(tree, "open_pdf")
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
@@ -242,7 +217,7 @@ def _opens_without_a_driver(tree: ast.Module) -> Iterator[int]:
         if not (by_name or by_attribute):
             continue
         given = {keyword.arg: keyword.value for keyword in node.keywords}
-        factory = given.get("driver_factory")  # .get: a missing one is what's looked for
+        factory = given.get("driver_factory")
         names_the_default = (
             isinstance(factory, ast.Name) and factory.id == "DEFAULT_DRIVER_FACTORY"
         )
@@ -251,7 +226,6 @@ def _opens_without_a_driver(tree: ast.Module) -> Iterator[int]:
 
 
 def test_every_feature_opens_a_pdf_in_the_driver_it_was_given():
-    """The driver is injected once, in the app's store: an open naming none would skip it."""
     breaking = [
         f"{module}:{line}"
         for module, tree in _TREES.items()
@@ -262,7 +236,6 @@ def test_every_feature_opens_a_pdf_in_the_driver_it_was_given():
 
 
 def _names(tree: ast.Module) -> set[str]:
-    """Every name `tree` reads, imports or reaches as an attribute."""
     found: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Name):
@@ -299,21 +272,14 @@ def test_only_the_edges_name_a_default(name, allowed):
     assert_equal(breaking, [], f"modules naming {name}")
 
 
-# Core's own modules and packages: outside core, `squidpdf.core` is the only one to import.
 _CORE_INSIDE = [name for name in _MODULES if name.startswith("squidpdf.core.")]
 
 
 def _past_core_door(name: str) -> bool:
-    """Whether an imported name is one of core's modules, or inside one."""
     return any(_within(name, inside) for inside in _CORE_INSIDE)
 
 
 def test_outside_core_squidpdf_core_is_the_only_way_in():
-    """A feature imports `from squidpdf.core import ...`, never one of core's modules.
-
-    So core can move its insides, and nothing outside names the driver. `from squidpdf.core
-    import Span` reads as `squidpdf.core.Span`, which is no module, so only one past it counts.
-    """
     breaking = [
         module
         for module, imports in _MODULES.items()
@@ -324,15 +290,10 @@ def test_outside_core_squidpdf_core_is_the_only_way_in():
 
 
 def test_nothing_inside_imports_the_package_itself():
-    """`squidpdf` re-exports editing for outside callers: core importing it imports a feature.
-
-    The rules above can't see it: `from squidpdf import Edit` names no feature.
-    """
     breaking = [module for module, imports in _MODULES.items() if "squidpdf" in imports]
     assert_equal(breaking, [], "modules importing the squidpdf package itself")
 
 
-# Core's packages, lowest first: each imports only from its own row and the rows above it.
 # `core.pdf.driver` is above `core.pdf`: text and fonts use it, and MuPDF's driver uses fonts.
 _CORE_ORDER = (
     ("squidpdf.core.types", "squidpdf.core.constants"),
@@ -350,12 +311,10 @@ _CORE_ROWS = {package: row for row, packages in enumerate(_CORE_ORDER) for packa
 
 
 def _core_package(name: str) -> str:
-    """The narrowest of `_CORE_ORDER`'s packages a name inside core is in."""
     return max((package for package in _CORE_ROWS if _within(name, package)), key=len)
 
 
 def test_each_core_package_imports_only_those_before_it_in_one_order():
-    """No core package imports one built on it, so no library's driver needs the engine."""
     breaking = sorted(
         {
             f"{module} imports {_core_package(name)}"
@@ -370,7 +329,6 @@ def test_each_core_package_imports_only_those_before_it_in_one_order():
 
 
 def test_every_core_module_is_in_a_package_the_order_lists():
-    """One the order leaves out would read as core's top row, and escape the check above."""
     unlisted = [
         module
         for module in _MODULES
@@ -381,20 +339,15 @@ def test_every_core_module_is_in_a_package_the_order_lists():
     assert_equal(unlisted, [], "core modules in no package of _CORE_ORDER")
 
 
-# How a class holds its state (rules/backend/python.md, Data): in public fields, set when it's
-# made, and changed later only by a holder of changing state, through its own methods.
-
 _EXCEPTIONS_BUILT_IN = {
     name
     for name, value in vars(builtins).items()
     if isinstance(value, type) and issubclass(value, BaseException)
 }
-# Where an object's fields are set as it's made, so setting them there isn't changing them.
 _MAKERS = ("__init__", "__post_init__")
 
 
 def _classes() -> Iterator[tuple[str, ast.ClassDef]]:
-    """Every class in src, with the module it's in."""
     for module, tree in _TREES.items():
         for node in ast.walk(tree):
             if isinstance(node, ast.ClassDef):
@@ -402,14 +355,12 @@ def _classes() -> Iterator[tuple[str, ast.ClassDef]]:
 
 
 def _base_name(base: ast.expr) -> str:
-    """The name a base goes by: `Problem`, or `FileDataError` for `pymupdf.FileDataError`."""
     if isinstance(base, ast.Attribute):
         return base.attr
     return base.id if isinstance(base, ast.Name) else ""
 
 
 def _exceptions() -> set[str]:
-    """Every exception class in src by name, and Python's own, whatever it derives from."""
     names = set(_EXCEPTIONS_BUILT_IN)
     classes = [node for _module, node in _classes()]
     while True:
@@ -422,7 +373,6 @@ def _exceptions() -> set[str]:
 
 
 def _set_on_self(method: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterator[str]:
-    """Each field a method sets on `self`, by name, in tuples and nested functions too."""
     for node in ast.walk(method):
         targets: list[ast.expr] = []
         if isinstance(node, ast.Assign):
@@ -441,7 +391,6 @@ def _set_on_self(method: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterator[str
 
 
 def _fields_set(node: ast.ClassDef) -> Iterator[tuple[str, str]]:
-    """Each field a class's own methods set on `self`, and the method that sets it."""
     for method in node.body:
         if isinstance(method, (ast.FunctionDef, ast.AsyncFunctionDef)):
             for name in _set_on_self(method):
@@ -449,19 +398,15 @@ def _fields_set(node: ast.ClassDef) -> Iterator[tuple[str, str]]:
 
 
 def _is_holder(node: ast.ClassDef) -> bool:
-    """Whether a class is `@dataclass(slots=True)`, not frozen: a holder of changing state."""
     for decorator in node.decorator_list:
-        # A bare `@dataclass`, or another decorator: no options to read.
         if not isinstance(decorator, ast.Call) or _base_name(decorator.func) != "dataclass":
             continue
         options = {kw.arg: ast.literal_eval(kw.value) for kw in decorator.keywords}
-        # .get: an option left out takes dataclass's default, False for both.
         return options.get("slots") is True and options.get("frozen") is not True
     return False
 
 
 def test_no_class_holds_its_state_in_a_private_attribute():
-    """`self._x` hides what an object holds: a reader would search every method to learn it."""
     breaking = [
         f"{module}.{node.name}.{method}: self.{name}"
         for module, node in _classes()
@@ -472,7 +417,6 @@ def test_no_class_holds_its_state_in_a_private_attribute():
 
 
 def test_only_an_exception_sets_its_fields_in_init():
-    """Any other is a dataclass: its fields at the top, set whole as it's made, never after."""
     exceptions = _exceptions()
     breaking = [
         f"{module}.{node.name}: self.{name}"
@@ -485,7 +429,6 @@ def test_only_an_exception_sets_its_fields_in_init():
 
 
 def test_only_a_holder_changes_its_fields_after_it_is_made():
-    """A class made of parts is frozen; one that changes is `@dataclass(slots=True)`."""
     breaking = [
         f"{module}.{node.name}.{method}: self.{name}"
         for module, node in _classes()
@@ -496,8 +439,7 @@ def test_only_a_holder_changes_its_fields_after_it_is_made():
     assert_equal(breaking, [], "fields changed after an object is made, outside a holder")
 
 
-# Tables kept out of a constants.py and out of their one reader on purpose, each with why
-# (rules/backend/python.md, Constants).
+# Tables kept out of a constants.py and out of their one reader on purpose, each with why.
 _TABLES_ELSEWHERE = {
     "QUARTER_TURNS": "type data several modules read, beside its type, QuarterTurn",
     "CATALOG": "the faces we ship: data about files, not tuning, in core/fonts/catalog.py",
@@ -507,11 +449,6 @@ _TABLES_ELSEWHERE = {
 
 
 def _is_table(value: ast.expr) -> bool:
-    """Whether a value is written as a table: a dict, or a tuple or list of rows.
-
-    A row is a tuple or a call (`Failure(...)`), spread with `*` or not. A short
-    tuple of literals (`("CFF ", "CFF2")`) is a value, not a table.
-    """
     if isinstance(value, (ast.Dict, ast.DictComp)):
         return True
     if not isinstance(value, (ast.Tuple, ast.List)):
@@ -521,7 +458,6 @@ def _is_table(value: ast.expr) -> bool:
 
 
 def _assignments(tree: ast.Module) -> Iterator[tuple[ast.expr, ast.expr]]:
-    """Each `NAME = value` or `NAME: type = value` at a module's top level: target, value."""
     for node in tree.body:
         if isinstance(node, ast.Assign) and len(node.targets) == 1:
             yield node.targets[0], node.value
@@ -530,7 +466,6 @@ def _assignments(tree: ast.Module) -> Iterator[tuple[ast.expr, ast.expr]]:
 
 
 def _tables() -> Iterator[tuple[str, str]]:
-    """Each table a module outside a constants.py names at its top level: module, name."""
     for module, tree in _TREES.items():
         if module.endswith(".constants"):
             continue
@@ -540,11 +475,6 @@ def _tables() -> Iterator[tuple[str, str]]:
 
 
 def test_a_table_outside_a_constants_py_is_private_unless_named():
-    """A table several modules read goes in a constants.py; one module's stays private to it.
-
-    Any name counts, not only an UPPER_SNAKE one: lower case doesn't make a table less of
-    one, and a dict that functions fill is a holder's job (rules/backend/python.md, Data).
-    """
     tables = list(_tables())
     breaking = [
         f"{module}.{name}"
@@ -556,18 +486,15 @@ def test_a_table_outside_a_constants_py_is_private_unless_named():
     assert_equal(allowed_unused, set(), "tables let through by name that are no longer tables")
 
 
-# Where a requirement's name ends: its extras, version, or environment marker begin.
 _NAME_ENDS = re.compile(r"[\[<>=~!; ]")
 
 
 def _api_extra() -> list[str]:
-    """What the `api` extra installs, by import name: `uvicorn[standard]>=0.32` is `uvicorn`."""
     pyproject = tomllib.loads((_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     requirements = pyproject["project"]["optional-dependencies"]["api"]
     return [_NAME_ENDS.split(requirement, maxsplit=1)[0] for requirement in requirements]
 
 
-# FastAPI's own two: they come with it, so the extra doesn't name them.
 _WEB_FRAMEWORK = ["starlette", "pydantic"]
 
 # Run in a fresh interpreter, so nothing the suite imported already hides a missing package.
@@ -580,7 +507,6 @@ import squidpdf.cli
 
 
 def test_the_cli_runs_without_the_api_extra():
-    """The rules above read the source; this imports it, so a package they don't name counts."""
     blocked = _api_extra() + _WEB_FRAMEWORK
     ran = subprocess.run(
         [sys.executable, "-c", _IMPORT_BLOCKED, *blocked],

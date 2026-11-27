@@ -6,7 +6,6 @@ import { aDoc } from "../../fixtures";
 import { emulateTouchScreen } from "../../testing";
 import { Drop } from "./Drop";
 
-/** The landing as it waits for a file, with nothing persisted in this browser, but for what `props` sets. */
 function waiting(props: Partial<ComponentProps<typeof Drop>> = {}) {
   return render(
     <Drop
@@ -58,7 +57,6 @@ test("a document persisted here is offered to open again, with deleting it quiet
     return { border: style.borderColor, fill: style.backgroundColor };
   };
   await expect.element(screen.getByRole("button", { name: "Delete it now" })).toBeVisible();
-  // Neither border nor fill: not the twin of Open's bordered button, nor a second primary.
   expect(look("Delete it now")).toEqual({ border: "rgba(0, 0, 0, 0)", fill: "rgba(0, 0, 0, 0)" });
   expect(look("Open it again").border).not.toBe("rgba(0, 0, 0, 0)");
 });
@@ -73,6 +71,5 @@ test("the promise's line links the code this page was built from", async () => {
   await expect
     .element(screen.getByRole("link", { name: "read the code that does it" }))
     .toHaveAttribute("href", __SOURCE_CODE__);
-  // A commit's tree in the repository, or the repository itself where the build had no commit to name.
   expect(__SOURCE_CODE__).toMatch(/^https:\/\/github\.com\/kevinvle1997\/squid-pdf(\/tree\/\S+)?$/);
 });

@@ -1,10 +1,3 @@
-"""Upload a document, read it, delete it, and view its pages.
-
-Routes are HTTP only: read the request, call the action's controller, send
-what it hands back. Delete has none: it's one call to the store. Also `load`,
-the dependency every route on a document starts with; editing reuses it.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -32,25 +25,20 @@ router = APIRouter(prefix="/api/documents")
 _log = LogController.for_module(__name__)
 
 _JSON = "application/json"
-_PDF = "application/pdf"  # the type the browser sends an upload as
+_PDF = "application/pdf"
 
 
 def _documents_of(request: Request) -> DocumentStore:
-    """The store the app keeps its documents in."""
     return request.app.state.documents
 
 
 def _meter_of(request: Request) -> Meter:
-    """This browser's allowance of documents, from the meters the app was started with.
-
-    A plain def, so FastAPI runs it in a thread: a meter may read a table.
-    """
+    """A plain def, so FastAPI runs it in a thread: a meter may read a table."""
     meters: Meters = request.app.state.meters
     return meters.meter_for(request.cookies)
 
 
 def load(doc_id: str, request: Request) -> Loaded:
-    """This browser's document, or not_found for any other: missing, expired or not theirs."""
     documents = _documents_of(request)
     found = documents.find(doc_id)
     if found is None:
@@ -61,19 +49,14 @@ def load(doc_id: str, request: Request) -> Loaded:
 
 
 async def _admit_pdf_only(request: Request) -> None:
-    """Refuse an upload not sent as application/pdf, before it counts or any of it is read.
-
-    Another site's page can send a form, plain text or no type without asking first, with
-    this site's password: counted, it would use up the user's uploads for the minute.
-    """
-    sent_as = request.headers.get("content-type")  # None if the request names no type
+    """Another site can send a form without asking first: counted, it would use up uploads."""
+    sent_as = request.headers.get("content-type")
     media_type = (sent_as or "").partition(";")[0].strip().lower()
     if media_type != _PDF:
         raise NotSentAsPdf(debug=f"sent as {sent_as!r}")
 
 
-# Its type checked, then counted, before anything else: none reads any of the body. Under
-# way before it counts for the minute, so one refused as too many at once spends none.
+# Under way before it counts for the minute, so one refused as too many at once spends none.
 @router.post(
     "",
     status_code=status.HTTP_201_CREATED,
@@ -95,7 +78,6 @@ async def upload(
     language: ReaderLanguage,
     response: Response,
 ) -> Response:
-    """A raw PDF sent as application/pdf, no filename. Answers with every span judged."""
     reply = await upload_controller.upload(
         owner.digest(token),
         meter=meter,
@@ -128,8 +110,7 @@ async def read(
     ],
     language: ReaderLanguage,
 ) -> Response:
-    """The document, in the reader's language, or 304 if the browser has it already."""
-    if_none_match = request.headers.get("if-none-match")  # absent on a first read
+    if_none_match = request.headers.get("if-none-match")
     reply = await read_controller.read(doc, language=language, if_none_match=if_none_match)
     return response_of(reply, media_type=_JSON)
 
@@ -139,11 +120,9 @@ def delete(
     doc: Annotated[Loaded, Depends(load)],
     documents: Annotated[DocumentStore, Depends(_documents_of)],
 ) -> None:
-    """The document and everything worked out from it, now rather than in an hour."""
     documents.delete(doc.folder)
 
 
-# Under way as an upload is: it streams to disk, however slowly it's sent.
 @router.put(
     "/{doc_id}/fonts/{font_name:path}",
     response_model=Document,
@@ -159,7 +138,6 @@ async def attach_font(
     ],
     language: ReaderLanguage,
 ) -> Response:
-    """The user's own copy of a document font, raw TrueType or OpenType; spans judged again."""
     reply = await attach_controller.attach(
         doc,
         font_name=font_name,
@@ -180,7 +158,6 @@ async def detach_font(
     ],
     language: ReaderLanguage,
 ) -> Response:
-    """The user's copy of a document font removed; every span judged again."""
     reply = await detach_controller.detach(doc, font_name=font_name, language=language)
     return response_of(reply, media_type=_JSON)
 
@@ -200,17 +177,12 @@ async def page(
         PageController, Depends(controller_with_workers(PageController))
     ],
 ) -> Response:
-    """Page `n` of the original as a PNG, unrotated, `scale` pixels per point."""
     reply = await page_controller.page(doc, page=n, scale=scale, build=build)
     return response_of(reply, media_type="image/png")
 
 
 async def sweep_forever(documents: DocumentStore) -> None:
-    """Every minute, delete documents idle past the hour. Runs for the app's life.
-
-    A pass that fails is logged and the next one runs as usual: stopping would
-    keep every document on disk from then on.
-    """
+    """A failed pass is logged and the next runs: stopping would keep every document on disk."""
     while True:
         await asyncio.sleep(constants.SWEEP_EVERY_S)
         try:

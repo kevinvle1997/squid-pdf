@@ -1,10 +1,3 @@
-"""What the PDF says, facts only, and how a span index and a page list are kept as JSON.
-
-A Span holds what the file states and nothing we concluded. Whether an edit will
-look identical is a judgement that can change with the font library we ship,
-without the document changing, so it lives in `core.text.fidelity`, not here.
-"""
-
 from __future__ import annotations
 
 import hashlib
@@ -17,16 +10,14 @@ import orjson
 
 import squidpdf.core.constants as constants
 
-# Three numbers-or-names about a font that are easy to mix up, so mypy keeps them apart.
-Codepoint = NewType("Codepoint", int)  # a letter's Unicode number: 65 is "A"
+# Easy to mix up, so mypy keeps them apart.
+Codepoint = NewType("Codepoint", int)
 GlyphId = NewType("GlyphId", int)  # a shape's place in the font; 0 is the empty .notdef
-type GlyphName = str  # a shape's name in the font, e.g. "A" or "eacute"
+type GlyphName = str
 
-_LEVEL = (1.0, 0.0)  # the way a line reads when it isn't turned: left to right
-# A turn in degrees, a whole number of quarters. Which way it turns is in the name of
-# each field that holds one: `turn_cw`, `turn_ccw`. A plain alias: pydantic reads it.
+_LEVEL = (1.0, 0.0)
+# A plain alias: pydantic reads it.
 QuarterTurn = Literal[0, 90, 180, 270]
-# Each quarter turn counter-clockwise, as its cosine and sine: exact, not rounded floats.
 QUARTER_TURNS: dict[QuarterTurn, tuple[int, int]] = {
     0: (1, 0),
     90: (0, 1),
@@ -36,23 +27,16 @@ QUARTER_TURNS: dict[QuarterTurn, tuple[int, int]] = {
 
 
 def turn_added(turn: QuarterTurn, more: QuarterTurn) -> QuarterTurn:
-    """`turn` turned `more` further, the same way: a whole turn comes back to none."""
     quarters = list(QUARTER_TURNS)
     return quarters[(quarters.index(turn) + quarters.index(more)) % len(quarters)]
 
 
-# What kind of font the file says it is (its /Subtype). A two-byte font (Type0)
-# writes each letter as two bytes; "other" is any kind not named here.
 type FontKind = Literal["truetype", "type0", "type1", "type3", "other"]
-# How the file stores a font's program; "none" when it only names the font, or
-# stores it in a way we can't tell.
 type FontFileType = Literal["truetype", "opentype", "cff", "type1", "none"]
 
 
 @dataclass(frozen=True, slots=True)
 class Rect:
-    """A box on the page: left, top, right, bottom, in points."""
-
     x0: float
     y0: float
     x1: float
@@ -60,26 +44,21 @@ class Rect:
 
     @property
     def width(self) -> float:
-        """How wide the box is."""
         return self.x1 - self.x0
 
     @property
     def height(self) -> float:
-        """How tall the box is."""
         return self.y1 - self.y0
 
     def overlaps(self, other: Rect) -> bool:
-        """Whether this box and `other` share any area: boxes that only touch don't."""
         across = self.x0 < other.x1 and other.x0 < self.x1
         down = self.y0 < other.y1 and other.y0 < self.y1
         return across and down
 
     def grown(self, by: float) -> Rect:
-        """This box, `by` points further out on every side."""
         return Rect(self.x0 - by, self.y0 - by, self.x1 + by, self.y1 + by)
 
     def union(self, other: Rect) -> Rect:
-        """The smallest box that covers both this one and `other`."""
         return Rect(
             min(self.x0, other.x0),
             min(self.y0, other.y0),
@@ -90,11 +69,7 @@ class Rect:
 
 @dataclass(frozen=True, slots=True)
 class Page:
-    """A page's size in points, unrotated like every box here, and its turn.
-
-    `turn_cw` is the file's own /Rotate, which turns the page clockwise when
-    it's shown. Nothing on the server applies it; the browser turns the page.
-    """
+    """`turn_cw` is the file's /Rotate: nothing on the server applies it; the browser does."""
 
     width: float
     height: float
@@ -103,49 +78,35 @@ class Page:
 
 @dataclass(frozen=True, slots=True)
 class TextPiece:
-    """A bit of text the page draws in one go, as the driver reads it: often part of a word."""
-
     text: str
-    # Its font's name, subset prefix aside, which the span id, the look-alike and the user's
-    # copies go by.
     font: str
-    font_object: int | None  # its font's PDF object; None when the page lists no font for it
+    font_object: int | None
     size: float
-    color: tuple[float, float, float]  # r, g, b, each 0-1
-    opacity: float  # 0 is see-through, 1 solid
+    color: tuple[float, float, float]
+    opacity: float
     box: Rect
-    origin: tuple[float, float]  # where the text starts, on its baseline
-    direction: tuple[float, float] = _LEVEL  # the way its line reads, on the page unrotated
+    origin: tuple[float, float]
+    direction: tuple[float, float] = _LEVEL
 
 
 @dataclass(frozen=True, slots=True)
 class FormField:
-    """A form field that shows text: where it sits, and the value it shows.
-
-    The field draws its value itself, not the page, so erasing the page's text can't reach it.
-    """
+    """The field draws its value itself, so erasing the page's text can't reach it."""
 
     box: Rect
     value: str
 
 
-# Where a document keeps a hidden copy, in the order render names them, each said by
-# `place_<it>`. A plain alias: pydantic reads it.
 CopyPlace = Literal[
     "title", "metadata", "bookmarks", "comments", "form_fields", "screen_reader_text"
 ]
 COPY_PLACES: tuple[CopyPlace, ...] = get_args(CopyPlace)
-# The places of a redaction's hidden copies, then a signed file's signatures, which it takes
-# whatever they hold. A plain alias: pydantic reads it.
 HiddenPlace = Literal[CopyPlace, "signatures"]
 
 
 @dataclass(frozen=True, slots=True)
 class HiddenCopy:
-    """A copy of words the document keeps apart from its pages' text, and where: a hidden copy.
-
-    A screen reader, a search or copy and paste reads it: a redacted word left in one leaks.
-    """
+    """A screen reader, a search or copy and paste reads it: a redacted word in one leaks."""
 
     place: CopyPlace
     text: str
@@ -153,65 +114,42 @@ class HiddenCopy:
 
 @dataclass(frozen=True, slots=True)
 class FontResource:
-    """A font as a page names it, and the font itself.
+    """A page's drawing names a font by a short name in its resources ("F1")."""
 
-    A page's drawing never names a font by its own name: it uses a short name
-    the page lists in its resources, such as "F1", its resource name.
-    """
-
-    resource: str  # its resource name on the page, e.g. "F1"
-    font_object: int  # its PDF object
+    resource: str
+    font_object: int
 
 
 @dataclass(frozen=True, slots=True)
 class TextRun:
-    """A run of a line as the driver writes it: text from a point on its baseline, one font."""
-
     text: str
     origin: tuple[float, float]
-    resource: str  # the resource name of the font it's written in
+    resource: str
 
 
 @dataclass(frozen=True, slots=True)
 class CodeRun:
-    """A run of a line as the driver writes it in codes: codes in one font, written in one go.
-
-    A code is what a page writes to pick a shape: one or two bytes, as the font's codes take.
-    A font with no letters of its own can only be written in codes. Each run starts where the
-    one before left the pen.
-    """
-
     codes: bytes
     font_object: int  # its font's PDF object: the page may know it by another resource name
 
 
 @dataclass(frozen=True, slots=True)
 class PageFont:
-    """A font a page uses."""
-
-    font_object: int  # its PDF object
-    name: str  # e.g. "ABCDEF+Arial"
+    font_object: int
+    name: str
     kind: FontKind
     file_type: FontFileType
-    resource: str  # its resource name on the page, e.g. "F1"
-    codes_are_cids: bool  # a two-byte font set across whose codes are its CIDs (Identity-H)
-    in_form: bool  # used inside a form (a reusable drawing), not by the page itself
+    resource: str
+    codes_are_cids: bool
+    in_form: bool
 
     @property
     def is_embedded(self) -> bool:
-        """Whether the PDF contains the font, not just its name."""
         return self.file_type != "none"
 
 
 @dataclass(frozen=True, slots=True)
 class Fragment:
-    """One piece of text the file draws in one go.
-
-    PDF writers split a sentence into many of these to adjust letter spacing, so
-    a fragment is often a few letters and sometimes half a word. Users never see
-    fragments; they exist so a merged span can be redrawn accurately.
-    """
-
     text: str
     bbox: Rect
     origin: tuple[float, float]
@@ -219,36 +157,25 @@ class Fragment:
 
 @dataclass(frozen=True, slots=True)
 class Span:
-    """A run of text the user can edit, merged from one or more fragments.
-
-    `origin` is the baseline start, not the box's top-left. `id` never changes: the index is
-    built once from the pristine file (SpanIndex). `color`, `opacity` and `direction` are its
-    first fragment's.
-    """
-
     id: str
     page: int
     text: str
-    # Its font's name, as its first piece's (`TextPiece.font`); for new text, the one asked for.
     font: str
-    # Its font's PDF object; None when the page lists none for it, or for new text in a face.
     font_object: int | None
     size: float
     color: tuple[float, float, float]
-    opacity: float  # 0 is see-through, 1 solid
+    opacity: float
     bbox: Rect
     origin: tuple[float, float]
     fragments: tuple[Fragment, ...]
-    direction: tuple[float, float] = _LEVEL  # the way its line reads: (0, -1) is bottom to top
+    direction: tuple[float, float] = _LEVEL
 
     @property
     def merged(self) -> bool:
-        """True when this span is stitched from more than one fragment."""
         return len(self.fragments) > 1
 
     @property
     def turned(self) -> bool:
-        """True when its line isn't level: tilted past TURN_TOLERANCE, or upside down."""
         horizontal, vertical = self.direction
         # Upside down has no vertical part, only a leftward one.
         return horizontal < 0 or abs(vertical) > constants.TURN_TOLERANCE
@@ -256,13 +183,6 @@ class Span:
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class RedactedRun(Span):
-    """Some words of a span's line a redaction takes, as a span of their own: `run_of`.
-
-    Its id and pieces are the span's; its text the words, its box the one around their letters.
-    `before` and `after` are the line's words beside them, which a hidden copy may join them
-    to ("Acct1234"); empty at its start or end, and for all of a span.
-    """
-
     before: str
     after: str
 
@@ -270,7 +190,6 @@ class RedactedRun(Span):
 def run_of(
     span: Span, *, text: str, box: Rect, before: str = "", after: str = ""
 ) -> RedactedRun:
-    """The words `text` of `span` as a run of their own, in `box`; all of it by default."""
     return RedactedRun(
         id=span.id,
         page=span.page,
@@ -290,52 +209,37 @@ def run_of(
 
 
 def whole_run(span: Span) -> RedactedRun:
-    """All of `span` as one run: nothing beside it to join it to."""
     return run_of(span, text=span.text, box=span.bbox)
 
 
 def same_font(text: TextPiece | Span, other: TextPiece | Span) -> bool:
-    """Whether two bits of text are in one font: one object, or one name where there's none."""
     return (text.font_object, text.font) == (other.font_object, other.font)
 
 
 EM = 1000  # widths are given per 1000 em, as PDF font widths are
 
 
-# What became of the letters a redaction of some words left of their line, once erased.
 RestOfLine = Literal["in_place", "moved", "removed"]
 
 
 @dataclass(frozen=True, slots=True)
 class PlacedLetter:
-    """A letter as the page draws it, and where: its box, from ascender to descender.
-
-    By its glyph's own letter, not the text a marked content gives in its place (ActualText).
-    """
-
     letter: str
     box: Rect
-    origin: tuple[float, float]  # where it starts, on its baseline
+    origin: tuple[float, float]
     size: float
 
 
 @dataclass(frozen=True, slots=True)
 class DrawnElsewhere:
-    """What a page draws where it shouldn't after an erase, and the rests of lines asked about.
-
-    Spaces aside: glyphs the erase was to take, and text it moved.
-    """
-
-    taken: list[DrawnGlyph]  # glyphs the erase was to take, still drawn, wherever
-    moved: list[DrawnGlyph]  # glyphs it was to leave, drawn somewhere else
-    rests: list[RestOfLine]  # what became of each rest of a line asked about, in order
-    unchecked: bool  # where a rest set along landed couldn't be read: its letters unboxed
+    taken: list[DrawnGlyph]
+    moved: list[DrawnGlyph]
+    rests: list[RestOfLine]
+    unchecked: bool
 
 
 @dataclass(frozen=True, slots=True)
 class DrawnLine:
-    """A line an edit draws: its text, where its baseline starts, and how far it's turned."""
-
     text: str
     origin: tuple[float, float]
     turn_ccw: QuarterTurn
@@ -343,53 +247,39 @@ class DrawnLine:
 
 @dataclass(frozen=True, slots=True)
 class DrawnGlyph:
-    """A letter as the page draws it: the shape its code picked, and where it starts."""
-
     letter: str
     glyph: GlyphId  # as `FontCode.glyph`; -1 for a ligature's later letters
     origin: tuple[float, float]
-    width: float  # how far its font moves the pen, in points, before any letter spacing
-    direction: tuple[float, float]  # the way its line reads: (1, 0) is left to right
+    width: float
+    direction: tuple[float, float]
 
 
 @dataclass(frozen=True, slots=True)
 class FontCode:
-    """One code in a font, and what it draws."""
-
-    value: int  # the code the page writes, e.g. 0x21
-    letter: str  # the letter the font's letter list (ToUnicode) says it is
-    glyph: GlyphId  # the shape it draws; 0 means none
-    width: float  # per 1000 em, from the font's width list
+    value: int
+    letter: str
+    glyph: GlyphId
+    width: float
 
 
 @dataclass(frozen=True, slots=True)
 class CodedFont:
-    """An embedded font the page writes with codes, not letters.
-
-    The font can't look letters up itself; its letter list (ToUnicode) says which
-    code is which letter.
-    """
-
-    code_bytes: int  # bytes per code: 1 for a simple font, 2 for Type0
-    # Each letter it can write, and the code for it: of several, the lowest.
+    code_bytes: int
     letters: dict[str, FontCode] = field(repr=False)
-    # Every code that draws a letter, lowest first: a letter can have several shapes.
     codes: tuple[FontCode, ...] = field(repr=False)
 
     def preferring(self, drawn: Mapping[str, FontCode]) -> CodedFont:
-        """The font writing each letter of `drawn` in the code given, the rest as before."""
         if not drawn:
             return self
         return CodedFont(self.code_bytes, {**self.letters, **drawn}, self.codes)
 
     def has_alternates(self, text: str) -> bool:
-        """Whether some letter of `text` has more than one code, each its own shape."""
         letters = set(text)
         counted = Counter(code.letter for code in self.codes if code.letter in letters)
         return any(count > 1 for count in counted.values())
 
 
-SOLID = 1.0  # an opacity that hides what's under it
+SOLID = 1.0
 
 type Style = Literal["regular", "bold", "italic", "bold-italic"]
 type Category = Literal["sans", "serif", "mono", "handwriting"]
@@ -397,33 +287,27 @@ type Category = Literal["sans", "serif", "mono", "handwriting"]
 
 @dataclass(frozen=True, slots=True)
 class Face:
-    """A font file we ship: one family in one style."""
-
-    name: str  # what the user reads and an insert asks for, e.g. "Carlito Bold"
-    family: str  # e.g. "Carlito"
+    name: str
+    family: str
     style: Style
     category: Category
-    file: str  # its file in the package's `fonts` folder
-    license: str  # e.g. "OFL-1.1"; the text is in `fonts/licenses`
-    same_widths_as: tuple[str, ...]  # document fonts whose letters are exactly as wide
+    file: str
+    license: str
+    same_widths_as: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
 class LookAlike:
-    """A document font's look-alike, and whether nothing on the page moves if it draws."""
-
     face: Face
-    same_widths: bool  # False when it's only the same kind of font (a serif for a serif)
+    same_widths: bool
 
 
 @dataclass(frozen=True, slots=True)
 class FontDescriptor:
-    """What a font's description in the PDF says about its look, and the font it names."""
-
-    flags: int  # its /Flags bits: serif, fixed width, italic, forced bold and so on
-    weight: float | None  # its /FontWeight, when it gives one: any number the file writes
-    italic_angle: float  # its /ItalicAngle: how far the letters lean, 0 when upright
-    name: str | None  # its /FontName, subset prefix and all, when it gives one
+    flags: int
+    weight: float | None
+    italic_angle: float
+    name: str | None
 
 
 def new_text(
@@ -436,11 +320,6 @@ def new_text(
     font_object: int | None = None,
     color: tuple[float, float, float] = (0.0, 0.0, 0.0),
 ) -> Span:
-    """A span for text that isn't in the document yet, so it's judged and drawn like any other.
-
-    `font_object` is the page's font it's written in, if it's one; else `font` names a face we
-    ship. Its box is only nominal: nothing reads it for new text. It's painted solid.
-    """
     x, y = origin
     box = Rect(x, y - size, x, y)
     return Span(
@@ -460,29 +339,19 @@ def new_text(
 
 @dataclass(frozen=True, slots=True)
 class SpanIndex:
-    """Every editable span in a document, built once and never rebuilt. Made by `index_of`.
+    """Always the original file: rebuilt, every id changes and client references dangle."""
 
-    The index always describes the *original* file: edits are drawn on top when rendering,
-    never re-extracted. Rebuild it and every id changes, and every reference the client holds
-    dangles.
-    """
-
-    # Each span by its id, in the order it was extracted: a dict keeps the order it's
-    # filled in, and no two spans share an id, since each carries its place in the order.
     by_id: dict[str, Span] = field(repr=False)
 
     def __iter__(self) -> Iterator[Span]:
-        """Every span, in the order it was extracted."""
         return iter(self.by_id.values())
 
 
 def index_of(spans: Iterable[Span]) -> SpanIndex:
-    """The index of a document's spans, given in the order they were extracted."""
     return SpanIndex({span.id: span for span in spans})
 
 
 def by_page[S: Span](spans: Iterable[S]) -> dict[int, list[S]]:
-    """`spans` grouped by page, each page's in the order given."""
     grouped: dict[int, list[S]] = {}
     for span in spans:
         grouped.setdefault(span.page, []).append(span)
@@ -492,22 +361,18 @@ def by_page[S: Span](spans: Iterable[S]) -> dict[int, list[S]]:
 def asked_by_page[S: Span, T](
     spans: Iterable[S], ask: Callable[[int, list[S]], list[T]]
 ) -> list[T]:
-    """What `ask` answers for each page's share of `spans`, as one list, page by page."""
     return [answer for page, on_page in by_page(spans).items() for answer in ask(page, on_page)]
 
 
 def index_as_json(index: SpanIndex) -> bytes:
-    """The index as JSON, which `index_from_json` reads back whole."""
     return orjson.dumps(list(index))
 
 
 def index_from_json(saved: bytes) -> SpanIndex:
-    """The index `index_as_json` wrote, each span as it was."""
     return index_of(_load_span(span) for span in orjson.loads(saved))
 
 
 def _load_span(saved: dict[str, Any]) -> Span:
-    """One saved span. The keys are its fields; only the nested shapes need rebuilding."""
     rebuilt: dict[str, Any] = {
         "color": tuple(saved["color"]),
         "bbox": Rect(**saved["bbox"]),
@@ -519,63 +384,45 @@ def _load_span(saved: dict[str, Any]) -> Span:
 
 
 def _load_fragment(saved: dict[str, Any]) -> Fragment:
-    """One saved fragment, the same way."""
     rebuilt: dict[str, Any] = {"bbox": Rect(**saved["bbox"]), "origin": tuple(saved["origin"])}
     return Fragment(**saved | rebuilt)
 
 
 def pages_as_json(pages: list[Page]) -> bytes:
-    """The page list as JSON, which `pages_from_json` reads back whole."""
     return orjson.dumps(pages)
 
 
 def pages_from_json(saved: bytes) -> list[Page]:
-    """The page list `pages_as_json` wrote; a page's fields are all plain."""
     return [Page(**page) for page in orjson.loads(saved)]
 
 
 @dataclass(frozen=True, slots=True)
 class Line:
-    """Spans a page draws one after another on one baseline, a word space apart: edited as one.
-
-    Its spans' ids left to right, and its room: how far its end can run before any of them
-    reaches something on the page.
-    """
-
     span_ids: tuple[str, ...]
     room_pt: float
 
 
 @dataclass(frozen=True, slots=True)
 class FreeSpace:
-    """What the original leaves its text to run into: each span's room, and each line's."""
-
-    rooms: dict[str, float] = field(repr=False)  # by span id
-    lines: list[Line] = field(repr=False)  # each of more than one span, in reading order
+    rooms: dict[str, float] = field(repr=False)
+    lines: list[Line] = field(repr=False)
 
 
 def free_space_as_json(free_space: FreeSpace) -> bytes:
-    """The free space as JSON, which `free_space_from_json` reads back whole."""
     return orjson.dumps(free_space)
 
 
 def free_space_from_json(saved: bytes) -> FreeSpace:
-    """The free space `free_space_as_json` wrote, each line as it was."""
     read = orjson.loads(saved)
     lines = [Line(tuple(line["span_ids"]), line["room_pt"]) for line in read["lines"]]
     return FreeSpace(read["rooms"], lines)
 
 
-# 6 bytes -> 12 hex chars: documents have thousands of spans at most, nowhere
-# near enough for a collision at this length.
+# 12 hex chars: thousands of spans at most, nowhere near a collision.
 _SPAN_ID_DIGEST_SIZE = 6
 
 
 def span_id(page: int, bbox: Rect, *, font: str, text: str, ordinal: int) -> str:
-    """A span's id: stable within a document, distinct between near-identical cells.
-
-    The ordinal separates spans that share text, font and a rounded box (two
-    empty table cells, say), which a content hash alone would collide.
-    """
+    """The ordinal separates spans sharing text, font and a rounded box, as empty cells do."""
     seed = f"{page}:{bbox.x0:.1f}:{bbox.y0:.1f}:{font}:{text}:{ordinal}"
     return hashlib.blake2s(seed.encode(), digest_size=_SPAN_ID_DIGEST_SIZE).hexdigest()

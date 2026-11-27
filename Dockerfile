@@ -1,14 +1,7 @@
-# Two images from one file. The default serves the API: the app and what it
-# needs, nothing else. `--target test` reproduces the CI environment, dev tools
-# and tests/ too, so `squidpdf` and its tests run the same way on any machine:
-#   docker build --target test -t squidpdf-test . && docker run --rm squidpdf-test
-# No Python image: the Python is uv's, the build CI and a laptop run (pyproject.toml).
 FROM debian:bookworm-slim AS base
-# Pinned so "the same environment as CI" doesn't drift between builds; it picks the Python
-# too. CI reads its uv from this line (.github/actions/uv).
+# CI reads its uv version from this line (.github/actions/uv).
 COPY --from=ghcr.io/astral-sh/uv:0.13.10 /uv /uvx /bin/
 
-# The mail's STARTTLS checks its server by the system's certificates.
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/*
@@ -17,14 +10,9 @@ RUN apt-get update \
 ENV UV_PYTHON_INSTALL_DIR=/opt/python
 RUN --mount=type=bind,source=.python-version,target=/tmp/.python-version \
     uv python install --no-bin "$(cat /tmp/.python-version)"
-# A sync that wants another Python fails, rather than fetching one as the app's user.
 ENV UV_PYTHON_DOWNLOADS=never
 
-# Uploaded PDFs are hostile input, so nothing here runs as root. /data holds the
-# documents for their hour, /accounts the accounts; a volume mounted on either takes its
-# owner from here.
-# 999 by name: what useradd --system gave it before it was pinned, so a volume
-# made then stays writable, and a rebuild can't hand it another number.
+# Uploaded PDFs are hostile input, so nothing runs as root. 999 is pinned so a rebuild keeps volumes writable.
 RUN groupadd --system --gid 999 squid \
     && useradd --system --uid 999 --gid squid --create-home squid \
     && mkdir /app /data /accounts && chown squid /app /data /accounts
@@ -35,14 +23,11 @@ ENV PATH="/app/.venv/bin:${PATH}" \
     SQUIDPDF_DATA=/data
 
 
-# The suite as CI runs it: every extra, the dev tools, tests/ and fixtures/.
 FROM base AS test
 
-# Dependencies layer: only rebuilds when these change, not on every edit.
 COPY --chown=squid pyproject.toml uv.lock .python-version README.md ./
 RUN uv sync --locked --all-extras --no-install-project
 
-# Project layer: rebuilds on source changes; dependency layer stays cached.
 COPY --chown=squid src/ src/
 COPY --chown=squid tests/ tests/
 COPY --chown=squid fixtures/ fixtures/
@@ -51,8 +36,6 @@ RUN uv sync --locked --all-extras
 CMD ["uv", "run", "pytest", "-q"]
 
 
-# The server, last so it's what a plain `docker build` makes: the app and its api
-# extra, no dev tools and no tests.
 FROM base AS serve
 
 # Compiled here, since on compose's read-only root every worker would compile at start.
@@ -61,19 +44,15 @@ ENV UV_COMPILE_BYTECODE=1
 COPY --chown=squid pyproject.toml uv.lock .python-version README.md ./
 RUN uv sync --locked --extra api --no-dev --no-install-project
 
-# The project is installed editable, so its own modules are compiled where they are.
 COPY --chown=squid src/ src/
 RUN uv sync --locked --extra api --no-dev && python -m compileall -q src
 
 EXPOSE 8000
 
-# The image has no curl; the standard library asks instead.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --start-interval=1s \
     CMD ["python", "-c", "import urllib.request as r; r.urlopen('http://127.0.0.1:8000/api/health', timeout=4)"]
 
-# One process; all PDF work runs in its worker pool. Keep-alive outlasts Caddy's two idle
-# minutes, so the proxy never reuses a connection the app has just closed. The app logs
-# each request itself (`api/access.py`), by route, never by a path naming a document.
+# Keep-alive outlasts Caddy's two idle minutes, so it never reuses a connection the app just closed.
 CMD ["uvicorn", "squidpdf.api.app:create_app", "--factory", \
      "--host", "0.0.0.0", "--port", "8000", "--timeout-keep-alive", "130", \
      "--no-access-log"]

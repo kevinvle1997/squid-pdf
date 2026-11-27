@@ -1,5 +1,3 @@
-// What the stylesheets promise that CSS can't say itself: the token contract's dark values written twice,
-// one breakpoint, colours and gaps only from tokens.css, and stacking by its roles.
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,7 +13,6 @@ function stylesheets(folder = SRC): { path: string; css: string }[] {
   });
 }
 
-/** The declarations inside the first `{…}` after `selector`, one per line, as written. */
 function block(css: string, selector: string): string[] {
   const start = css.indexOf("{", css.indexOf(selector)) + 1;
   return css
@@ -32,7 +29,6 @@ function uncommented(css: string): string {
   return css.replace(/\/\*[\s\S]*?\*\//g, "");
 }
 
-/** Each declaration of one of `properties` in `css`, as `path: property: value`. */
 function declared(path: string, css: string, properties: RegExp): { where: string; value: string }[] {
   return [...uncommented(css).matchAll(/([a-z-]+)\s*:\s*([^;{}]+);/g)]
     .filter(([, property = ""]) => properties.test(property))
@@ -41,7 +37,6 @@ function declared(path: string, css: string, properties: RegExp): { where: strin
 
 const NESTING: Readonly<Record<string, number>> = { "(": 1, ")": -1 };
 
-/** A value's parts, split at the spaces outside any parentheses: `calc(-1 * var(--s8)) auto` is two. */
 function partsOf(value: string): string[] {
   const parts = [""];
   let depth = 0;
@@ -53,7 +48,6 @@ function partsOf(value: string): string[] {
   return parts.filter(Boolean);
 }
 
-// A step of the spacing scale, or none: design.md, Space and layout.
 const SPACING_STEP = /^(0|auto|var\(--s[1-8]\)|calc\(-1 \* var\(--s[1-8]\)\))$/;
 
 describe("the stylesheets", () => {

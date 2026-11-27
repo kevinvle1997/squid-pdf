@@ -1,8 +1,3 @@
-"""How a route gets its controller, and sends what the controller hands back.
-
-A header of our own is listed in the route's `responses`, so the OpenAPI says it's there.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -25,31 +20,18 @@ _PIECE_BYTES = 1024 * 1024
 def controller_with_workers[C](
     cls: Callable[[Workers, Any], C],
 ) -> Callable[[Workers, Request], C]:
-    """A route's dependency: a new `cls` for each request, with the app's workers and store.
-
-    Used as `Depends(controller_with_workers(RenderController))`. Made once, when
-    the route is defined; FastAPI calls what it returns on every request. Each job
-    the controller sends waits for one of its address's turns.
-    """
-
     def with_the_apps_workers(
         workers: Annotated[Workers, Depends(rate.workers_in_turn)], request: Request
     ) -> C:
-        """The controller, built with the app's workers and the store its documents are in."""
-        # The store `create_app` was given: a feature's type, which api/ doesn't name.
         return cls(workers, request.app.state.documents)
 
     return with_the_apps_workers
 
 
 def controller_with_app_workers[C](cls: Callable[[Workers], C]) -> Callable[[Workers], C]:
-    """A route's dependency, as `controller_with_workers`, for a job run once for everyone.
-
-    Its job takes no address's turn: the first to ask would otherwise run everyone's on theirs.
-    """
+    """Takes no address's turn: the first to ask would run everyone's on theirs."""
 
     def with_the_apps_own_workers(workers: Annotated[Workers, Depends(pool.current)]) -> C:
-        """The controller, built with the app's workers."""
         return cls(workers)
 
     return with_the_apps_own_workers
@@ -58,12 +40,7 @@ def controller_with_app_workers[C](cls: Callable[[Workers], C]) -> Callable[[Wor
 def response_of[T](
     reply: Reply[T], *, media_type: str, set_by: Response | None = None
 ) -> Response:
-    """`reply` as the Response the route sends, typed `media_type`.
-
-    Bytes go out as they are, an open file is streamed, anything else is JSON. `set_by` is
-    the Response a route's dependencies set headers on, such as a new cookie: FastAPI adds
-    those only to data it writes out itself.
-    """
+    """`set_by`'s headers, a new cookie say: FastAPI adds them only to data it writes itself."""
     response = _response_of(reply, media_type=media_type)
     if set_by is not None:
         response.raw_headers.extend(set_by.raw_headers)
@@ -71,11 +48,9 @@ def response_of[T](
 
 
 def _response_of[T](reply: Reply[T], *, media_type: str) -> Response:
-    """`reply` as a Response: an open file streamed, bytes as they are, anything else JSON."""
     if isinstance(reply.body, io.BufferedIOBase):
         return _streamed(reply.body, reply=reply, media_type=media_type)
     body = reply.body if isinstance(reply.body, bytes) else orjson.dumps(reply.body)
-    # No body, no body's type: a 304 says the browser's copy is current.
     body_type = media_type if body else None
     return Response(body, status_code=reply.status, headers=reply.headers, media_type=body_type)
 
@@ -83,7 +58,6 @@ def _response_of[T](reply: Reply[T], *, media_type: str) -> Response:
 def _streamed(
     opened: io.BufferedIOBase, *, reply: Reply[Any], media_type: str
 ) -> StreamingResponse:
-    """The open file `opened` sent a piece at a time, its size said, then closed."""
     size = os.fstat(opened.fileno()).st_size
     headers = reply.headers | {"Content-Length": str(size)}
     return StreamingResponse(
@@ -92,7 +66,6 @@ def _streamed(
 
 
 async def _pieces_of(opened: io.BufferedIOBase) -> AsyncIterator[bytes]:
-    """`opened`, read off the loop a piece at a time, closed however the sending ends."""
     try:
         while piece := await asyncio.to_thread(opened.read, _PIECE_BYTES):
             yield piece
@@ -101,5 +74,4 @@ async def _pieces_of(opened: io.BufferedIOBase) -> AsyncIterator[bytes]:
 
 
 def listed_header(says: str) -> dict[str, Any]:
-    """A header a reply carries, as a route's `responses` lists it in the OpenAPI: text."""
     return {"description": says, "schema": {"type": "string"}}

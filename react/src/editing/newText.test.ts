@@ -11,7 +11,6 @@ vi.mock(import("../api/client"), async (original) => ({
   renderStrips: vi.fn(() => new Promise<Render>(() => undefined)),
 }));
 
-// Arial is only named in the file: a similar font draws new text in it. Caveat Bold, a face we ship, draws its own.
 const ARIAL = aSpan({
   id: "arial",
   font: "Arial",
@@ -42,7 +41,6 @@ describe("the new text a shown row of the bar's list marks", () => {
 });
 
 describe("what follows the field new text is typed in, as Tab from its fonts goes on", () => {
-  // Two lines, and new text at rest between them.
   const top = aSpan({ id: "top", bbox: { x0: 72, y0: 100, x1: 152, y1: 112 } });
   const foot = aSpan({ id: "foot", bbox: { x0: 72, y0: 500, x1: 152, y1: 512 } });
   function opened(at: [number, number]) {
@@ -65,7 +63,6 @@ describe("what follows the field new text is typed in, as Tab from its fonts goe
 });
 
 describe("new text kept on its page", () => {
-  /** An editor with one piece of new text, `size` points, its line starting at `origin`. */
   function withText(origin: [number, number], size = 10) {
     const editor = createEditor(new File(["%PDF-"], "a.pdf"), aDoc(), 2);
     change(editor, { kind: "add", edits: [anInsert({ origin, size })] });
@@ -90,7 +87,6 @@ describe("new text kept on its page", () => {
     expect(originOf(editor)).toEqual([72, 10 * NEW_TEXT_ASCENT_EM]);
   });
 
-  /** An editor on a page with no text, its new text's field opened by a press at `at`. */
   function openedAt(at: [number, number]) {
     const editor = createEditor(new File(["%PDF-"], "a.pdf"), aDoc(), 2);
     openNewTextAt(editor, 0, at);

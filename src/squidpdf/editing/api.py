@@ -1,9 +1,4 @@
-"""Render, export and the font list, over HTTP.
-
-Routes are HTTP only: read the request, call the action's controller, send what it hands
-back. Also `measure_font_list_ahead`, which the app's start calls. Imports `documents.api`
-for `load`, the one allowed direction; documents never imports editing.
-"""
+"""Imports `documents.api` for `load`, the one allowed direction: never the other way."""
 
 from __future__ import annotations
 
@@ -32,31 +27,22 @@ from squidpdf.editing.types import FontList, Region, Render
 router = APIRouter(prefix="/api/documents")
 fonts_router = APIRouter(prefix="/api/fonts")
 
-# Read by `kind` first: one bad kind is one error, not one per edit type. The union is
-# edits.py's, so a new edit type is read here as soon as it's added there.
+# Read by `kind` first: one bad kind is one error, not one per edit type.
 _AnyEdit = Annotated[Edit, Field(discriminator="kind")]
 
 
 class RenderBody(BaseModel):
-    """What render reads from the request body."""
-
     edits: list[_AnyEdit]
     scale: Annotated[int, Field(ge=min(limits.PAGE_SCALES), le=max(limits.PAGE_SCALES))]
     regions: list[Region]
 
 
 class ExportBody(BaseModel):
-    """What export reads from the request body. No `pages` means every page."""
-
     edits: list[_AnyEdit]
     pages: list[int] | None = None
 
 
 def measure_font_list_ahead(workers: Workers) -> None:
-    """Start measuring the font list as the app starts, so the first browser needn't wait.
-
-    With the app's workers, as the route's own: the job is everyone's, in no address's turn.
-    """
     FontListController(workers).measure_ahead()
 
 
@@ -64,11 +50,9 @@ def measure_font_list_ahead(workers: Workers) -> None:
 async def fonts(
     build: str,
     font_list_controller: Annotated[
-        # Measured once per build, for everyone: no address's turn.
         FontListController, Depends(controller_with_app_workers(FontListController))
     ],
 ) -> Response:
-    """Every face new text can be drawn in, by family, with each letter's width."""
     reply = await font_list_controller.font_list(build)
     return response_of(reply, media_type="application/json")
 
@@ -83,7 +67,6 @@ async def render(
     ],
     language: ReaderLanguage,
 ) -> Response:
-    """Each region drawn with the edits on its page, a fit per edit, and what was skipped."""
     reply = await render_controller.render(
         doc, edits=body.edits, regions=body.regions, scale=body.scale, language=language
     )
@@ -116,7 +99,6 @@ async def export(
     ],
     language: ReaderLanguage,
 ) -> Response:
-    """The edited document as a PDF: every page, or `pages` in that order."""
     reply = await export_controller.export(
         doc, edits=body.edits, pages=body.pages, language=language
     )

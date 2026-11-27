@@ -12,13 +12,11 @@ vi.mock(import("../api/client"), async (original) => ({
   renderStrips: vi.fn(() => new Promise<Render>(() => undefined)),
 }));
 
-// A page of two fonts, the serif's line first; new text opens under the sans's line, in its style.
 const SERIF = aSpan({ id: "serif", font: "Times-Roman", size: 10, bbox: { x0: 72, y0: 100, x1: 200, y1: 112 } });
 const SANS = aSpan({ id: "sans", font: "Helvetica", size: 10, bbox: { x0: 72, y0: 140, x1: 200, y1: 152 } });
 const DOC = aDoc({ spans: [SERIF, SANS], fonts: [aFont("Times-Roman"), aFont("Helvetica")] });
 const HANDWRITING = ["Caveat Regular", "Caveat Bold", "Great Vibes Regular"];
 
-/** An editor on `doc`, the handwriting faces listed, with new text being typed. */
 function typingNewText(doc = DOC): Editor {
   const editor = createEditor(new File(["%PDF-"], "a.pdf"), doc, 2);
   editor.store.set({ shippedFaces: { handwriting: HANDWRITING, failed: null } });
@@ -28,7 +26,6 @@ function typingNewText(doc = DOC): Editor {
   return editor;
 }
 
-/** The new text being typed in `editor`. */
 function draftIn(editor: Editor) {
   const { draft } = editor.store.get();
   if (draft?.kind !== "newText") throw new Error("new text is being typed");
@@ -41,7 +38,6 @@ describe("the fonts new text's slip offers", () => {
     const { page, handwriting } = fontChoicesOf(editor.store.get(), draftIn(editor));
     expect(page.map((choice) => choice.label)).toEqual(["Times Roman", "Helvetica"]);
     expect(handwriting.map((choice) => choice.label)).toEqual(["Caveat", "Caveat Bold", "Great Vibes"]);
-    // The one it opened in, the sans it's styled from, is the one chosen.
     expect(chosenFontOf(editor.store.get().layout, draftIn(editor))).toBe(page[1]?.key);
   });
 

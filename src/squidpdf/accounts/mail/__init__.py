@@ -1,5 +1,3 @@
-"""Account mail: each email in its reader's words, sent through the deployment's mailer."""
-
 from __future__ import annotations
 
 from squidpdf.accounts.mail.brevo import (

@@ -1,22 +1,16 @@
-/* A proof slip beside the words, outside them, so it never becomes part of the edit. Its rows stack in
-   one order, whatever it says, so each part is where it was the last time; its words run to one
-   measure, so they fill it instead of stopping short of the rows under them. */
 .chip {
   composes: slip from "../../ui/Slip.module.css";
   display: flex; flex-direction: column; gap: var(--s2);
   max-width: 30rem;
   white-space: nowrap; line-height: 1;
-  /* The whole slip takes a press, which leaves focus in the field (Chip.tsx): one through it would end the typing. */
+  /* The whole slip takes a press, which leaves focus in the field: one through it would end the typing. */
   pointer-events: auto;
 }
-/* A control it can't press now takes none: the press is the slip's, which leaves focus in the field. */
 .chip :disabled { pointer-events: none; }
-/* What an edit here warns of, in full, as typing starts, and muting it under that: above the edit's own facts. */
 .note {
   display: flex; flex-direction: column; align-items: flex-start; gap: var(--s2);
   padding-block-end: var(--s2); border-block-end: 1px solid var(--rule-soft);
 }
-/* That a change breaks a signed document's signature, until its first edit: above the font's note, ruled off and wrapped as that note is. */
 .signature {
   padding-block-end: var(--s2); border-block-end: 1px solid var(--rule-soft);
   white-space: normal; line-height: 1.4;
@@ -25,23 +19,15 @@
   display: flex; flex-direction: column; gap: var(--s1);
   white-space: normal; line-height: 1.4;
 }
-/* The chip's least action, so quiet: pulled out by its own padding, its words keep the note's left edge. */
 .muteWarning { margin-inline-start: calc(-1 * var(--s3)); }
-/* Each trouble a line of its own. */
 .bad { white-space: pre-line; line-height: 1.4; }
 .facts { display: flex; align-items: baseline; gap: var(--s3); }
-/* It will match: said in ink, as plainly as a warning is said in red. */
 .identical { color: var(--ink); }
-/* The ways out of a long line take a row of their own, under what's wrong. */
 .ways { display: flex; align-items: center; gap: var(--s2); }
-/* What a pointer can press, always last and in one row on the chip's one left edge: the user's own copy
-   of the span's font, and redacting the span. */
 .actions { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s2) var(--s3); }
 .offer { display: flex; align-items: baseline; gap: var(--s2); }
-/* A touch screen has no keys to hint at. */
 @media (pointer: coarse) {
   .wayKeys { display: none; }
 }
-/* New text's faces, listed open under its facts, and why the handwriting ones are missing if the list didn't come. */
 .faces { display: flex; flex-direction: column; gap: var(--s2); }
 .facesFailed { white-space: normal; line-height: 1.4; }

@@ -29,7 +29,6 @@ const DOC = aDoc({ spans: [ONE, TWO] });
 const readingOf = (...edits: Edit[]) => project(DOC, entriesOf(historyReducer(EMPTY_HISTORY, { kind: "add", edits })));
 const stripFor = (page: number): ImageInfo => ({ page, y: 98, image: `page ${page}` });
 
-/** The server, answering only when a test says so. */
 function server() {
   const asked: {
     body: RenderBody;
@@ -52,14 +51,12 @@ let drawn: Drawn[];
 let fake: ReturnType<typeof server>;
 let queue: RenderQueue;
 
-/** A queue asking the fake server, with `near` the pages near the screen. */
 function aQueue(near: ReadonlySet<number> = new Set()) {
   return new RenderQueue({
     reopener: { doc: DOC, withDocument: (use) => use(DOC) },
     scale: 2,
     drawn: (now) => drawn.push(now),
     render: fake.render,
-    // A strip's address is its image as sent: these tests don't paint.
     load: async (image) => image.image,
     near,
   });
@@ -71,7 +68,6 @@ beforeEach(() => {
   queue = aQueue();
 });
 
-// Each span's strip, as asked for: two points past its box either side.
 const shown = (page: number) => ({ page, y: 98, y1: 114, src: `page ${page}` });
 
 const settle = () => new Promise((resolve) => setTimeout(resolve));
@@ -239,7 +235,6 @@ describe("the render queue", () => {
     expect(queue.drawn.notices.get(0)).toEqual([drewOtherwise]);
     expect(queue.drawn.skipped).toEqual([leftOut]);
 
-    // Only page 2 is drawn again: page 1 keeps what was said of it.
     queue.draw(readingOf(aReplace(ONE.id), aReplace(TWO.id)));
     await settle();
     fake.asked[1]?.answer(fake.reply([1]));
@@ -303,7 +298,6 @@ describe("a fit for the words a span reads now", () => {
 
 describe("new text's fit", () => {
   test("lands under the version it was drawn from, and its verdict replaces the one worked out live", async () => {
-    // The page's font draws it, as the browser works it out: its render says a similar font drew it after all.
     const text = anInsert({ font: ONE.font, text: "Paid €" });
     const reading = readingOf(aReplace(ONE.id), text);
     queue.draw(reading);

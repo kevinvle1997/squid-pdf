@@ -1,8 +1,6 @@
-"""How many documents a browser opens: some without an account, then some a month with one.
+"""A file counts once, by its digest.
 
-A file counts once, by its digest, however often it's opened: a browser reopening its own
-document after the hour isn't charged again. Without an account the count is a signed
-cookie, which a cleared cookie resets: a nudge to sign in, not a lock.
+Without an account the count is a signed cookie, which clearing resets: a nudge, not a lock.
 """
 
 from __future__ import annotations
@@ -23,25 +21,17 @@ from squidpdf.documents.meters import Meter
 
 @dataclass(frozen=True, slots=True, eq=False)
 class AccountMeters:
-    """Each browser's meter, on a server whose deployment sets an allowance."""
-
     accounts: Accounts
     allowance: Allowance
 
     def meter_for(self, cookies: Mapping[str, str]) -> Meter:
-        """The meter of the browser that sent `cookies`: its account's, or its own.
-
-        Reads the table: a browser signed in to an account since removed counts as one
-        with none.
-        """
         user = signed_in_user(self.accounts, cookies)
         if user is not None:
             return _AccountMeter(self.accounts, self.allowance, user=user)
         return _BrowserMeter(self.accounts, self.allowance, counted=self._counted_in(cookies))
 
     def _counted_in(self, cookies: Mapping[str, str]) -> frozenset[str]:
-        """The files this browser opened without an account, by the cookie that lists them."""
-        cookie = cookies.get(COUNTED)  # None on a browser that has opened none
+        cookie = cookies.get(COUNTED)
         if cookie is None:
             return frozenset()
         now = int(time.time())
@@ -51,17 +41,11 @@ class AccountMeters:
 
 @dataclass(frozen=True, slots=True, eq=False)
 class _AccountMeter:
-    """A signed-in browser's meter: its account's documents this month, or none if unlimited."""
-
     accounts: Accounts
     allowance: Allowance
     user: User
 
     def check(self, digest: str) -> None:
-        """Raise MonthlyDocumentsUsed if `digest` is new and the month's are used.
-
-        None counts against an unlimited account, or one whose month is paid.
-        """
         if self.user.has_no_limit_at(int(time.time())):
             return
         counted = self.accounts.users.counted_in(self.user.id, month=this_month())
@@ -70,11 +54,7 @@ class _AccountMeter:
             raise MonthlyDocumentsUsed(monthly=self.allowance.monthly)
 
     def count(self, digest: str) -> dict[str, str]:
-        """Count `digest` against this month's, kept in the table: no header needed.
-
-        The count is the gate: of two new files at once with one left, the second is
-        refused here, with MonthlyDocumentsUsed, only after its analysis ran.
-        """
+        """The count is the gate: of two new files at once with one left, the second fails."""
         limit = None if self.user.has_no_limit_at(int(time.time())) else self.allowance.monthly
         self.accounts.users.count(self.user.id, digest, month=this_month(), limit=limit)
         return {}
@@ -82,20 +62,16 @@ class _AccountMeter:
 
 @dataclass(frozen=True, slots=True, eq=False)
 class _BrowserMeter:
-    """A browser's meter with no account: the documents it may open before it signs in."""
-
     accounts: Accounts
     allowance: Allowance
-    counted: frozenset[str]  # the files it has opened, by digest
+    counted: frozenset[str]
 
     def check(self, digest: str) -> None:
-        """Raise FreeDocumentsUsed if `digest` is new and the free ones are used."""
         is_new = digest not in self.counted
         if is_new and len(self.counted) >= self.allowance.free:
             raise FreeDocumentsUsed(monthly=self.allowance.monthly)
 
     def count(self, digest: str) -> dict[str, str]:
-        """Count `digest` in the browser's own cookie: the header that keeps it."""
         if digest in self.counted:
             return {}
         listed = " ".join(sorted(self.counted | {digest}))

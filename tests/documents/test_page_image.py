@@ -1,5 +1,3 @@
-"""A page too thin for any scale asked is still drawn a pixel across, within the pixel limit."""
-
 from __future__ import annotations
 
 import math
@@ -10,8 +8,7 @@ from squidpdf.documents.constants import MAX_IMAGE_PIXELS
 from squidpdf.documents.page_image import page_scale
 from tests.helpers import assert_at_least, assert_at_most
 
-# A point wide and a mile long. Drawn through the API, as the other sizes are in
-# tests/api/test_documents.py, it can outlast the page image's timeout on a busy machine.
+# Not through the API: it can outlast the page image's timeout on a busy machine.
 _HAIRLINE = Page(1, 30_000_000, 0)
 
 

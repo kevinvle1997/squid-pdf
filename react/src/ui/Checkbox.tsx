@@ -2,7 +2,6 @@ import type { ReactNode } from "react";
 import { Checkbox as AriaCheckbox, type CheckboxProps } from "react-aria-components";
 import styles from "./Checkbox.module.css";
 
-/** A choice that's on or off, its label beside its box: ink when on, never blue, since it changes nothing on the page. */
 export function Checkbox({
   children,
   ...props

@@ -1,8 +1,6 @@
-# private working repo: design decisions, research, agent config.
-# No trailing slash, so it also matches a link to it (a workspace cloned beside the app).
+# No trailing slash, so it also matches a symlink.
 /.workspace
 
-# Python
 __pycache__/
 *.py[cod]
 .venv/
@@ -12,30 +10,23 @@ venv/
 .ruff_cache/
 .mypy_cache/
 
-# Node
 node_modules/
 dist/
 .vite/
 
-# Environment
 .env
 .env.local
-# The terms env.example suggests: a deployment's own words, private until it serves them.
 /terms.md
 
-# OS
 .DS_Store
 
-# Local artefacts
 /data/
 *.db
 *.sqlite3
 
-# private working rules, symlinked from .workspace/
 /CLAUDE.md
 /.claude/
 
-# Playwright
 /react/test-results/
 /react/playwright-report/
 /react/.vitest/

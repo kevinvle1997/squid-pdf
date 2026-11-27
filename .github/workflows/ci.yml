@@ -38,7 +38,6 @@ jobs:
       - name: Test
         run: uv run pytest -q -n auto
 
-  # Nothing else would notice the test image breaking; a slice of the suite proves it runs.
   image:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -87,7 +86,6 @@ jobs:
         id: playwright
         run: echo "version=$(jq -r '.packages["node_modules/playwright"].version' package-lock.json)" >> "$GITHUB_OUTPUT"
 
-      # Playwright pins its browsers, so its version alone decides what the cache holds.
       - name: Browser cache
         id: browser
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
@@ -129,7 +127,6 @@ jobs:
         id: version
         run: echo "version=$(jq -r '.packages["node_modules/playwright"].version' react/package-lock.json)" >> "$GITHUB_OUTPUT"
 
-  # In Playwright's own image, which ships WebKit with its system libraries, so no apt runs for them.
   webkit:
     needs: playwright
     runs-on: ubuntu-latest
@@ -177,7 +174,6 @@ jobs:
       - name: Domain
         run: echo 'SQUIDPDF_DOMAIN=localhost' > .env
 
-      # The worst case for the runner's cores (env.example), which the runner's memory holds.
       - name: Memory for the runner's cores
         run: |
           cores=$(nproc)
@@ -186,11 +182,9 @@ jobs:
 
       - name: Build
         run: SQUIDPDF_COMPOSE_HASH=$(deploy/check-compose.sh --hash) docker compose build
-        # The landing links this commit's code (compose.yaml).
         env:
           SQUIDPDF_COMMIT: ${{ github.sha }}
 
-      # The check a deploy runs before up, here so the image can't lose its label unnoticed.
       - name: The proxy names the compose.yaml it was built beside
         run: deploy/check-compose.sh
 
@@ -199,7 +193,6 @@ jobs:
           start=$(date +%s%N)
           docker compose up --detach --wait
           echo "STARTED_MS=$(( ($(date +%s%N) - start) / 1000000 ))" >> "$GITHUB_ENV"
-          # Caddy signs its own certificate for localhost; the check trusts its root.
           timeout 30 bash -c 'until docker compose cp proxy:/data/caddy/pki/authorities/local/root.crt /tmp/root.crt; do sleep 1; done'
 
       # bash by name turns on pipefail, so a failed check isn't hidden by tee.
@@ -225,20 +218,17 @@ jobs:
           caddy_mounts=$(docker inspect "$(docker compose ps -q proxy)" --format '{{range .Mounts}}{{println .Destination}}{{end}}' | grep '^/etc/caddy' || true)
           [[ -z $caddy_mounts ]] || { echo "the proxy reads $caddy_mounts from the host, not the Caddyfile built into it"; exit 1; }
 
-      # In different /64s, which the rate limit counts apart.
       - name: IPv6 clients count apart
         run: |
           first=fd8b:2c41:e0d5:1::1
           second=fd8b:2c41:e0d5:2::1
           sudo ip -6 addr add "$first/128" dev lo
           sudo ip -6 addr add "$second/128" dev lo
-          # An empty upload is counted before its body is read, and costs the app nothing.
           upload_from() {
             curl --silent --output /dev/null --write-out '%{http_code}' --cacert /tmp/root.crt \
               --interface "$1" --resolve "localhost:443:[$1]" \
               --header 'content-type: application/pdf' --data-binary '' https://localhost/api/documents || true
           }
-          # What the app answers an empty upload it lets in; 000, had curl not reached it.
           let_in=$(upload_from "$first")
           [[ $let_in =~ ^4 && $let_in != 429 ]] || { echo "an empty upload answered $let_in"; exit 1; }
           for _ in $(seq 100); do
@@ -250,8 +240,6 @@ jobs:
           [[ $status == "$let_in" ]] || { echo "$second answered $status, not $let_in: one count"; exit 1; }
           echo "$first used up its uploads; $second, in another /64, was still let in"
 
-      # As a deployer names terms (compose.yaml): checked by the app's own user, as it will
-      # read them, then served through the proxy once the app takes them in.
       - name: Terms, checked and served
         shell: bash
         run: |
@@ -261,8 +249,6 @@ jobs:
           deploy/check.sh https://localhost /tmp/root.crt 2>&1 | tee /tmp/check-terms.txt
           grep -q '^ok    the terms are served: Example terms' /tmp/check-terms.txt
 
-      # As a deployer opens to invited people (env.example): no mail server is reached, as a
-      # stranger's address gets no link, and invite.sh and remove.sh write the accounts volume.
       - name: Invite only, checked
         shell: bash
         run: |
@@ -276,7 +262,6 @@ jobs:
           } >> .env
           docker compose up --detach --wait
           deploy/invite.sh --unlimited friend@example.com family@example.com
-          # Each refused for its own reason, said: any other failure, a dead container say, isn't one.
           refused=$(deploy/invite.sh not-an-address 2>&1) && { echo "invite.sh let in what isn't an address"; exit 1; }
           grep -q "isn't an email address" <<<"$refused" || { echo "invite.sh failed otherwise: $refused"; exit 1; }
           deploy/remove.sh family@example.com
@@ -285,9 +270,6 @@ jobs:
           deploy/check.sh https://localhost /tmp/root.crt 2>&1 | tee /tmp/check-invited.txt
           grep -q "^ok    invite-only: a stranger's upload is refused" /tmp/check-invited.txt
 
-      # As a deployer takes payment (env.example), with keys Stripe never made: the app starts
-      # on them, billing.sh reads an account's ledger, and an event Stripe didn't sign is
-      # refused, without Stripe ever being asked.
       - name: Payments, checked
         shell: bash
         run: |
@@ -301,9 +283,6 @@ jobs:
           deploy/check.sh https://localhost /tmp/root.crt 2>&1 | tee /tmp/check-payments.txt
           grep -q "^ok    payments: an event Stripe didn't sign is refused" /tmp/check-payments.txt
 
-      # As a deployer turns the backup on (env.example), to a folder on the runner in place of a
-      # bucket: the same services and Litestream, one replica kind apart. The accounts volume is
-      # then lost on purpose, and a plain `up` has to put it back, or not start the app.
       - name: Accounts, backed up and restored
         shell: bash
         run: |
@@ -317,8 +296,6 @@ jobs:
           docker compose up --detach --wait
           emails() { docker compose exec -T backup sqlite3 -readonly /accounts/users.sqlite3 'select email from users'; }
           copied() { find /tmp/ci-backups -type f -printf '%s %p\n' | sort | sha256sum; }
-          # A quiet spell first, so a change after the invite is more likely its own; the restore
-          # below, which needs kept@ back, is what proves it was copied.
           for _ in $(seq 15); do was=$(copied); sleep 2; [[ $(copied) == "$was" ]] && break; done
           before=$(copied)
           deploy/invite.sh kept@example.com
@@ -326,7 +303,6 @@ jobs:
           [[ $(copied) != "$before" ]] || { echo "Litestream copied nothing of the invite in 30s"; exit 1; }
           docker compose down
           docker volume rm squidpdf_accounts
-          # A copy it can't read: the restore fails, so the app never makes an empty database.
           chmod 000 /tmp/ci-backups
           if docker compose up --detach 2>/tmp/up-unread.txt; then echo "up started with no copy to restore"; exit 1; fi
           tail -n 5 /tmp/up-unread.txt
@@ -338,20 +314,17 @@ jobs:
           for email in friend@example.com kept@example.com; do
             grep -qx "$email" <<<"$restored" || { echo "the restored accounts lack $email: $restored"; exit 1; }
           done
-          # Over a database that's there, a later up keeps what the copy hasn't got.
           docker compose stop backup
           deploy/invite.sh later@example.com
           docker compose up --detach --wait --force-recreate
           grep -qx later@example.com <<<"$(emails)" || { echo "a later up restored over the database"; exit 1; }
           deploy/check.sh https://localhost /tmp/root.crt
 
-      # Only a push to main publishes, so only it keeps what it checked, for publish to push.
       # bash by name turns on pipefail, so a failed save isn't hidden by zstd.
       - name: Save the checked images
         if: github.repository == 'kevinvle1997/squid-pdf' && github.event_name == 'push' && github.ref == 'refs/heads/main'
         shell: bash
         run: |
-          # The images publish pushes: compose.yaml's, not the backup's Litestream.
           mapfile -t images < <(COMPOSE_FILE=compose.yaml docker compose config --images)
           docker save "${images[@]}" | zstd -T0 -o /tmp/images.tar.zst
 
@@ -364,7 +337,6 @@ jobs:
           if-no-files-found: error
           # Already zstd: zipping it again would cost time and win nothing.
           compression-level: 0
-          # A re-run of this job replaces the last attempt's, rather than failing on its name.
           overwrite: true
           # Publish reads it minutes later; a day still leaves room to re-run publish.
           retention-days: 1
@@ -384,16 +356,12 @@ jobs:
         if: failure()
         run: docker compose logs
 
-  # The one number the product is judged on, here on the fixture: the real PDFs can't be
-  # committed, since they are other people's documents.
   report:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
-      # The CLI as a user installs it: no `api` extra and no dev tools, so it proves it runs
-      # without them. `uv run --no-dev` keeps them out, where plain `uv run` would add the tools.
       - name: Install
         uses: ./.github/actions/uv
         with:
@@ -412,7 +380,6 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # What a deploy pulls (compose.yaml): images from a commit every job above passed on.
   publish:
     if: github.repository == 'kevinvle1997/squid-pdf' && github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [backend, image, frontend, webkit, deploy, report]
@@ -421,7 +388,6 @@ jobs:
     permissions:
       contents: read
       packages: write
-    # Compose won't load its file without these; only the tag names the images.
     env:
       SQUIDPDF_TAG: ${{ github.sha }}
       SQUIDPDF_DOMAIN: unused
@@ -437,7 +403,6 @@ jobs:
           name: checked-images
           path: /tmp
 
-      # Deploy built them under compose's default tag, latest; what this job pushes is the commit's.
       - name: Load the checked images
         shell: bash
         run: |

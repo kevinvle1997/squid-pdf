@@ -1,7 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { type AmountValue, amountsIn, withAmount } from "./amounts";
 
-/** The one amount `text` holds. */
 function amountIn(text: string): AmountValue {
   const [amount, ...more] = amountsIn(text);
   if (amount === undefined || more.length > 0) throw new Error(`not one amount: ${text}`);

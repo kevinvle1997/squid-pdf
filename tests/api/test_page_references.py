@@ -1,9 +1,3 @@
-"""A page the document lacks, wherever a request names one: one check, two outcomes.
-
-An edit that names one is skipped and said, as any edit pointing at nothing is.
-The request's own pages, a region to draw or the pages to export, are refused.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -11,15 +5,13 @@ import pytest
 from tests.helpers import assert_equal, assert_problem
 
 _SCALE = 2
-_PAST_THE_END = 2  # the sample has pages 0 and 1
+_PAST_THE_END = 2
 
 
 def _insert(page: int) -> dict:
-    """New text on `page`."""
     return {"kind": "insert", "page": page, "origin": [72, 700], "text": "Signed", "size": 12}
 
 
-# Each edit that names a page, naming `page`.
 _EDITS = {
     "an insert": _insert,
     "a page op": lambda page: {"kind": "delete_page", "page": page},
@@ -34,7 +26,6 @@ _EDITS = {
 def test_a_page_the_document_lacks_is_skipped_in_an_edit_and_refused_in_a_request(
     mine, doc, names_it, page
 ):
-    """The same question everywhere: does the document have this page? Then two answers."""
     render = f"/api/documents/{doc['id']}/render"
     export = f"/api/documents/{doc['id']}/export"
 

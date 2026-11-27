@@ -1,9 +1,4 @@
-"""Where documents live: one folder each, deleted whole.
-
-A folder holds the original, its owner's hash, index, page list, the user's copies of its fonts,
-and per `build` and tuning, each span's room and an analysis per set of copies. Files worked out
-are named for their format. The folder's mtime, touched each visit, is the idle clock.
-"""
+"""The folder's mtime, touched each visit, is the idle clock."""
 
 from __future__ import annotations
 
@@ -47,80 +42,50 @@ from squidpdf.documents.types import KeptAnalysis
 
 ORIGINAL = "original.pdf"
 _OWNER = "owner"
-# There only when the original had what acts on its own taken out (`drop_active_content`).
 _ACTIVE_CONTENT_DROPPED = "active-content-dropped"
-# There only when the original had XMP it kept plain taken out (`drop_plain_xmp`).
 _PLAIN_XMP_DROPPED = "plain-xmp-dropped"
 # Google's copies of fonts, cached beside the documents: no document id looks like it.
 _GOOGLE_FONTS = "fonts"
-# Bytes of the tuning's digest in file names: enough that two tunings won't share one.
 _TUNING_DIGEST_SIZE = 8
-# Set to anything, in development: an analysis is kept under the app's own source too, so a
-# change to how a span is judged judges every document again on its next read.
+# Set in development: an analysis is also keyed by the app's source, so a change re-judges.
 _JUDGE_BY_SOURCE = "SQUIDPDF_DEV_REJUDGE"
-_SOURCE_FILES = ("*.py", "*.toml")  # what can change how a span is judged, or said
+_SOURCE_FILES = ("*.py", "*.toml")
 _ID_BYTES = 16
 # What token_urlsafe(_ID_BYTES) makes; nothing else touches disk, so no id climbs out.
 _DOCUMENT_ID_PATTERN = re.compile(r"[A-Za-z0-9_-]{22}")
-_TRASH = ".trash-"  # a deleted document's folder, moved aside while it's emptied
+_TRASH = ".trash-"
 _TRASHED_FOLDER_PATTERN = re.compile(re.escape(_TRASH) + _DOCUMENT_ID_PATTERN.pattern)
 
 
 class DocumentStore(Protocol):
-    """Where documents are kept: made and found by id, opened, kept alive and deleted.
-
-    It crosses to the workers with each job, so it pickles. A document deleted meanwhile
-    raises Gone from an open or a touch, which a route answers as not found.
-    """
+    """It crosses to the workers with each job, so it pickles."""
 
     @property
-    def driver_factory(self) -> DriverFactory:
-        """What opens each document's PDF, and the files saved from it."""
-        ...
+    def driver_factory(self) -> DriverFactory: ...
 
-    def create(self, owner_digest: str) -> tuple[str, Path]:
-        """A new, empty document that answers to this owner: its id and its folder."""
-        ...
+    def create(self, owner_digest: str) -> tuple[str, Path]: ...
 
-    def find(self, doc_id: str) -> tuple[Path, str] | None:
-        """The document's folder and its owner's hash, or None if there's no such document."""
-        ...
+    def find(self, doc_id: str) -> tuple[Path, str] | None: ...
 
-    def open_to_write(self, folder: Path) -> BinaryIO:
-        """The document's original, opened to be written from its start, as it's uploaded."""
-        ...
+    def open_to_write(self, folder: Path) -> BinaryIO: ...
 
-    def open_to_analyse(self, folder: Path, attached: AttachedFiles) -> Engine:
-        """The document's original, open to be judged, fetching what it lends; or Gone."""
-        ...
+    def open_to_analyse(self, folder: Path, attached: AttachedFiles) -> Engine: ...
 
-    def open_original(self, folder: Path) -> Engine:
-        """The document's original, open for editing, lending only what's fetched; or Gone."""
-        ...
+    def open_original(self, folder: Path) -> Engine: ...
 
-    def touch(self, folder: Path) -> float:
-        """Restart the idle clock: when the document now expires, as epoch seconds; or Gone."""
-        ...
+    def touch(self, folder: Path) -> float: ...
 
-    def delete(self, folder: Path) -> None:
-        """The document and everything worked out from it, gone for every request at once."""
-        ...
+    def delete(self, folder: Path) -> None: ...
 
-    def sweep(self) -> None:
-        """Delete every document left idle past the hour, and nothing else."""
-        ...
+    def sweep(self) -> None: ...
 
 
 @dataclass(frozen=True, slots=True)
 class FolderStore:
-    """Documents kept one folder each under `root()`, opened in `driver_factory`'s driver."""
-
     driver_factory: DriverFactory
-    google_download: GoogleDownload | None = None  # a test's stand-in for GitHub; None: GitHub
+    google_download: GoogleDownload | None = None
 
     def create(self, owner_digest: str) -> tuple[str, Path]:
-        """A new, empty document folder that answers to this owner; none is left if it fails."""
-        # One disk on one box is the only copy: at a second box, this moves to S3.
         doc_id = secrets.token_urlsafe(_ID_BYTES)
         folder = root() / doc_id
         folder.mkdir(parents=True)
@@ -132,13 +97,12 @@ class FolderStore:
         return doc_id, folder
 
     def find(self, doc_id: str) -> tuple[Path, str] | None:
-        """The document's folder and its owner's hash, or None if there's no such document."""
         if not _DOCUMENT_ID_PATTERN.fullmatch(doc_id):
             return None
         folder = root() / doc_id
         try:
             owner_digest = (folder / _OWNER).read_text()
-        except FileNotFoundError:  # unknown, or swept a moment ago
+        except FileNotFoundError:
             return None
         # Its index is kept in another format: it reads as gone, so the browser opens it again.
         if not (folder / _index_file()).exists():
@@ -146,32 +110,20 @@ class FolderStore:
         return folder, owner_digest
 
     def open_to_write(self, folder: Path) -> BinaryIO:
-        """The document's original, opened to be written from its start, as it's uploaded."""
         return (folder / ORIGINAL).open("wb")
 
     def open_to_analyse(self, folder: Path, attached: AttachedFiles) -> Engine:
-        """The document's original, open to be judged. Raises Gone if it was deleted meanwhile.
-
-        The one open that downloads Google's copies of its fonts, into the cache
-        beside the documents (the sweep passes over it). Every other open reads
-        that cache alone, so it lends what the analysis fetched and never waits.
-        """
+        """The one open that downloads Google's fonts; every other reads its cache alone."""
         google = google_fonts(folder=root() / _GOOGLE_FONTS, download=self.google_download)
         sources = FontSources(google=google, attached=attached)
         try:
             return open_pdf(
                 str(folder / ORIGINAL), sources=sources, driver_factory=self.driver_factory
             )
-        # Deleted since it was found: by its owner or the sweep.
         except FileNotFoundError as exc:
             raise Gone from exc
 
     def open_original(self, folder: Path) -> Engine:
-        """The document's original, open for editing. Raises Gone if it was deleted meanwhile.
-
-        Google's copy of a font lends the letters its copies in the file lack, from
-        the cache the analysis filled: a render never waits on the network.
-        """
         google = google_fonts(
             folder=root() / _GOOGLE_FONTS, cache_only=True, download=self.google_download
         )
@@ -180,221 +132,157 @@ class FolderStore:
             return open_pdf(
                 str(folder / ORIGINAL), sources=sources, driver_factory=self.driver_factory
             )
-        # Deleted since it was found: by its owner or the sweep.
         except FileNotFoundError as exc:
             raise Gone from exc
 
     def touch(self, folder: Path) -> float:
-        """Restart the idle clock; returns when the document now expires, as epoch seconds.
-
-        Raises Gone if it was deleted since it was found, by its owner or the sweeper.
-        """
         try:
             os.utime(folder)
             return folder.stat().st_mtime + constants.IDLE_S
-        except FileNotFoundError as exc:  # deleted between find() and here
+        except FileNotFoundError as exc:
             raise Gone from exc
 
     def delete(self, folder: Path) -> None:
-        """The document and everything worked out from it, gone for every request at once.
-
-        Moved aside first, in one step, so its id stops resolving before any file
-        goes: a worker still writing finds it Gone, instead of adding a file to a
-        folder being emptied, which would stop the folder going.
-        """
+        """Moved aside first, so its id stops resolving before any file goes."""
         trash = folder.with_name(f"{_TRASH}{folder.name}")
         try:
             folder.rename(trash)
-        except FileNotFoundError:  # the sweep or another delete got there first
+        except FileNotFoundError:
             return
-        # The folder and everything in it. Errors ignored: the sweep may be emptying it too.
         shutil.rmtree(trash, ignore_errors=True)
         # Once more: a writer that found the folder before the move can still drop a piece in it
         # after the first pass, which stops the folder going; its next write finds it Gone.
         shutil.rmtree(trash, ignore_errors=True)
 
     def sweep(self) -> None:
-        """Delete every document left untouched for longer than the idle hour, and nothing else.
-
-        Only a folder named like a document, or one a delete moved aside: the data
-        folder can be shared. A request that loses the race with a delete says Gone.
-        """
+        """Only a document's folder, or one a delete moved aside: the data folder is shared."""
         for folder in root().glob("*"):
-            # A delete cut short: nothing reads it now.
             if _TRASHED_FOLDER_PATTERN.fullmatch(folder.name):
-                shutil.rmtree(folder, ignore_errors=True)  # its delete may be emptying it too
+                shutil.rmtree(folder, ignore_errors=True)
                 continue
-            # With or without its owner: one emptied by a delete from before they moved aside.
             is_document = _DOCUMENT_ID_PATTERN.fullmatch(folder.name) and folder.is_dir()
             if is_document and _idle(folder):
                 self.delete(folder)
 
 
-# The store the app keeps documents in unless it's given another: folders, opened in MuPDF.
 FOLDER_STORE = FolderStore(DEFAULT_DRIVER_FACTORY)
 
 
 def _idle(folder: Path) -> bool:
-    """Whether the folder has gone untouched past the idle hour; False once it's gone."""
     try:
         return folder.stat().st_mtime < time.time() - constants.IDLE_S
-    except FileNotFoundError:  # its owner deleted it since the listing
+    except FileNotFoundError:
         return False
 
 
 def replace_original(folder: Path, write: Callable[[str], object]) -> None:
-    """Put the file `write` writes, to the path it's handed, in place of the original.
-
-    In one step, as `_write_whole` writes: whoever reads the original meanwhile reads all
-    of the old one or of the new. The path is a `str`, as the engine's save takes it.
-    """
     _replace_whole(folder / ORIGINAL, lambda part: write(str(part)))
 
 
 def keep_active_content_dropped(folder: Path) -> None:
-    """Note that the original had what acts on its own taken out, for each reply to say."""
     _write_whole(folder / _ACTIVE_CONTENT_DROPPED, b"")
 
 
 def active_content_dropped(folder: Path) -> bool:
-    """Whether the original had what acts on its own taken out when it came in."""
     return (folder / _ACTIVE_CONTENT_DROPPED).exists()
 
 
 def keep_plain_xmp_dropped(folder: Path) -> None:
-    """Note that the original had XMP it kept plain taken out, for each reply to say."""
     _write_whole(folder / _PLAIN_XMP_DROPPED, b"")
 
 
 def plain_xmp_dropped(folder: Path) -> bool:
-    """Whether the original had XMP it kept plain taken out when it came in."""
     return (folder / _PLAIN_XMP_DROPPED).exists()
 
 
 def _write_whole(path: Path, data: bytes) -> None:
-    """Write `data` to `path` in one step: a reader sees the old file or the new, never half.
-
-    Written beside it, then renamed over it, which the filesystem does at once. A half file
-    would read as broken JSON, and each visit restarts the hour, so it would never go.
-    Raises Gone if the document was deleted meanwhile, and ServerFull if the disk is full.
-    """
+    """A half file reads as broken JSON, and each visit restarts the hour: it'd never go."""
     _replace_whole(path, lambda part: part.write_bytes(data))
 
 
 def _replace_whole(path: Path, write: Callable[[Path], object]) -> None:
-    """Put what `write` writes to a file beside `path` in its place, renamed over it at once."""
     with full_disk_refused():
         try:
             handle, part = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
-        except FileNotFoundError as exc:  # its folder was deleted since it was found
+        except FileNotFoundError as exc:
             raise Gone from exc
-        os.close(handle)  # `write` opens it by its path
+        os.close(handle)
         try:
             write(Path(part))
             os.replace(part, path)
-        except FileNotFoundError as exc:  # its folder was deleted mid-write
-            Path(part).unlink(missing_ok=True)  # most likely gone with the folder already
+        except FileNotFoundError as exc:
+            Path(part).unlink(missing_ok=True)
             raise Gone from exc
-        except BaseException:  # cut short: the old file stays, and the piece goes
+        except BaseException:
             Path(part).unlink(missing_ok=True)
             raise
 
 
 def save_index(folder: Path, index: SpanIndex) -> None:
-    """Keep the index, built once from the original, so ids never change.
-
-    This worker keeps it read as well, so its next render needn't read it back.
-    """
     index_path = folder / _index_file()
     _write_whole(index_path, index_as_json(index))
     try:
         index_stat = index_path.stat()
-    except FileNotFoundError as exc:  # deleted since it was written: by its owner or the sweep
+    except FileNotFoundError as exc:
         raise Gone from exc
     _kept_indexes.keep(_IndexFile.from_stat(folder, index_stat), index)
 
 
 @dataclass(frozen=True, slots=True)
 class _IndexFile:
-    """A document's index file, as found on disk: which file it is, and its size."""
-
-    folder: Path  # the document's
+    folder: Path
     # Mtime and inode: each save is a new file, but the clock may not have moved.
     mtime_ns: int
     inode: int
-    size: int  # in bytes
+    size: int
 
     @classmethod
     def from_stat(cls, folder: Path, index_stat: os.stat_result) -> _IndexFile:
-        """The index file in `folder`, as `index_stat` finds it."""
         return cls(folder, index_stat.st_mtime_ns, index_stat.st_ino, index_stat.st_size)
 
 
 @dataclass(frozen=True, slots=True)
 class _KeptIndex:
-    """An index this worker read, and the file it read it from."""
-
     index_file: _IndexFile
-    index: SpanIndex = field(repr=False)  # every span in the document
+    index: SpanIndex = field(repr=False)
 
 
 @dataclass(slots=True)
 class _KeptIndexes:
-    """The indexes this worker read latest, while their files fit in `KEPT_INDEX_BYTES`.
-
-    The pool hands a user's renders to each worker in turn, so a worker keeps the
-    documents in use.
-    """
-
     # Each by its document's folder, the least recently used first.
     by_folder: dict[Path, _KeptIndex] = field(default_factory=dict, repr=False)
 
     def index_for(self, index_file: _IndexFile, *, read: Callable[[], SpanIndex]) -> SpanIndex:
-        """The index in `index_file`: the one kept, else read and kept."""
-        # .pop with a default: a document this worker hasn't read; put back when it's the same.
         kept = self.by_folder.pop(index_file.folder, None)
-        # The same file as read before: it isn't read again, and it's now the latest used.
         if kept is not None and kept.index_file == index_file:
             self.by_folder[index_file.folder] = kept
             return kept.index
-        # Space made before it's read, so what's kept and it never pass the bound together.
         self._make_space_for(index_file.size)
         index = read()
         self.keep(index_file, index)
         return index
 
     def keep(self, index_file: _IndexFile, index: SpanIndex) -> None:
-        """Keep `index`, read from `index_file`, as the latest used."""
         self._make_space_for(index_file.size)
         self.by_folder[index_file.folder] = _KeptIndex(index_file, index)
 
     def _make_space_for(self, file_bytes: int) -> None:
-        """Drop the least recently used until a file of `file_bytes` fits within the bound.
-
-        A file past the bound by itself empties the rest, and is kept alone.
-        """
         kept_bytes = sum(kept.index_file.size for kept in self.by_folder.values())
         while self.by_folder and kept_bytes + file_bytes > constants.KEPT_INDEX_BYTES:
             least_used = self.by_folder.pop(next(iter(self.by_folder)))
             kept_bytes -= least_used.index_file.size
 
     def forget(self) -> None:
-        """Drop every index kept, as a fresh record: the next of each is read from its file."""
         self.by_folder.clear()
 
 
-_kept_indexes = _KeptIndexes()  # per worker process: each has its own
+_kept_indexes = _KeptIndexes()
 
 
 def require_index(folder: Path) -> SpanIndex:
-    """The index saved at upload; raises Gone if it was deleted or kept in another format.
-
-    Read once per worker: parsing a large one was most of a render. Kept while
-    its file is the same file, so an index saved again or deleted is never served.
-    """
     try:
         opened = (folder / _index_file()).open("rb")
-    except FileNotFoundError as exc:  # saved at upload: a delete, a sweep or a deploy took it
+    except FileNotFoundError as exc:
         raise Gone from exc
     with opened:
         index_file = _IndexFile.from_stat(folder, os.fstat(opened.fileno()))
@@ -402,44 +290,35 @@ def require_index(folder: Path) -> SpanIndex:
 
 
 def _read_index(opened: BinaryIO) -> SpanIndex:
-    """The index saved in `opened`, a file already open, each span rebuilt."""
     return index_from_json(opened.read())
 
 
 def save_pages(folder: Path, pages: list[Page]) -> None:
-    """Keep the page list, read on every page view."""
     _write_whole(folder / _pages_file(), pages_as_json(pages))
 
 
 def load_pages(folder: Path) -> list[Page]:
-    """The saved page list. Raises Gone if it was deleted, or kept in another format."""
     try:
         saved = (folder / _pages_file()).read_bytes()
-    except FileNotFoundError as exc:  # a delete, a sweep or a deploy took it
+    except FileNotFoundError as exc:
         raise Gone from exc
     return pages_from_json(saved)
 
 
 def save_free_space(folder: Path, build: str, free_space: FreeSpace) -> None:
-    """Keep every span's room and every line, worked out under this build: no font moves one."""
     _write_whole(folder / _free_space_file(build), free_space_as_json(free_space))
 
 
 def load_free_space(folder: Path, build: str) -> FreeSpace | None:
-    """Every span's room and every line, kept under this build, format and tuning, or None."""
     try:
         saved = (folder / _free_space_file(build)).read_bytes()
-    except FileNotFoundError:  # a new build, format or tuning, or not worked out yet
+    except FileNotFoundError:
         return None
     return free_space_from_json(saved)
 
 
 def save_analysis(folder: Path, build: str, kept: KeptAnalysis, *, attached: str) -> None:
-    """Keep what was worked out under this build and set of copies (`AttachedFiles.key`).
-
-    Another build, tuning or set of copies works it out again. The digest last: a
-    304 reads it alone, so its file says the rest is there.
-    """
+    """The digest last: a 304 reads it alone, so its file says the rest is there."""
     judged_with = f"{build}.{attached}"
     _write_whole(folder / _spans_file(judged_with), kept.spans)
     _write_whole(folder / _analysis_file(judged_with), kept.facts)
@@ -447,39 +326,34 @@ def save_analysis(folder: Path, build: str, kept: KeptAnalysis, *, attached: str
 
 
 def load_analysis(folder: Path, build: str) -> KeptAnalysis | None:
-    """The analysis saved under this build, format and the copies attached now, or None."""
     judged_with = f"{build}.{attached_files(folder).key}"
     try:
         digest = (folder / _digest_file(judged_with)).read_text()
         facts = (folder / _analysis_file(judged_with)).read_bytes()
         spans = (folder / _spans_file(judged_with)).read_bytes()
-    except FileNotFoundError:  # a new build, format or set of copies, or never analysed
+    except FileNotFoundError:
         return None
     return KeptAnalysis(facts, spans, digest)
 
 
 def load_analysis_digest(folder: Path, build: str) -> str | None:
-    """The analysis's digest under this build, format and copies attached now, or None."""
     judged_with = f"{build}.{attached_files(folder).key}"
     try:
         return (folder / _digest_file(judged_with)).read_text()
-    except FileNotFoundError:  # a new build, format or set of copies, or never analysed
+    except FileNotFoundError:
         return None
 
 
 def _index_file() -> str:
-    """The file the span index is kept in."""
     return _kept_as("index.json")
 
 
 def _pages_file() -> str:
-    """The file the page list is kept in, beside `_index_file`."""
     return _kept_as("pages.json")
 
 
 @cache
 def _source_digest() -> bytes:
-    """A digest of the app's own source, read once a process."""
     package = Path(__file__).resolve().parents[1]
     files = sorted(path for pattern in _SOURCE_FILES for path in package.rglob(pattern))
     digest = hashlib.blake2s()
@@ -489,40 +363,26 @@ def _source_digest() -> bytes:
 
 
 def _free_space_file(build: str) -> str:
-    """The file the rooms and lines under `build` are kept in, beside `_analysis_file`."""
     return _analysis_kept_as(f"free-space-{build}.json")
 
 
 def _analysis_file(build: str) -> str:
-    """The file the analysis under `build` is kept in."""
     return _analysis_kept_as(f"analysis-{build}.json")
 
 
 def _spans_file(build: str) -> str:
-    """The file the analysis's spans under `build` are kept in, beside `_analysis_file`."""
     return _analysis_kept_as(f"spans-{build}.json")
 
 
 def _digest_file(build: str) -> str:
-    """The file the analysis's digest under `build` is kept in, beside `_analysis_file`."""
     return _analysis_kept_as(f"digest-{build}.txt")
 
 
 def _kept_as(name: str) -> str:
-    """The file `name` is kept in, named for the format of a document's files.
-
-    One in another format reads as not there, and an index is never rebuilt, so
-    its document reads as gone.
-    """
     return f"v{constants.DOCUMENT_FORMAT}.{name}"
 
 
 def _analysis_kept_as(name: str) -> str:
-    """The file `name` is kept in, named for the analysis's format and tuning as well.
-
-    One in another format or tuning is worked out again over the same index. The
-    document's format is in it too, so a gone document has no analysis to answer from.
-    """
     tuning = repr(ANALYSIS_TUNING).encode()
     # In development, the code that judged it: a server reloaded on a change is a new process.
     source = _source_digest() if os.environ.get(_JUDGE_BY_SOURCE) else b""

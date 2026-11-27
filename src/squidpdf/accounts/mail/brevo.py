@@ -1,5 +1,3 @@
-"""Sending a letter through Brevo's API, over HTTPS, rather than a mail server's SMTP."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -15,15 +13,13 @@ from squidpdf.accounts.errors import MailLimitReached, MailNotSent
 from squidpdf.accounts.mail.sending import Letter
 from squidpdf.core import ErrorController, Failure, Problem
 
-_SEND_URL = "https://api.brevo.com/v3/smtp/email"  # Brevo's address for one transactional email
-# Brevo's answers that its account sends no more for now: past its sending limit, or too fast.
+_SEND_URL = "https://api.brevo.com/v3/smtp/email"
 _LIMIT_STATUSES = frozenset({HTTPStatus.PAYMENT_REQUIRED, HTTPStatus.TOO_MANY_REQUESTS})
-_NO_CODE = "no code"  # what the log says where an answer names no code
+_NO_CODE = "no code"
 
 
 def _problem_of_refusal(failure: Exception) -> Problem:
-    """What Brevo's refusal means: its limit reached, or the email not sent, and its why."""
-    refused = cast(httpx.HTTPStatusError, failure)  # _BREVO_FAILURES hands it only these
+    refused = cast(httpx.HTTPStatusError, failure)
     status = refused.response.status_code
     # Its code alone: the message beside it may name the address, which no log keeps.
     debug = f"Brevo answered {status} ({_code_in(refused.response)})"
@@ -33,12 +29,10 @@ def _problem_of_refusal(failure: Exception) -> Problem:
 
 
 def _code_in(answer: httpx.Response) -> str:
-    """Brevo's word for why it refused, as its JSON names it; _NO_CODE where it names none."""
     try:
         said = answer.json()
-    except ValueError:  # raised by the JSON reader: a proxy's page, not Brevo's answer
+    except ValueError:
         return _NO_CODE
-    # .get: its JSON names the code, but a proxy's may not.
     return str(said.get("code", _NO_CODE)) if isinstance(said, dict) else _NO_CODE
 
 
@@ -53,18 +47,14 @@ _BREVO_FAILURES = ErrorController(
 
 @dataclass(frozen=True, slots=True, eq=False)
 class BrevoMailer:
-    """Brevo's API, its key in each request, sending as one sender; made by `brevo_mailer`."""
-
-    client: httpx.Client  # carries the key: never logged
-    sender_name: str  # empty where the From: address has no name
+    client: httpx.Client  # never logged
+    sender_name: str
     sender_email: str
 
     def send(self, letter: Letter) -> None:
-        """Send `letter`, or raise MailNotSent, or MailLimitReached, saying why not."""
         _BREVO_FAILURES.result_of(partial(self._post, letter))
 
     def _post(self, letter: Letter) -> None:
-        """Hand `letter` to Brevo; raise if it doesn't take it."""
         sender = {"email": self.sender_email} | (
             {"name": self.sender_name} if self.sender_name else {}
         )
@@ -83,10 +73,6 @@ class BrevoMailer:
 def brevo_mailer(
     key: str, *, sender: str, transport: httpx.BaseTransport | None = None
 ) -> BrevoMailer:
-    """A mailer sending as `sender`, a From: address, through the Brevo account `key` opens.
-
-    `transport` is a test's stand-in for Brevo; the app passes none.
-    """
     name, email = parseaddr(sender)
     client = httpx.Client(
         headers={"api-key": key, "accept": "application/json"},

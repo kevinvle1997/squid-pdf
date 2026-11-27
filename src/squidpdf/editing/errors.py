@@ -1,105 +1,76 @@
-"""What can go wrong with the edits a browser sends."""
-
 from __future__ import annotations
 
 from squidpdf.core import Problem
 
 
 class BadReference(Problem):
-    """A redaction points at text that isn't there. Skipping it would be a leak."""
-
     type = "bad_reference"
     status = 422
 
     def __init__(self, span_id: str) -> None:
-        """Name the span the redaction asked for."""
         super().__init__(span_id=span_id)
 
     @property
     def span_id(self) -> str:
-        """The span the redaction asked for."""
         return str(self.fill["span_id"])
 
 
 class BadRange(Problem):
-    """A redaction names words its span's text doesn't have. Skipping it would be a leak."""
-
     type = "bad_range"
     status = 422
 
     def __init__(self, span_id: str, *, debug: str | None = None) -> None:
-        """Name the span the redaction asked for; `debug`, the range and the text's length."""
         super().__init__(debug, span_id=span_id)
 
 
 class RedactionFailed(Problem):
-    """A redacted span's text is still in the saved file, so no file is sent."""
-
     type = "redaction_failed"
     status = 422
 
     def __init__(self, span_id: str, text: str, page: int) -> None:
-        """Name the span, its text, and its page counted from 1."""
         super().__init__(span_id=span_id, text=text, page=page)
 
 
 class RedactionMoved(Problem):
-    """Each redacted span's words are gone, but the erase moved other text: no file."""
-
     type = "redaction_moved"
     status = 422
 
     def __init__(self, text: str, page: int) -> None:
-        """Name the words redacted on the page where other text moved, and the page from 1."""
         super().__init__(text=text, page=page)
 
 
 class RedactionUnchecked(Problem):
-    """The erase set the rest of a line along, and where it landed can't be read: no file."""
-
     type = "redaction_unchecked"
     status = 422
 
     def __init__(self, text: str, page: int) -> None:
-        """Name the words redacted on the page that can't be checked, and the page from 1."""
         super().__init__(text=text, page=page)
 
 
 class RedactionCovered(Problem):
-    """New text sits over a redacted span, so the check reads its letters there: no file."""
-
     type = "redaction_covered"
     status = 422
 
     def __init__(self, span_id: str, page: int) -> None:
-        """Name the span, and its page counted from 1."""
         super().__init__(span_id=span_id, page=page)
 
 
 class TooManyEdits(Problem):
-    """More edits in one request than the server applies."""
-
     type = "too_many_edits"
     status = 422
 
     def __init__(self, edits: int) -> None:
-        """Name the limit it went over."""
         super().__init__(edits=edits)
 
 
 class TextTooLong(Problem):
-    """New text over the length limit: a replacement's or an insert's."""
-
     type = "text_too_long"
     status = 422
 
     def __init__(self, chars: int) -> None:
-        """Name the limit it went over."""
         super().__init__(chars=chars)
 
 
 class RedactionConflict(Problem):
-    """Editing text redacted earlier in the list: redaction wins, so the whole list fails."""
-
     type = "redaction_conflict"
     status = 422

@@ -1,19 +1,14 @@
-"""The accounts' cookies, and the one way their Set-Cookie headers are written.
-
-Every one is Secure, HttpOnly and SameSite=Strict, under __Host-, so only this host sets
-it, only over HTTPS, no script reads it and no other site's page sends it.
-"""
+"""Secure, HttpOnly, SameSite=Strict, under __Host-: only this host sets one, over HTTPS."""
 
 from __future__ import annotations
 
 from http.cookies import SimpleCookie
 
-SIGNED_IN = "__Host-signed-in"  # which account this browser is signed in to
-COUNTED = "__Host-counted"  # the files this browser opened without an account
+SIGNED_IN = "__Host-signed-in"
+COUNTED = "__Host-counted"
 
 
 def cookie_header(name: str, value: str, *, max_age: int) -> str:
-    """The Set-Cookie header keeping `value` under `name` for `max_age` seconds; 0 clears it."""
     cookie: SimpleCookie = SimpleCookie()
     cookie[name] = value
     kept = cookie[name]

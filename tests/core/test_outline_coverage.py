@@ -1,5 +1,3 @@
-"""Reading whether a glyph has an outline gives the same letters as drawing it."""
-
 from __future__ import annotations
 
 import io
@@ -12,8 +10,7 @@ from squidpdf.core.fonts.catalog import FACES, face_bytes
 from squidpdf.core.fonts.coverage import coverage_of
 from tests.helpers import assert_equal
 
-# Two of each format we ship, TrueType and CFF (Adobe's compact outlines): drawing every
-# face takes too long for the suite.
+# Two faces of each format we ship: drawing every face takes too long for the suite.
 _SAMPLED = [
     "FreeSerif Regular",
     "Liberation Sans Regular",
@@ -23,10 +20,9 @@ _SAMPLED = [
 
 
 def _drawn_letters(font_file: bytes) -> list[str]:
-    """Every letter the font maps that draws any ink when drawn in full, spaces as mapped."""
     font = TTFont(io.BytesIO(font_file), lazy=True)
     glyphs = font.getGlyphSet()
-    drawn = {" "}  # the plain space always counts, mapped or not
+    drawn = {" "}
     for codepoint, name in font["cmap"].getBestCmap().items():
         pen = DecomposingRecordingPen(glyphs)
         glyphs[name].draw(pen)

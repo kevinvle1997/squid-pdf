@@ -34,8 +34,6 @@ import { edit, finish, typeInto, typeIntoRuns } from "./typing";
 
 vi.mock(import("../api/client"), async (original) => ({ ...(await original()), renderStrips: vi.fn() }));
 
-// "Kept" is stored in the file and draws every letter typed here; "Named" is only named, so a similar font draws it.
-// Its sentences are the server's, in a language made up for tests, so any the browser writes itself stands out.
 const DOC = aDoc({
   sentences: PSEUDO_SENTENCES,
   spans: [
@@ -116,7 +114,6 @@ describe("a change to the history", () => {
     undo(editor);
     undo(editor);
     expect(editor.store.get().announcement.text).toBe("BACK TO “was own”.");
-    // Nothing left to undo: nothing announced, nothing brought into view.
     const before = editor.store.get();
     undo(editor);
     expect(editor.store.get().announcement).toBe(before.announcement);
@@ -159,7 +156,6 @@ describe("a change to the history", () => {
     expect(changedCount(editor.store.get())).toBe(2);
     expect(warnedCount(editor.store.get())).toEqual({ count: 1, different: false });
     const turned = aSpan({ id: "turned", fidelity: "approximate", why: { code: "turned_text", params: {} } });
-    // Its font's own copy draws the font's first span, but not this one: the span is what's counted.
     const elsewhere = aSpan({
       id: "elsewhere",
       font: "Kept",
@@ -251,7 +247,6 @@ describe("before any change", () => {
       count: 2,
       reasons: [{ code: "turned_text", places: 1 }],
     });
-    // Worked out once per document: the bar reads it on every change.
     const before = editor.store.get().layout.mismatchesAtRest;
     typed("own", "now");
     expect(editor.store.get().layout.mismatchesAtRest).toBe(before);
