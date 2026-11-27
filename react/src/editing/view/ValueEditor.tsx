@@ -61,7 +61,7 @@ const KIND = { date: "Date", amount: "Amount" } as const;
 const MOST_WEEKS = 6;
 
 /** The value's control in the slip, and its editor under it while open. */
-export function ValueEditor({ value, field }: { value: EditableValue; field: RefObject<HTMLInputElement | null> }) {
+export function ValueEditor({ value, field }: { value: EditableValue; field: RefObject<HTMLElement | null> }) {
   const editor = useEditor();
   const open = useEditorState((state) => spanDraftOf(state)?.valueEditorOpen ?? false);
   const coarse = useSyncExternalStore(onPointerChange, coarsePointer);

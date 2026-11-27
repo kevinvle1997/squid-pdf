@@ -10,7 +10,7 @@ import { Warn } from "../../ui/Warn";
 import type { Setting } from "../fit";
 import { attachFont, FONT_FILES, offersCopy, readableName } from "../fonts";
 import type { EditableValue } from "../formattedValues";
-import { editNote } from "../marks";
+import { editNote, type Note } from "../marks";
 import { setWarningMuted } from "../mutedWarnings";
 import { redact } from "../redaction";
 import { fontOf, shownNameIn } from "../spanFonts";
@@ -32,12 +32,14 @@ interface Props {
   verdict: Verdict; // what an edit of what's typed comes to, and in what face
   setting: Setting; // how the line is drawn, and the ways out to choose from
   value: EditableValue | undefined; // a date or an amount in what's typed, which has an editor of its own
-  field: RefObject<HTMLInputElement | null>; // the field typed into, which the value's editor sends focus back to
+  field: RefObject<HTMLElement | null>; // the field typed into, which the value's editor sends focus back to
   chip: RefObject<HTMLDivElement | null>; // this slip, for the field to tell focus moving into it from leaving
+  // A line's: what its runs redrawn warn of, each font once, and those fonts by name, which muting mutes together.
+  lineNote?: { note: Note | null; fonts: readonly string[] };
 }
 
 /** The slip under the span typed into. */
-export function Chip({ span, fieldEndPt, info, trouble, verdict, setting, value, field, chip }: Props) {
+export function Chip({ span, fieldEndPt, info, trouble, verdict, setting, value, field, chip, lineNote }: Props) {
   const editor = useEditor();
   const font = useEditorState((state) => fontOf(state.layout.fonts, span));
   const sentences = useEditorState((state) => state.doc.sentences);
@@ -49,7 +51,8 @@ export function Chip({ span, fieldEndPt, info, trouble, verdict, setting, value,
   const attaching = useEditorState((state) => state.attaching !== null);
   // A signed document's, until its first edit: no mute, since that edit ends it.
   const signature = useEditorState(signatureWarningOf);
-  const note = editNote(span, { verdict, font, sentences, muted });
+  const note = lineNote === undefined ? editNote(span, { verdict, font, sentences, muted }) : lineNote.note;
+  const mutes = lineNote === undefined ? [shown] : lineNote.fonts;
   const ways = setting.offered.map((id) => ({ id, label: sentences.options[id]?.label ?? id }));
   // Off the line and in view, as what it holds grows, or the page or the window is shown another size.
   const { slipRef, style } = useSlipPlace(span.bbox, { page: info, endPt: fieldEndPt });
@@ -87,9 +90,11 @@ export function Chip({ span, fieldEndPt, info, trouble, verdict, setting, value,
             variant="quiet"
             className={styles.muteWarning}
             keepFocus
-            onPress={() => setWarningMuted(editor, shown, { muted: true })}
+            onPress={() => {
+              for (const each of mutes) setWarningMuted(editor, each, { muted: true });
+            }}
           >
-            Don't show again for this font
+            {mutes.length > 1 ? "Don't show again for these fonts" : "Don't show again for this font"}
           </Button>
         </span>
       )}

@@ -83,3 +83,34 @@ export function runsRedrawn(changed: readonly boolean[], { movesTheRest }: { mov
   const last = movesTheRest ? changed.length - 1 : changed.lastIndexOf(true);
   return changed.map((_, index) => first <= index && index <= last);
 }
+
+/**
+ * What a deletion of `kind` (an input event's type) takes of `text` with `start` to `end` selected: the selection;
+ * with only a caret, the letter, the word or the line before it or after it, as a field's own keys take them.
+ */
+export function deletedBy(kind: string, text: string, [start, end]: readonly [number, number]): [number, number] {
+  if (start !== end) return [start, end];
+  if (kind === "deleteContentBackward") return [start - ([...text.slice(0, start)].at(-1)?.length ?? 0), start];
+  if (kind === "deleteContentForward") return [start, start + ([...text.slice(start)][0]?.length ?? 0)];
+  if (kind === "deleteWordBackward") return [wordStartBefore(text, start), start];
+  if (kind === "deleteWordForward") return [start, wordEndAfter(text, start)];
+  if (kind.endsWith("LineBackward")) return [0, start];
+  if (kind.endsWith("LineForward")) return [start, text.length];
+  return [start, end];
+}
+
+/** Where the word before `at` in `text` starts, past any spaces between: what a word's delete back takes to. */
+function wordStartBefore(text: string, at: number): number {
+  let from = at;
+  while (from > 0 && /\s/.test(text[from - 1] ?? "")) from--;
+  while (from > 0 && /\S/.test(text[from - 1] ?? "")) from--;
+  return from;
+}
+
+/** Where the word after `at` in `text` ends, past any spaces between: what a word's delete forward takes to. */
+function wordEndAfter(text: string, at: number): number {
+  let to = at;
+  while (to < text.length && /\s/.test(text[to] ?? "")) to++;
+  while (to < text.length && /\S/.test(text[to] ?? "")) to++;
+  return to;
+}

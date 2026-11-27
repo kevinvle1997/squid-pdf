@@ -1,0 +1,27 @@
+/* A line's field: the field's look, over the line's own pixels with the page, its runs set inline in their own
+   faces and sizes. It grows with what's typed, never narrower than the line. */
+.field, .troubleField {
+  position: absolute; z-index: var(--z-field);
+  display: block; margin: 0; padding: 0; border: 0; border-radius: 0;
+  background: var(--sheet);
+  box-shadow: inset 0 -2px 0 var(--mark-change), 0 0 0 1px var(--mark-change-soft);
+  white-space: pre;
+  outline: none;
+  caret-color: var(--sheet-ink);
+}
+/* The page never themes, so neither do the caret and the selection on it, in either theme. */
+.field ::selection, .troubleField ::selection { background: var(--sheet-rule); color: var(--sheet-ink); }
+.troubleField { box-shadow: inset 0 -2px 0 var(--mark-warn), 0 0 0 1px var(--mark-warn-soft); }
+/* Where a line left long runs out of room: a dashed warning line across it, over the field, so what's past it shows. */
+.roomEnds {
+  position: absolute; z-index: var(--z-field);
+  margin-block: calc(-1 * var(--s1)); padding-block: var(--s1);
+  border-inline-start: 2px dashed var(--mark-warn);
+  pointer-events: none;
+}
+/* The shadows go in high contrast: an outline keeps the field's line, dashed in trouble as a warning's is. */
+@media (forced-colors: active) {
+  .field { outline: 2px solid Highlight; }
+  .troubleField { outline: 2px dashed CanvasText; }
+  .roomEnds { border-color: CanvasText; }
+}

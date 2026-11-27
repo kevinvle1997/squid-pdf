@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { aDoc, aSpan } from "../fixtures";
-import { linesBySpan, runsEdited, runsRedrawn, runTypedInto, startsALine } from "./lines";
+import { deletedBy, linesBySpan, runsEdited, runsRedrawn, runTypedInto, startsALine } from "./lines";
 
 // "Text is grouped into", "spans" in bold, "(one style)": one line, and a heading on a line of its own.
 const before = aSpan({ id: "before", text: "Text is grouped into ", bbox: { x0: 72, y0: 100, x1: 160, y1: 112 } });
@@ -99,4 +99,17 @@ test("an edit redraws its runs from the first changed to the last, on to the lin
   ]);
   expect(runsRedrawn([false, true, false, false], { movesTheRest: true })).toEqual([false, true, true, true]);
   expect(runsRedrawn([false, false, false], { movesTheRest: true })).toEqual([true, true, true]);
+});
+
+test("a delete with only a caret takes the letter, the word or the line before or after it; a selection, itself", () => {
+  const text = "Text is grouped into spans";
+  expect(deletedBy("deleteContentBackward", text, [26, 26])).toEqual([25, 26]);
+  expect(deletedBy("deleteContentForward", text, [0, 0])).toEqual([0, 1]);
+  expect(deletedBy("deleteWordBackward", text, [21, 21])).toEqual([16, 21]);
+  expect(deletedBy("deleteWordForward", text, [15, 15])).toEqual([15, 20]);
+  expect(deletedBy("deleteSoftLineBackward", text, [8, 8])).toEqual([0, 8]);
+  expect(deletedBy("deleteHardLineForward", text, [8, 8])).toEqual([8, 26]);
+  expect(deletedBy("deleteContentBackward", text, [5, 7])).toEqual([5, 7]);
+  // A letter outside the basic plane is two units: both go.
+  expect(deletedBy("deleteContentBackward", "a 😀", [4, 4])).toEqual([2, 4]);
 });
