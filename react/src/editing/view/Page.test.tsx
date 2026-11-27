@@ -25,7 +25,7 @@ import { animationsDone, colorOf, emulateTouchScreen, middleOf, tapAt } from "..
 import { FIELD_SPARE_EM, NOTE_CLOSE_DELAY_MS, NOTE_DELAY_MS } from "../constants";
 import { learnDateLanguages } from "../dateNames";
 import { createEditor, type Editor, undo } from "../editor";
-import { addFaces, familyOf } from "../faces";
+import { addFaces, DEFAULT_FACE, familyOf } from "../faces";
 import { openFind, typeQuery } from "../find";
 import { setWarningMuted } from "../mutedWarnings";
 import { openNewTextAt } from "../newText";
@@ -925,6 +925,12 @@ describe("a page", () => {
       const drawnPt = letterByLetterPt(KERNED, wide.size) + wide.size * FIELD_SPARE_EM;
       expect(Math.abs(widthPt - drawnPt)).toBeLessThan(RULES.tolerance_pt);
     });
+  });
+
+  test("the preview's faces swap in: each draws its fallback until it's in", () => {
+    addFaces([DEFAULT_FACE]);
+    const faces = [...document.fonts].filter((face) => familyOf(DEFAULT_FACE).startsWith(face.family));
+    expect(faces.map((face) => face.display)).toEqual(["swap"]);
   });
 
   test("a preview sets its words on the span's own line, so they don't move when the render lands", async () => {

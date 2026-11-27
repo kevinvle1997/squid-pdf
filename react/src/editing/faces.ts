@@ -52,7 +52,7 @@ const ownFamily = (fontName: string) => `preview own ${fontName}`;
 export async function addOwnFace(fontName: string, file: Blob): Promise<void> {
   removeOwnFace(fontName);
   try {
-    const face = new FontFace(ownFamily(fontName), await file.arrayBuffer());
+    const face = new FontFace(ownFamily(fontName), await file.arrayBuffer(), { display: "swap" });
     await face.load();
     document.fonts.add(face);
     ownFaces.set(fontName, face);
@@ -87,7 +87,8 @@ export function addFaces(faces: Iterable<string>): void {
     const url = urlOf(face);
     if (url === undefined || added.has(face)) continue;
     added.add(face);
-    const fontFace = new FontFace(familyName(face), `url(${url})`);
+    // Its fallback draws until it's in: `auto` may draw the words in nothing a while, in some browsers.
+    const fontFace = new FontFace(familyName(face), `url(${url})`, { display: "swap" });
     document.fonts.add(fontFace);
     // One that fails to load previews in the browser's serif, as one we don't ship does.
     idle(() => void fontFace.load().catch(() => undefined));
