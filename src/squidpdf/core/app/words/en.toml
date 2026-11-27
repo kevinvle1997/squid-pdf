@@ -202,6 +202,12 @@ typed_similar = "This edit will use a similar font."
 # Asked before the user edits text they redacted, all of it or some words: yes goes ahead, no keeps it.
 undo_redaction = "This text is redacted. Editing it undoes the redaction. Edit it anyway?"
 undo_redacted_words = "Part of this text is redacted. Editing it undoes the redaction. Edit it anyway?"
+# Said by the browser as a line is split at the caret, or joined there again, and where it can't be split
+split_made = "Split here: the text after it stays where it is."
+split_joined = "Joined again."
+split_changed = "A line can only be split before or after the words you've changed."
+split_cant_here = "There's nothing to split here."
+split_redacted = "A line with redacted words can't be split."
 
 # The ways out of an overflow: what each is called, and what it does.
 shrink_label = "Make it slightly smaller"

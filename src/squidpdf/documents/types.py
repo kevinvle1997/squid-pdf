@@ -202,6 +202,11 @@ class Sentences(TypedDict):
     drawn_in_own_copy: str  # a font whose copy in the file draws edits
     undo_redaction: str
     undo_redacted_words: str  # as undo_redaction, of a span with some words redacted
+    split_made: str  # heard as a line is split at the caret
+    split_joined: str  # heard as it's joined there again
+    split_changed: str  # why the caret, among changed words, is no place to split
+    split_cant_here: str  # why there's nothing to split where the caret is
+    split_redacted: str  # why a line with redacted words isn't split
     reopened: str
     export_left_out: str
     page_left_out: str  # a page deleted in the editor, said on the slip in its place
