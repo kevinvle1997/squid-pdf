@@ -7,6 +7,7 @@ and a test can call it directly.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from itertools import pairwise
 from pathlib import Path
 
 import orjson
@@ -21,17 +22,18 @@ from squidpdf.core import (
     MessageInfo,
     Span,
     SpanIndex,
+    index_of,
     reason_of,
     strip_subset,
 )
 from squidpdf.documents import attached, store
 from squidpdf.documents.errors import TooManyPages
-from squidpdf.documents.free_space import kept_free_space
 from squidpdf.documents.store import DocumentStore
 from squidpdf.documents.types import (
     AnalysisFacts,
     ApproximateInfo,
     FontFacts,
+    JudgedPages,
     KeptAnalysis,
     LineInfo,
     SpanInfo,
@@ -39,12 +41,21 @@ from squidpdf.documents.types import (
 
 _SPACING_DP = 4  # letter spacing, per em: finer than any page sets it
 _ROOM_DP = 2  # a line's room, in points: a hundredth is finer than any line is set
+_EMPTY_ARRAY = b"[]"  # a share's spans when its pages have no text
 
 
-def analyse_upload(documents: DocumentStore, folder: Path, max_pages: int) -> KeptAnalysis:
-    """Take out what acts on its own and plain XMP; index the upload, keep its pages, analyse.
+def analyse_upload(
+    documents: DocumentStore,
+    folder: Path,
+    max_pages: int,
+    *,
+    most_shares: int,
+    spans_per_share: int,
+) -> KeptAnalysis | list[range]:
+    """Take out what acts on its own and plain XMP; index the upload, keep its pages, judge it.
 
-    The one place an index is built, so no span id the browser holds ever moves.
+    The one place an index is built, so no span id the browser holds ever moves. A document
+    long enough for several shares is left to judge a share a worker: those shares come back.
     Raises TooManyPages past `max_pages`, before reading a page.
     """
     _take_in(documents, folder, max_pages)
@@ -53,11 +64,39 @@ def analyse_upload(documents: DocumentStore, folder: Path, max_pages: int) -> Ke
         index = engine.index()
         store.save_index(folder, index)
         store.save_pages(folder, engine.pages())
-        # How far each line can run before it's too long, and which spans are one line: kept,
-        # so nothing works them out again.
-        free_space = engine.free_space(index)
-        store.save_free_space(folder, BUILD, free_space)
-        return _analysed(engine, folder, index, free_space=free_space, files=files)
+        spans_on = [0] * engine.page_count()
+        for span in index:
+            spans_on[span.page] += 1
+        shares = _shares_of(spans_on, most=most_shares, spans_each=spans_per_share)
+        # Long enough that its shares are judged at once, each on a worker of its own.
+        if len(shares) > 1:
+            return shares
+        every_page = _judged(engine, folder, index, pages=shares[0], files=files)
+    return keep_judged(folder, [every_page])
+
+
+def _shares_of(spans_on: list[int], *, most: int, spans_each: int) -> list[range]:
+    """Pages with `spans_on` each, in order, as `most` shares at most of `spans_each` or more.
+
+    Whole pages, each share with spans, as evenly as whole pages let; fewer than two shares'
+    worth is one.
+    """
+    total = sum(spans_on)
+    count = max(min(most, total // spans_each), 1)
+    cuts: list[int] = []
+    so_far = in_share = 0
+    for page, spans in enumerate(spans_on):
+        so_far += spans
+        in_share += spans
+        # Its even part of the spans, counted with the shares before it: no share runs on.
+        reached_its_part = so_far * count >= total * (len(cuts) + 1)
+        ends_here = len(cuts) < count - 1 and in_share > 0 and reached_its_part
+        # Only while spans are left for the next share: a share of empty pages judges nothing.
+        if ends_here and so_far < total:
+            cuts.append(page + 1)
+            in_share = 0
+    bounds = [0, *cuts, len(spans_on)]
+    return [range(start, stop) for start, stop in pairwise(bounds)]
 
 
 def _take_in(documents: DocumentStore, folder: Path, max_pages: int) -> None:
@@ -86,34 +125,41 @@ def _take_in(documents: DocumentStore, folder: Path, max_pages: int) -> None:
 def analyse(documents: DocumentStore, folder: Path) -> KeptAnalysis:
     """Analyse a stored document again, under this build, over the index kept at upload.
 
-    Raises Gone if that index was deleted or kept in another format.
+    Every page in one share. Raises Gone if that index was deleted or kept in another format.
+    """
+    every_page = range(len(store.load_pages(folder)))
+    return keep_judged(folder, [judge_pages(documents, folder, every_page)])
+
+
+def judge_pages(documents: DocumentStore, folder: Path, pages: range) -> JudgedPages:
+    """Judge every span on `pages`, under this build, over the index kept at upload.
+
+    Each share of a document's pages is judged alike, so they join into the analysis
+    one share of every page would be. Raises Gone if the index was deleted.
     """
     index = store.require_index(folder)
-    free_space = kept_free_space(documents, folder, index)
     files = attached.attached_files(folder)
     with documents.open_to_analyse(folder, files) as engine:
-        return _analysed(engine, folder, index, free_space=free_space, files=files)
+        return _judged(engine, folder, index, pages=pages, files=files)
 
 
-def _analysed(
+def _judged(
     engine: Engine,
     folder: Path,
     index: SpanIndex,
     *,
-    free_space: FreeSpace,
+    pages: range,
     files: attached.AttachedFiles,
-) -> KeptAnalysis:
-    """Judge every span and list each font's letters, under this build; keep and return it.
-
-    Kept under the set of the user's copies it was judged with, `files`, in no language: each
-    sentence as its code and facts. As JSON, it leaves the worker fast and is sent as it is.
-    """
-    reports = {report.span_id: report for report in engine.assess(index)}
+) -> JudgedPages:
+    """The spans on `pages` judged in `engine`, with the user's copies `files` lending."""
+    on_pages = index_of(span for span in index if span.page in pages)
+    kept = store.load_free_space(folder, BUILD)
+    # How far each line can run before it's too long, and which spans are one line: read from
+    # the pages unless kept, a page at a time.
+    free_space = engine.free_space(on_pages) if kept is None else kept
+    reports = {report.span_id: report for report in engine.assess(on_pages)}
     # Text a form field draws: said before any edit, since an edit to it is left out.
-    form_field_span_ids = {span.id for span in engine.in_form_fields(index)}
-    fonts = _fonts_of(engine, index, reports=reports, files=files)
-    lines = [_line_info(line) for line in free_space.lines]
-    facts = _document_facts(folder, signed=engine.holds_signature(), fonts=fonts, lines=lines)
+    form_field_span_ids = {span.id for span in engine.in_form_fields(on_pages)}
     spans = [
         _span_info(
             span,
@@ -121,11 +167,56 @@ def _analysed(
             room_pt=free_space.rooms[span.id],
             form_field=span.id in form_field_span_ids,
         )
-        for span in index
+        for span in on_pages
     ]
-    kept = _kept_analysis(facts, spans)
-    store.save_analysis(folder, BUILD, kept, attached=files.key)
+    return JudgedPages(
+        orjson.dumps(spans),
+        fonts=_fonts_of(engine, on_pages, reports=reports, files=files),
+        lines=[
+            _line_info(line) for line in free_space.lines if line.span_ids[0] in on_pages.by_id
+        ],
+        free_space=free_space if kept is None else None,
+        signed=engine.holds_signature(),
+        attached=files.key,
+    )
+
+
+def keep_judged(folder: Path, judged: list[JudgedPages]) -> KeptAnalysis:
+    """Join the shares of a document's pages, in page order, into its analysis; keep it.
+
+    Kept under the set of the user's copies they were judged with, one set for all, in no
+    language: each sentence as its code and facts. As JSON, it's sent as it is.
+    """
+    worked_out = [share.free_space for share in judged if share.free_space is not None]
+    # No font moves a room or a line, so they're kept apart from the copies, read by renders.
+    if worked_out:
+        store.save_free_space(folder, BUILD, _joined_free_space(worked_out))
+    # The first share a font is met in speaks for it, as its first span does.
+    fonts: dict[tuple[int | None, str], FontFacts] = {}
+    for share in judged:
+        for font in share.fonts:
+            fonts.setdefault((font["font_object"], font["name"]), font)
+    facts = _document_facts(
+        folder,
+        signed=judged[0].signed,
+        fonts=list(fonts.values()),
+        lines=[line for share in judged for line in share.lines],
+    )
+    kept = _kept_analysis(facts, _joined([share.spans for share in judged]))
+    store.save_analysis(folder, BUILD, kept, attached=judged[0].attached)
     return kept
+
+
+def _joined_free_space(shares: list[FreeSpace]) -> FreeSpace:
+    """The free space of shares of the pages, in page order, as one."""
+    rooms = {span_id: room for share in shares for span_id, room in share.rooms.items()}
+    return FreeSpace(rooms, [line for share in shares for line in share.lines])
+
+
+def _joined(arrays: list[bytes]) -> bytes:
+    """JSON arrays as one, their items in order, as orjson writes a list: no spaces."""
+    items = [array[1:-1] for array in arrays if array != _EMPTY_ARRAY]
+    return b"[" + b",".join(items) + b"]"
 
 
 def _fonts_of(
@@ -179,9 +270,9 @@ def _line_info(line: Line) -> LineInfo:
     return {"span_ids": list(line.span_ids), "room_pt": round(line.room_pt, _ROOM_DP)}
 
 
-def _kept_analysis(facts: AnalysisFacts, spans: list[SpanInfo]) -> KeptAnalysis:
+def _kept_analysis(facts: AnalysisFacts, spans_json: bytes) -> KeptAnalysis:
     """The analysis as kept and sent: its spans apart from the rest, and a digest of both."""
-    facts_json, spans_json = orjson.dumps(facts), orjson.dumps(spans)
+    facts_json = orjson.dumps(facts)
     digest = xxhash.xxh3_64_hexdigest(facts_json + spans_json)
     return KeptAnalysis(facts_json, spans_json, digest)
 

@@ -23,7 +23,8 @@ from squidpdf.core.pdf.mupdf import open_driver
 from squidpdf.documents import analyse, store
 from squidpdf.documents.constants import ANALYSE_TIMEOUT_S, MAX_PAGES
 from squidpdf.documents.errors import TooManyPages
-from squidpdf.documents.store import FOLDER_STORE, FolderStore
+from squidpdf.documents.store import FOLDER_STORE, DocumentStore, FolderStore
+from squidpdf.documents.types import KeptAnalysis
 from tests.conftest import POPPINS, drawn_with, name_two_byte_font, type3_copies_at
 from tests.helpers import assert_at_most, assert_equal
 
@@ -32,6 +33,16 @@ _FAMILIES = ("Poppins-Regular", "Lato-Regular", "Montserrat-Regular")
 _WANTED = "Yearly Hello"  # Y, a and y are in no trimmed copy
 _DEADLINE_S = 0.1  # the fetch deadline in these tests, for GitHub's 5 s
 _HANG_S = 2.0  # the longest a hanging download hangs: far past the deadline
+
+
+def _analysed_upload(documents: DocumentStore, folder: Path) -> KeptAnalysis:
+    """An upload's analysis, judged on the one worker that indexed it, as a short one is."""
+    analysed = analyse.analyse_upload(
+        documents, folder, MAX_PAGES, most_shares=1, spans_per_share=1
+    )
+    if not isinstance(analysed, KeptAnalysis):
+        pytest.fail(f"shared out on one worker: {analysed}")
+    return analysed
 
 
 @pytest.fixture
@@ -122,7 +133,7 @@ def test_with_github_not_answering_an_upload_waits_once_and_a_render_never(
 
     try:
         google = google_through(hanging)
-        analyse.analyse_upload(google.store, in_google_families, MAX_PAGES)
+        _analysed_upload(google.store, in_google_families)
         assert_equal(len(google.asked), 1, "downloads waited on by the analysis")
         assert_at_most(FETCH_TIMEOUT_S, ANALYSE_TIMEOUT_S, "one wait, in the analysis's time")
 
@@ -141,7 +152,7 @@ def test_a_render_lends_what_the_analysis_fetched_and_no_more(
     """Only analysis downloads, into the store's own cache; a render reads that cache alone."""
     poppins = POPPINS.read_bytes()
     google = google_through(lambda _url: poppins)  # only Poppins' file has its hash
-    analyse.analyse_upload(google.store, in_google_families, MAX_PAGES)
+    _analysed_upload(google.store, in_google_families)
     cached = sorted(path.name for path in (store.root() / "fonts").rglob("*.ttf"))
     assert_equal(cached, ["Poppins-Regular.ttf"], "what the analysis cached")
 
@@ -156,7 +167,7 @@ def test_in_development_an_analysis_is_kept_under_the_code_that_judged_it(monkey
     """With SQUIDPDF_DEV_REJUDGE set, one kept by other code is worked out again on its read."""
     _, folder = FOLDER_STORE.create("owner")
     drawn_with(str(folder / store.ORIGINAL))
-    analyse.analyse_upload(FOLDER_STORE, folder, MAX_PAGES)
+    _analysed_upload(FOLDER_STORE, folder)
     kept_before = store.load_analysis(folder, BUILD)
 
     monkeypatch.setenv("SQUIDPDF_DEV_REJUDGE", "1")
@@ -169,7 +180,7 @@ def test_a_retune_judges_the_saved_index_again(monkeypatch):
     """A retune with no new build judges every document again, each span keeping its id."""
     _, folder = FOLDER_STORE.create("owner")
     drawn_with(str(folder / store.ORIGINAL), setting="80 Tz")
-    [before] = orjson.loads(analyse.analyse_upload(FOLDER_STORE, folder, MAX_PAGES).spans)
+    [before] = orjson.loads(_analysed_upload(FOLDER_STORE, folder).spans)
     loose = 1000.0
     # A deploy's retune: what judges the line, and the tuning its analysis is kept under.
     monkeypatch.setattr(constants, "TOLERANCE_PT", loose)
@@ -187,7 +198,7 @@ def test_a_span_that_wont_come_back_as_it_looks_says_how_and_its_font_stays_usab
     _, folder = FOLDER_STORE.create("owner")
     drawn_with(str(folder / store.ORIGINAL), setting="80 Tz")
 
-    kept = analyse.analyse_upload(FOLDER_STORE, folder, MAX_PAGES)
+    kept = _analysed_upload(FOLDER_STORE, folder)
 
     [span] = orjson.loads(kept.spans)
     judged = (span["fidelity"], span["why"])
@@ -201,7 +212,7 @@ def test_two_type3_copies_of_one_font_share_the_name_the_reader_knows_them_by():
     _, folder = FOLDER_STORE.create("owner")
     type3_copies_at(str(folder / store.ORIGINAL))
 
-    kept = analyse.analyse_upload(FOLDER_STORE, folder, MAX_PAGES)
+    kept = _analysed_upload(FOLDER_STORE, folder)
 
     fonts = orjson.loads(kept.facts)["fonts"]
     named = [(font["name"].startswith("Type3 ("), font["shown_name"]) for font in fonts]
@@ -233,4 +244,6 @@ def _unread_pages(path: str) -> PdfDriver:
 def test_a_document_past_the_page_limit_is_refused_before_its_pages_are_read(folder):
     """Counted, not read: a huge file mustn't cost the reading it's refused to save."""
     with pytest.raises(TooManyPages):
-        analyse.analyse_upload(FolderStore(_unread_pages), folder, 1)  # the sample has two
+        analyse.analyse_upload(  # the sample has two pages
+            FolderStore(_unread_pages), folder, 1, most_shares=1, spans_per_share=1
+        )

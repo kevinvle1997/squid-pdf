@@ -17,7 +17,13 @@ MAX_FONT_BYTES = MAX_FONT_MB * _MB
 MAX_FONTS = 20  # the user's own copies kept per document
 
 # Workers. Past a timeout the task is killed and the user told it took too long.
-ANALYSE_TIMEOUT_S = 30  # the analysis, at upload or again after a deploy
+ANALYSE_TIMEOUT_S = 30  # each job of the analysis, at upload or again after a deploy
+# Workers an upload's pages are judged on at once, a share each: as many as an address has at
+# work (`JOBS_AT_WORK`), so no share waits behind another.
+ANALYSE_WORKERS = 3
+# The fewest spans a share is given: each worker opens the document and its fonts again for its
+# share, which fewer don't repay. Spans, not pages: each span takes about as long to judge.
+SPANS_PER_SHARE = 250
 PAGE_IMAGE_TIMEOUT_S = 10
 
 # The indexes a worker keeps read, by their files' bytes: a few long documents', a small share
