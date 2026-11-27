@@ -179,27 +179,59 @@ export function pageUrl(doc: Document, page: number, scale: number): string {
   return `/api/documents/${doc.id}/pages/${page}?${query}`;
 }
 
-// The first pages' images loaded as a document opens: as many as the window shows at first.
-const FIRST_PAGES = 2;
-// Held until the next document opens: an image nothing holds may be collected, and the page's own fetch it again.
-const firstPagesLoading = new Set<HTMLImageElement>();
+/** A page image loading outside the page: the element the page draws, whether it loaded, and how to stop it. */
+export interface ImageLoading {
+  readonly image: HTMLImageElement;
+  readonly loaded: Promise<boolean>; // true once its bytes are in, false once it failed
+  stop(): void;
+}
+
+// The first pages' loads, by address, until the editor's queue takes them: their bytes, whatever the cache keeps.
+const firstPagesLoading = new Map<string, ImageLoading>();
 
 /**
- * Load the images of `doc`'s first pages now, as it opens: they come while the editor is drawn, and its pages draw
- * them from the browser's. The pages are the first `order` shows: the original's, but for work opened again.
+ * Load the image at `url` in an element of its own, which the page draws once it's in: the page fetches nothing itself.
+ * A load the first pages started is taken over. `inView` loads ahead of the rest, where the browser takes the hint.
+ */
+export function loadImage(url: string, { inView = false }: { inView?: boolean } = {}): ImageLoading {
+  const started = firstPagesLoading.get(url);
+  firstPagesLoading.delete(url);
+  return started ?? startedLoading(url, { inView });
+}
+
+/** A new element loading `url`, `inView` raised: one outside the page is never raised, as one in view was. */
+function startedLoading(url: string, { inView }: { inView: boolean }): ImageLoading {
+  const image = new Image();
+  image.alt = "";
+  image.decoding = "async";
+  if (inView) image.fetchPriority = "high";
+  const loaded = new Promise<boolean>((resolve) => {
+    image.onload = () => resolve(true);
+    image.onerror = () => resolve(false);
+  });
+  image.src = url;
+  // With no element wanting it, the browser drops the request, and the server a job still waiting for it.
+  return { image, loaded, stop: () => image.removeAttribute("src") };
+}
+
+// The first pages' images loaded as a document opens: as many as the window shows at first.
+const FIRST_PAGES = 2;
+
+/**
+ * Load the images of `doc`'s first pages now, as it opens: they come while the editor is drawn, whose queue takes the
+ * loads over. The pages are the first `order` shows: the original's, but for work opened again.
  */
 export function loadFirstPages(
   doc: Document,
   scale: number,
   { order = doc.pages.map((_, page) => page) }: { order?: readonly number[] } = {},
 ): void {
+  // Another document's, untaken: no longer wanted.
+  for (const loading of firstPagesLoading.values()) loading.stop();
   firstPagesLoading.clear();
   for (const [index, page] of order.slice(0, FIRST_PAGES).entries()) {
-    const image = new Image();
-    // The page in view first: an image outside the page is never raised, as one in view is. A hint, where it's known.
-    if (index === 0) image.fetchPriority = "high";
-    image.src = pageUrl(doc, page, scale);
-    firstPagesLoading.add(image);
+    const url = pageUrl(doc, page, scale);
+    firstPagesLoading.set(url, startedLoading(url, { inView: index === 0 }));
   }
 }
 

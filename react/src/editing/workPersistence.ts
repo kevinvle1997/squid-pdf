@@ -16,6 +16,7 @@ import { unexported } from "./export";
 import { addOwnFace } from "./faces";
 import { entriesOf, type History } from "./history";
 import { newlyHeard, noticeLines, openingNoticesOf, warn } from "./notices";
+import { loadPageImages } from "./pageImages";
 import { project, UNEDITED } from "./project";
 
 /** A font copy as it's stored: its bytes, and their type, which goes with them to the server. */
@@ -187,6 +188,8 @@ async function readAgain(editor: Editor): Promise<void> {
     store.set({ doc, layout: layoutOf(doc), notices, ...(heard !== "" && { announcement: announcing(heard) }) });
     // Persisted in place of the one before, so a reload doesn't ask for it again.
     if (editor.persistence.file) void persistWork(editor);
+    // Under this build, every page's image has a new address.
+    loadPageImages(editor);
   } catch (error) {
     const said = sentenceOf(error);
     store.set({ notices: { ...store.get().notices, reopen: warn(said) }, announcement: announcing(said) });

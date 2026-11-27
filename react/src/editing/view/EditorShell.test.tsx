@@ -8,7 +8,11 @@ import {
   documentOf,
   exportPdf,
   fontList,
+  loadFirstPages,
+  loadImage,
   ProblemError,
+  pageImage,
+  pageUrl,
   putFont,
   renderStrips,
   stillThere,
@@ -38,6 +42,7 @@ import { animationsDone, colorOf, emulateTouchScreen, middleOf, tapAt } from "..
 import { EXPORT_INTENT_MS, LINE_BELOW_EM, NEW_TEXT_DESCENT_EM, NOTE_CLOSE_DELAY_MS } from "../constants";
 import { learnDateLanguages } from "../dateNames";
 import { EMPTY_HISTORY, historyReducer } from "../history";
+import { screenScale } from "../scale";
 import { fill } from "../words";
 import { EditorShell } from "./EditorShell";
 
@@ -49,17 +54,21 @@ vi.mock(import("../../documents/localPersistence"), async (original) => ({
   persistUntil: vi.fn(async () => undefined),
 }));
 
-vi.mock(import("../../api/client"), async (original) => ({
-  ...(await original()),
-  renderStrips: vi.fn(),
-  stillThere: vi.fn(async () => true),
-  pageImage: vi.fn(async () => undefined),
-  putFont: vi.fn(),
-  exportPdf: vi.fn(),
-  upload: vi.fn(),
-  documentOf: vi.fn(),
-  fontList: vi.fn(),
-}));
+vi.mock(import("../../api/client"), async (original) => {
+  const client = await original();
+  return {
+    ...client,
+    renderStrips: vi.fn(),
+    stillThere: vi.fn(async () => true),
+    pageImage: vi.fn(async () => undefined),
+    putFont: vi.fn(),
+    exportPdf: vi.fn(),
+    upload: vi.fn(),
+    documentOf: vi.fn(),
+    fontList: vi.fn(),
+    loadImage: vi.fn(client.loadImage),
+  };
+});
 
 const span = aSpan({ id: "s1", text: "was here", size: 20, bbox: { x0: 72, y0: 100, x1: 152, y1: 124 } });
 const DOC = aDoc({ spans: [span], fonts: [aFont("Times-Roman")] });
@@ -811,6 +820,32 @@ describe("redaction", () => {
     await userEvent.keyboard("{Control>}{Backspace}{/Control}");
     await expect.element(screen.getByRole("textbox", { name: "Change “was here”" })).toHaveFocus();
     await expect.element(screen.getByRole("button", { name: "was here (redacted)" })).not.toBeInTheDocument();
+  });
+});
+
+describe("a page's image", () => {
+  test("loaded as the document opened is the one its page takes: asked for once, whatever the cache keeps", async () => {
+    performance.clearResourceTimings();
+    const doc = aDoc({ id: `opened-${Date.now()}`, spans: [span], fonts: [aFont("Times-Roman")] });
+    vi.mocked(pageImage).mockClear();
+    loadFirstPages(doc, screenScale());
+    const screen = await openEditor({ doc });
+    await expect.element(screen.getByRole("button", { name: "was here" })).toBeInTheDocument();
+    await vi.waitFor(() => expect(pageImage).toHaveBeenCalled());
+    const url = new URL(pageUrl(doc, 0, screenScale()), window.location.href).href;
+    expect(performance.getEntriesByName(url)).toHaveLength(1);
+  });
+
+  test("that fails is asked for once before the page asks why", async () => {
+    performance.clearResourceTimings();
+    // The tests' server has no API: every page image fails.
+    const doc = aDoc({ id: `fails-${Date.now()}`, spans: [span], fonts: [aFont("Times-Roman")] });
+    vi.mocked(pageImage).mockClear();
+    const screen = await openEditor({ doc });
+    await expect.element(screen.getByRole("button", { name: "was here" })).toBeInTheDocument();
+    await vi.waitFor(() => expect(pageImage).toHaveBeenCalled());
+    const url = new URL(pageUrl(doc, 0, screenScale()), window.location.href).href;
+    expect(performance.getEntriesByName(url)).toHaveLength(1);
   });
 });
 
@@ -1742,6 +1777,15 @@ describe("deleting a page", () => {
     await expect.element(screen.getByRole("button", { name: "Put back" })).toHaveFocus();
   });
 
+  test("a tick rested on, on the way to pressing it, loads its page's image though the page is far", async () => {
+    const screen = await openEditor({ doc: FOUR });
+    const tick = screen.getByRole("navigation", { name: "Pages" }).getByRole("link", { name: "Page 4", exact: true });
+    await tick.hover();
+    const url = pageUrl(FOUR, 3, screenScale());
+    expect(loadImage).not.toHaveBeenCalledWith(url, expect.anything());
+    await vi.waitFor(() => expect(loadImage).toHaveBeenCalledWith(url, { inView: false }));
+  });
+
   test("the page list goes to a page, and counts the download's pages", async () => {
     const screen = await openEditor({ doc: FOUR });
     const list = screen.getByRole("navigation", { name: "Pages" });
@@ -1949,12 +1993,19 @@ describe("find and replace", () => {
   });
 });
 
+/** The layer a page draws on, inside its sheet: where its image and marks go. */
+function layerOn(region: Element): Element {
+  const layer = region.querySelector("[style*='aspect-ratio'] > div");
+  if (layer === null) throw new Error("the page's sheet holds its layer");
+  return layer;
+}
+
 /** Double-click the first page's bare paper at `at`, in its own points; where that is on screen. */
 async function doubleClickPaper(screen: Awaited<ReturnType<typeof render>>, [x, y]: [number, number]) {
   const pageOne = screen.getByRole("region", { name: "Page 1" }).element();
-  await expect.poll(() => pageOne.querySelector("img")).not.toBeNull();
-  const layer = pageOne.querySelector("img")?.parentElement;
-  if (layer == null) throw new Error("the page's layer holds its image");
+  const layer = layerOn(pageOne);
+  // Laid out: the page has its size.
+  await expect.poll(() => layer.getBoundingClientRect().width).toBeGreaterThan(0);
   const shown = layer.getBoundingClientRect();
   const position = { x: (x / A4.width) * shown.width, y: (y / A4.height) * shown.height };
   await userEvent.dblClick(page.elementLocator(layer), { position });
@@ -2039,7 +2090,8 @@ describe("new text", () => {
     // Where it sits on its page: a touch screen's bar is taller, so the page is lower.
     const onPage = () => {
       const box = field.element().getBoundingClientRect();
-      const sheet = field.element().closest("section")?.querySelector("img")?.getBoundingClientRect();
+      const section = field.element().closest("section");
+      const sheet = section === null ? undefined : layerOn(section).getBoundingClientRect();
       return { top: box.top - (sheet?.top ?? 0), height: box.height };
     };
     const atDesk = { ...onPage(), fontPx: getComputedStyle(field.element()).fontSize };
@@ -2073,7 +2125,7 @@ describe("new text", () => {
     const [sent] = lastRendered();
     const mark = screen.getByRole("button", { name: "Signed by M. Halvorsen" });
     await expect.element(mark).toBeInTheDocument();
-    const layer = screen.getByRole("region", { name: "Page 1" }).element().querySelector("img")?.parentElement;
+    const layer = layerOn(screen.getByRole("region", { name: "Page 1" }).element());
     expect(mark.element().getBoundingClientRect().right).toBeLessThanOrEqual(
       (layer?.getBoundingClientRect().right ?? 0) + 0.5,
     );

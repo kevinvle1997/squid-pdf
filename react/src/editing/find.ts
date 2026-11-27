@@ -6,6 +6,7 @@ import { announcing, change, type Editor, type EditorState, scrollingTo } from "
 import { fitOf, type LineScale, lineWidthPt, runsPast, settingOf, wayDrawn } from "./fit";
 import { type FindOptions, type Match, matchesIn, replacedIn } from "./matching";
 import type { PageState } from "./page";
+import { loadAhead, nothingAhead } from "./pageImages";
 import { differing, type Reading, textIn } from "./project";
 import type { Drawn } from "./render";
 import { type FontsByObject, fontOf } from "./spanFonts";
@@ -206,7 +207,10 @@ function placeAfter(places: readonly string[], current: string | null, step: 1 |
   return places[(index + step + places.length) % places.length];
 }
 
-/** Go to the next place found, or the one before (`step` -1): marked, brought into the middle of the view, and announced. */
+/**
+ * Go to the next place found, or the one before (`step` -1): marked, brought into the middle of the view, and announced;
+ * its page and the pages of the places either side load ahead.
+ */
 export function stepFind(editor: Editor, step: 1 | -1): void {
   const state = editor.store.get();
   if (!state.find.open) return;
@@ -224,6 +228,22 @@ export function stepFind(editor: Editor, step: 1 | -1): void {
     find: { ...find, current },
     scrollTo: scrollingTo(current, "center"),
     announcement: announcing(heard === "" ? place : [heard, place].join(state.doc.sentences.join_parts)),
+  });
+  // The page gone to stays among them until it's scrolled near, so its image goes on loading.
+  const goneTo = state.layout.spans.get(current)?.page;
+  loadAhead(editor, [...(goneTo === undefined ? [] : [goneTo]), ...pagesAround(state, { places, current })]);
+}
+
+/** The pages of the places either side of `current`: where the next step goes, its image loaded ahead. */
+function pagesAround(
+  { layout }: Pick<EditorState, "layout">,
+  { places, current }: { places: readonly string[]; current: string | null },
+): number[] {
+  const steps = [1, -1] as const;
+  return steps.flatMap((step) => {
+    const place = placeAfter(places, current, step);
+    const page = place === undefined ? undefined : layout.spans.get(place)?.page;
+    return page === undefined ? [] : [page];
   });
 }
 
@@ -327,6 +347,8 @@ export function closeFind(editor: Editor, { fromInside = false }: { fromInside?:
   // Opened again, it puts focus in "Find", as every open does, not where the last Change all left it.
   const ended = { open: false, matches: new Map(), current: null, closed, changedAll: 0 };
   editor.store.set({ find: { ...caughtUp(find), ...ended } });
+  // Its places are no longer on the way.
+  nothingAhead(editor);
 }
 
 /** Typing in "Find": echoed at once, and found once typing stops for a moment. */
@@ -388,9 +410,11 @@ export function setWholeWords(editor: Editor, wholeWords: boolean): void {
   search(editor, { wholeWords });
 }
 
-/** Find what "Find" shows, matched as `asked` says: marked, and the count announced, in one update. */
+/** Find what "Find" shows, matched as `asked` says: marked, and the count announced, in one update; the first and last places' pages load ahead. */
 function search(editor: Editor, asked: Partial<FindOptions> = {}): void {
   editor.store.set(hearing(searched(editor.store.get(), asked)));
+  const state = editor.store.get();
+  loadAhead(editor, pagesAround(state, { places: placesIn(state), current: null }));
 }
 
 /** The find bar finding what "Find" shows from the top, matched as `asked` says, and its count to hear. */

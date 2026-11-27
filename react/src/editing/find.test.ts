@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { renderStrips } from "../api/client";
+import { loadImage, pageUrl, renderStrips } from "../api/client";
 import type { FitInfo, Render, Sentences } from "../api/types";
-import { aDoc, aFit, aFont, aRedact, aReplace, aSpan, halfWideGlyphs, PSEUDO_SENTENCES } from "../fixtures";
+import { A4, aDoc, aFit, aFont, aRedact, aReplace, aSpan, halfWideGlyphs, PSEUDO_SENTENCES } from "../fixtures";
 import { FIND_DELAY_MS } from "./constants";
 import { change, createEditor, type Editor, type EditorState, undo } from "./editor";
 import {
@@ -27,7 +27,16 @@ import { NOTHING_DRAWN } from "./render";
 import { edit, troublesIn, typeInto } from "./typing";
 import { shortWarningOf } from "./verdicts";
 
-vi.mock(import("../api/client"), async (original) => ({ ...(await original()), renderStrips: vi.fn() }));
+vi.mock(import("../api/client"), async (original) => ({
+  ...(await original()),
+  renderStrips: vi.fn(),
+  // A page image asked for ahead never comes: there's no browser here.
+  loadImage: vi.fn((url: string) => ({
+    image: { src: url } as HTMLImageElement,
+    loaded: new Promise<boolean>(() => undefined),
+    stop: () => undefined,
+  })),
+}));
 
 // Every letter these tests type, as wide as each other, so "14 June" fits where "14 March" was.
 const glyphs = halfWideGlyphs(" 0123456789MarchJunewsoifdtly");
@@ -532,6 +541,35 @@ describe("find", () => {
 
 describe("stepping through the places found", () => {
   const current = () => editor.store.get().find.current;
+
+  test("the pages of the places either side of the one gone to load ahead, and its own goes on loading", async () => {
+    const pages = aDoc({
+      pages: [A4, A4, A4, A4],
+      spans: [0, 2, 3].map((page) => aSpan({ id: `on ${page}`, text: DATE, page })),
+      fonts: DOC.fonts,
+    });
+    editor = createEditor(new File(["%PDF-"], "contract.pdf"), pages, 2);
+    openFind(editor);
+    const stopped: string[] = [];
+    const comes = new Map<string, (loaded: boolean) => void>();
+    vi.mocked(loadImage)
+      .mockClear()
+      .mockImplementation((url: string) => ({
+        image: { src: url } as HTMLImageElement,
+        loaded: new Promise<boolean>((resolve) => comes.set(url, resolve)),
+        stop: () => stopped.push(url),
+      }));
+    typeQuery(editor, DATE);
+    vi.advanceTimersByTime(FIND_DELAY_MS);
+    // From the top, the first place is next and the last before.
+    const asked = () => vi.mocked(loadImage).mock.calls.map(([url]) => url);
+    expect(asked()).toEqual([pageUrl(pages, 0, 2), pageUrl(pages, 3, 2)]);
+    stepFind(editor, 1);
+    // Gone to the first, on page 1: its image isn't dropped on the way to it.
+    expect(stopped).toEqual([]);
+    comes.get(pageUrl(pages, 0, 2))?.(true);
+    await vi.waitFor(() => expect(asked().at(-1)).toBe(pageUrl(pages, 2, 2)));
+  });
 
   test("Enter goes to each place in the document's order, round from the last, brought into the middle and announced", () => {
     typeQuery(editor, DATE);

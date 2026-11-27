@@ -1,13 +1,12 @@
 import { memo, type ReactNode, type Ref, startTransition, useCallback, useMemo, useRef, useState } from "react";
 import { useFocusWithin } from "react-aria";
 import type { PageInfo } from "../../api/types";
-import { classes } from "../../ui/classes";
 import { Trim } from "../../ui/Trim";
 import { Warn } from "../../ui/Warn";
 import { DOUBLE_TAP_MS, DOUBLE_TAP_REACH_PX, LAZY_MARGIN } from "../constants";
-import { imageFailed, imageLoaded } from "../images";
 import { openNewTextAt, pointOnPage } from "../newText";
 import { type PageState, pageState, spanIn } from "../page";
+import { loadPageImages } from "../pageImages";
 import type { NewTextReading, SpanReading } from "../project";
 import { stillShows } from "../redrawRegions";
 import { shallowEqual } from "../store";
@@ -26,15 +25,17 @@ const NO_CHANGES: readonly SpanReading[] = [];
 const NO_NEW_TEXTS: readonly NewTextReading[] = [];
 
 /**
- * Watch the sheet from the moment it mounts: whether it's near enough to draw, and a note's height in points;
- * whether it's the page under the window's middle; and, the first page, the share of its printed size it shows at.
+ * Watch the sheet from the moment it mounts: whether it's near enough to draw, at once for its image (`nearNow`) and in
+ * the background for its marks and what's drawn over the image (`marksNear`); a note's height in points; whether it's
+ * the page under the window's middle; and, the first page, the share of its printed size it shows at.
  *
- * Pages far off stay empty boxes. The pages near are in `nearPages` too, for the render to ask for first.
+ * Pages far off stay empty boxes. The pages near are in `nearPages` too, for the render and their images to come first.
  */
 function useSheet(index: number, info: PageInfo, { nearPages }: { nearPages: Set<number> }) {
   const editor = useEditor();
   const heightPt = info.height;
-  const [near, setNear] = useState(false);
+  const [nearNow, setNearNow] = useState(false);
+  const [marksNear, setMarksNear] = useState(false);
   const [noteHeightPt, setNoteHeightPt] = useState(0);
   const ref = useCallback(
     (sheet: HTMLDivElement) => {
@@ -50,8 +51,12 @@ function useSheet(index: number, info: PageInfo, { nearPages }: { nearPages: Set
           const isNear = entry?.isIntersecting ?? false;
           if (isNear) nearPages.add(index);
           else nearPages.delete(index);
+          // Its image loads outside the page, and a far page's stops: the page draws it once it's in.
+          loadPageImages(editor);
+          // Its image at once, as soon as it's in: one element, which the marks' slices would hold back.
+          setNearNow(isNear);
           // In the background: a page's marks are dozens of buttons, drawn in slices the scroll can go between.
-          startTransition(() => setNear(isNear));
+          startTransition(() => setMarksNear(isNear));
         },
         { rootMargin: LAZY_MARGIN },
       );
@@ -72,11 +77,12 @@ function useSheet(index: number, info: PageInfo, { nearPages }: { nearPages: Set
         middle.disconnect();
         size.disconnect();
         nearPages.delete(index);
+        loadPageImages(editor);
       };
     },
     [editor, index, info, heightPt, nearPages],
   );
-  return { ref, near, noteHeightPt };
+  return { ref, nearNow, marksNear, noteHeightPt };
 }
 
 interface Props {
@@ -107,7 +113,7 @@ export const Page = memo(function Page({ index, info, shownNumber }: Props) {
   const { focusWithinProps } = useFocusWithin({ onFocusWithinChange: setFocusedIn });
   // Its marks stay far off while it's typed in, focused or sent focus: else the words or focus go, or focus comes late.
   const sentFocus = page.focusTo !== null || page.focusNewText !== null;
-  const keepMarks = sheet.near || page.typingIn !== null || focusedIn || sentFocus;
+  const keepMarks = sheet.marksNear || page.typingIn !== null || focusedIn || sentFocus;
   // Its changes' notes are buttons, as its marks are, so they're kept as the marks are: a far page holds none.
   const notes = keepMarks ? changes : NO_CHANGES;
   const newTextNotes = keepMarks ? newTexts : NO_NEW_TEXTS;
@@ -134,25 +140,14 @@ export const Page = memo(function Page({ index, info, shownNumber }: Props) {
         pageNumber={shownNumber}
       />
       <Sheet info={info} sheetRef={sheet.ref} paperRef={paper} slipLayerRef={setSlipLayer}>
-        {sheet.near && (
-          // Decoded off the main thread, so a page coming near doesn't hold up the scroll. Drawn anew for each try.
-          <img
-            key={page.image?.tries ?? 0}
-            className={classes(styles.image, page.image?.failed != null && styles.missing)}
-            src={page.src}
-            alt=""
-            decoding="async"
-            onLoad={() => imageLoaded(editor, index)}
-            onError={() => void imageFailed(editor, index)}
-          />
-        )}
+        {sheet.nearNow && page.src !== null && <SheetImage src={page.src} />}
         {page.image?.failed != null && (
           <p className={styles.failed}>
             <Warn mark>{page.image.failed}</Warn>
           </p>
         )}
         {/* What's drawn over the image goes with it: a far page decodes none of its strips or previews. */}
-        {sheet.near && (
+        {sheet.marksNear && (
           <>
             {strips?.map((strip) => (
               <img
@@ -180,6 +175,24 @@ export const Page = memo(function Page({ index, info, shownNumber }: Props) {
     </section>
   );
 });
+
+/**
+ * The page's image, the very element its queue loaded, so the page fetches nothing again: decoded off the main thread,
+ * so a page coming near doesn't hold up the scroll.
+ */
+function SheetImage({ src }: { src: string }) {
+  const editor = useEditor();
+  const image = editor.imageQueue.imageAt(src);
+  const holdImage = useCallback(
+    (box: HTMLDivElement) => {
+      if (image === undefined) return;
+      box.append(image);
+      return () => image.remove();
+    },
+    [image],
+  );
+  return <div ref={holdImage} className={styles.image} data-page-image="" />;
+}
 
 /**
  * Watch the page's layer for new text: a double-click on bare paper opens it at the press, and so does a finger's

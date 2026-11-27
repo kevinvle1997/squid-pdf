@@ -35,6 +35,7 @@ import {
   plain,
 } from "./notices";
 import { leftOutSentence, putBackSentence } from "./pageDeletion";
+import { imageDone, loadPageImages, nothingAhead, PageImageQueue } from "./pageImages";
 import { disagreementsAfter, NO_DISAGREEMENTS, type PreviewDisagreement } from "./previewDisagreements";
 import { project, type Reading, type Redacted, redactedBetween, type SpanReading, textIn, UNEDITED } from "./project";
 import { type Drawn, landedFitOf, landedNewTextFitOf, NOTHING_DRAWN, RenderQueue } from "./render";
@@ -174,6 +175,7 @@ export interface EditorState {
   readonly shownMismatches: ReadonlySet<string>; // the rows of the mismatch list shown on the page, by key
   readonly mutedFonts: ReadonlySet<string>; // the fonts whose warning an edit no longer shows in full, by name shown
   readonly images: ReadonlyMap<number, FailedImage>; // by page: each image that failed, until it loads
+  readonly loadedImages: ReadonlyMap<number, string>; // by page: the address of the image it draws, in, until the next is
   readonly find: FindState;
   readonly shortcutsOpen: boolean; // the list of the editor's keys, from the bar
   readonly shippedFaces: ShippedFaces; // the handwriting faces new text offers, once the font list comes
@@ -188,6 +190,9 @@ export interface Editor {
   readonly queue: RenderQueue;
   readonly near: Set<number>; // the pages near the screen, as each one's sheet finds: drawn first
   readonly retries: Map<number, ReturnType<typeof setTimeout>>; // by page: when its failed image is asked for again
+  readonly imageQueue: PageImageQueue; // the page images loading, the page being read's first
+  // The pages the reader is on the way to, loaded after the screen's, and when a rest on the way starts them.
+  readonly imagesAhead: { pages: readonly number[]; timer?: ReturnType<typeof setTimeout> };
   readonly finding: { timer?: ReturnType<typeof setTimeout> }; // when what's typed in "Find" is found, and "Change to" counted
   readonly ahead: ExportAhead; // the export started on the way to pressing Export
   readonly fontList: { asked?: Promise<void> }; // the font list asked for, once: what handwriting new text waits on
@@ -238,6 +243,7 @@ export function createEditor(file: File, opened: Document, scale: number): Edito
     shownMismatches: new Set(),
     mutedFonts: new Set(),
     images: new Map(),
+    loadedImages: new Map(),
     find: FIND_CLOSED,
     shortcutsOpen: false,
     shippedFaces: NO_SHIPPED_FACES,
@@ -260,6 +266,8 @@ export function createEditor(file: File, opened: Document, scale: number): Edito
     queue,
     near,
     retries: new Map(),
+    imageQueue: new PageImageQueue({ done: (image, loaded) => imageDone(editor, image, loaded) }),
+    imagesAhead: { pages: [] },
     finding: {},
     ahead: {},
     fontList: {},
@@ -288,6 +296,8 @@ async function reopened(editor: Editor, doc: Document): Promise<Document> {
   store.set({ doc: judged, layout: layoutOf(judged), notices, announcement: announcing(heard) });
   // Persisted under its new id, so a reload opens the copy the server has.
   if (editor.persistence.file) void persistWork(editor);
+  // Every page's image has a new address.
+  loadPageImages(editor);
   // Pages drawn with a copy now refused no longer show what export would give.
   if (refusal !== null) queue.redraw(store.get().reading);
   return judged;
@@ -499,9 +509,11 @@ export function focusMoved(editor: Editor): void {
   editor.store.set({ focusTo: null });
 }
 
-/** The editor is going: a render in flight, and any image still to be asked for, are dropped rather than landing on nothing. */
+/** The editor is going: a render in flight, and any image loading or still to be asked for, are dropped rather than landing on nothing. */
 export function closeEditor(editor: Editor): void {
   editor.queue.stop();
+  nothingAhead(editor);
+  editor.imageQueue.stop();
   for (const retry of editor.retries.values()) clearTimeout(retry);
   editor.retries.clear();
   clearTimeout(editor.finding.timer);

@@ -155,8 +155,9 @@ function Original({
 }: {
   box: { x0: number; y0: number; x1: number; y1: number };
   info: PageInfo;
-  src: string;
+  src: string | null; // the page's image, once it's in: the same address its sheet draws
 }) {
+  if (src === null) return null;
   return (
     <span className={styles.original} aria-hidden="true" data-original="" style={boxOf(box, info)}>
       <img src={src} alt="" decoding="async" style={cropOf(box, info)} />

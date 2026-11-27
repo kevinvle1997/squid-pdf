@@ -1,6 +1,5 @@
 // What one page draws from the editor's state, selected as parts so the page redraws only when one
 // of them changes: compared with `shallowEqual`, each part stays the same object until it does.
-import { pageUrl } from "../api/client";
 import type { FitRules, Sentences, SpanInfo } from "../api/types";
 import { NEW_TEXT_ASCENT_EM } from "./constants";
 import {
@@ -38,7 +37,7 @@ export interface PageState {
   readonly shownMismatches: ReadonlySet<string>; // the rows of the mismatch list shown, by key
   readonly changed: boolean; // whether any words the download keeps are changed: what those rows count
   readonly disagreement: PreviewDisagreement | undefined; // the spans its last render disagreed with, to pulse
-  readonly src: string; // the page image
+  readonly src: string | null; // the address of the page image it draws, once it's in: the one before until the next is
   readonly image: FailedImage | undefined; // why its image failed, and how often it's been asked for again
   readonly typingIn: string | null; // the span being typed into, when it's here
   readonly newTextAt: PagePoint | null; // where new text is being typed, when it's here
@@ -77,7 +76,7 @@ export function pageState(state: EditorState, index: number): PageState {
     // Read only for the rows shown: with none, a first change elsewhere redraws no page.
     changed: state.shownMismatches.size > 0 && changedWordsCount(state) > 0,
     disagreement: state.disagreements.get(index),
-    src: pageUrl(state.doc, index, state.scale),
+    src: state.loadedImages.get(index) ?? null,
     image: state.images.get(index),
     typingIn: state.draft?.kind === "span" && state.draft.page === index ? state.draft.spanId : null,
     newTextAt: newTextDraftOn(state, index)?.origin ?? null,

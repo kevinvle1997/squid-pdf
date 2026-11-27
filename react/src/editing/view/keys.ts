@@ -24,9 +24,11 @@ export function selectedIn(target: EventTarget | null): Selected | null {
   return [selectionStart, selectionEnd];
 }
 
-/** Whether a press on a page's layer landed on bare paper: the layer itself, or its image or a strip drawn on it. */
+/** Whether a press on a page's layer landed on bare paper: the layer itself, its image in its box, or a strip drawn on it. */
 export function onBarePaper(target: EventTarget | null, layer: Element): boolean {
-  return target === layer || (target instanceof HTMLImageElement && target.parentElement === layer);
+  const imageBox = target instanceof Element ? target.closest("[data-page-image]") : null;
+  const strip = target instanceof HTMLImageElement && target.parentElement === layer;
+  return target === layer || imageBox?.parentElement === layer || strip;
 }
 
 /**

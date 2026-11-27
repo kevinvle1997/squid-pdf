@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { Link } from "react-aria-components";
 import { isShortcutPress, passShortcut } from "../commands";
 import { type Editor, focusMoved } from "../editor";
+import { loadAhead, loadAheadOnRest, nothingAhead } from "../pageImages";
 import { goToPage } from "../pageList";
 import { shownNumberOf } from "../project";
 import { useEditor, useEditorState } from "./context";
@@ -46,8 +47,16 @@ function Tick({ page, shownNumber }: { page: number; shownNumber: number }) {
       aria-label={`Page ${shownNumber}`}
       aria-current={current ? "page" : undefined}
       data-page={page}
-      // Cmd+Enter goes on to the window's shortcuts: on a page with no text, it opens new text there.
-      onPressStart={passShortcut}
+      // On the way to pressing it, resting there, the page's image loads; a press loads it at once.
+      onHoverStart={() => loadAheadOnRest(editor, [page])}
+      onHoverEnd={() => nothingAhead(editor)}
+      onFocus={() => loadAheadOnRest(editor, [page])}
+      onBlur={() => nothingAhead(editor)}
+      onPressStart={(event) => {
+        loadAhead(editor, [page]);
+        // Cmd+Enter goes on to the window's shortcuts: on a page with no text, it opens new text there.
+        passShortcut(event);
+      }}
       onPress={(event) => {
         if (!isShortcutPress(event)) goToPage(editor, page);
       }}

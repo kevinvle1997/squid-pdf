@@ -5,17 +5,16 @@ import { sentenceOf } from "../bugs";
 import { IMAGE_RETRY_FIRST_MS, IMAGE_RETRY_MOST_MS } from "./constants";
 import { announcing, type Editor } from "./editor";
 import { warn } from "./notices";
-import { loadShippedFaces } from "./shippedFaces";
+import { retryPageImage } from "./pageImages";
 
 /** A page whose image failed, until it loads. */
 export interface FailedImage {
-  readonly tries: number; // how often it's been asked for again: the image is drawn anew for each
+  readonly tries: number; // how often it's been asked for again, as the wait before the next doubles
   readonly failed: string | null; // why, in the server's words; null when it answered after all
 }
 
-/** A page's image failed to load, for any reason: find out why, say it on the page, and ask again later; and the font list comes. */
+/** A page's image failed to load, for any reason: find out why, say it on the page, and ask again later. */
 export async function imageFailed(editor: Editor, page: number): Promise<void> {
-  void loadShippedFaces(editor);
   const { reopener } = editor;
   const before = reopener.doc;
   try {
@@ -38,9 +37,8 @@ export async function imageFailed(editor: Editor, page: number): Promise<void> {
   }
 }
 
-/** A page's image loaded: nothing more to say of it, nor to ask again; and the font list comes. */
+/** A page's image loaded: nothing more to say of it, nor to ask again. */
 export function imageLoaded(editor: Editor, page: number): void {
-  void loadShippedFaces(editor);
   const { images } = editor.store.get();
   if (!images.has(page)) return;
   clearTimeout(editor.retries.get(page));
@@ -73,7 +71,7 @@ function failedOnPage(editor: Editor, page: number, why: string | null): void {
   );
 }
 
-/** Draw the page's image anew, so the browser asks for it again. */
+/** Ask for the page's image again. */
 function askAgain(editor: Editor, page: number): void {
   clearTimeout(editor.retries.get(page));
   editor.retries.delete(page);
@@ -81,4 +79,5 @@ function askAgain(editor: Editor, page: number): void {
   const image = images.get(page);
   if (image === undefined) return;
   editor.store.set({ images: new Map(images).set(page, { ...image, tries: image.tries + 1 }) });
+  retryPageImage(editor, page);
 }

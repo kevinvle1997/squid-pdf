@@ -63,6 +63,18 @@ export const EXPORT_INTENT_MS = 150;
 export const LAZY_MARGIN = "100% 0px";
 
 /**
+ * Page images loading at once, the page being read's first: enough to keep the link busy, and fewer than the
+ * server's turns for one address (`JOBS_AT_WORK`), so a render never waits behind them.
+ */
+export const IMAGES_AT_ONCE = 2;
+
+/**
+ * How long the pointer rests on a page's tick, or focus stays on it, before that page's image loads ahead: longer
+ * than passing over it on the way down the list, shorter than the reach to press it. A press loads it at once.
+ */
+export const IMAGE_INTENT_MS = 150;
+
+/**
  * A page image that failed is asked for again after this, twice as long each time it fails again,
  * up to the most: soon enough to come back with a busy server, rarely enough not to add to its load.
  */

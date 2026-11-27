@@ -2,6 +2,7 @@
 // zooms to a share of the printed size. Zoomed past the window, the pages scroll sideways.
 import { ZOOM_SKIP, ZOOM_STEPS } from "./constants";
 import type { Editor, EditorState } from "./editor";
+import { loadPageImages } from "./pageImages";
 import { shownNumberOf } from "./project";
 import { MAX_SCALE, PX_PER_PT } from "./scale";
 
@@ -32,6 +33,7 @@ export function zoomBy(editor: Editor, step: 1 | -1, { pixelRatio }: { pixelRati
   const { zoom, scale } = editor.store.get();
   const asked = zoomStep(zoom.shown, step);
   editor.store.set({ zoom: { asked, shown: asked }, scale: scaleFor(asked, { pixelRatio, scale }) });
+  loadPageImages(editor);
 }
 
 /** Back to fitting the window: as wide as printed, or narrower where the window is. */
@@ -47,9 +49,11 @@ export function zoomShown(editor: Editor, shown: number): void {
   if (Math.round(shown * 100) !== Math.round(zoom.shown * 100)) editor.store.set({ zoom: { ...zoom, shown } });
 }
 
-/** The page most in view, as the pages say while the document scrolls: the one under the window's middle. */
+/** The page most in view, as the pages say while the document scrolls: the one under the window's middle, its image first. */
 export function pageInView(editor: Editor, page: number): void {
-  if (editor.store.get().pageInView !== page) editor.store.set({ pageInView: page });
+  if (editor.store.get().pageInView === page) return;
+  editor.store.set({ pageInView: page });
+  loadPageImages(editor);
 }
 
 /** What the bar says of where the reader is, among the pages the download has: "Page 3 of 8", or "1 page". */

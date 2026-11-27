@@ -62,8 +62,8 @@
 }
 .image, .strip { position: absolute; left: 0; width: 100%; display: block; user-select: none; }
 .image { top: 0; height: 100%; }
-/* Asked for again, unseen: the browser's broken-image sign says nothing the page doesn't say better. */
-.missing { visibility: hidden; }
+/* The element its queue loaded, filling the page. */
+.image > img { display: block; width: 100%; height: 100%; }
 /* Why the page's image didn't come, where it would be. The page never themes, so its warning is the mark's. */
 .failed {
   --warn: var(--mark-warn);
