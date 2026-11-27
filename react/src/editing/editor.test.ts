@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 import { ProblemError, renderStrips } from "../api/client";
 import type { Render } from "../api/types";
 import {
+  aBoldSentence,
   aDoc,
   aDocumentNotice,
   aFit,
@@ -29,7 +30,7 @@ import { chooseFont } from "./fontChoices";
 import type { Mismatches } from "./mismatches";
 import { keptNewTexts, moveNewText, openNewTextAgain, openNewTextAt } from "./newText";
 import { plain, warn } from "./notices";
-import { edit, finish, typeInto } from "./typing";
+import { edit, finish, typeInto, typeIntoRuns } from "./typing";
 
 vi.mock(import("../api/client"), async (original) => ({ ...(await original()), renderStrips: vi.fn() }));
 
@@ -171,6 +172,24 @@ describe("a change to the history", () => {
     typed("turned", "now");
     typed("elsewhere", "now");
     expect(warnedCount(editor.store.get())).toEqual({ count: 3, different: true });
+  });
+
+  test("a line's edit is one change, warned once, however many of its runs it draws again", async () => {
+    // The render fits each run drawn again, the two moved along as well as the one typed in.
+    const similar = aFit({ fidelity: "substitute", substitute: "Liberation Serif Regular" });
+    const fits = { before: similar, bold: similar, after: similar };
+    vi.mocked(renderStrips).mockResolvedValue(aReply({ fits }));
+    const sentence = aBoldSentence();
+    const spans = sentence.spans.map((span) => ({ ...span, fidelity: "substitute" as const, in_file: false }));
+    editor = createEditor(FILE, aDoc({ ...sentence, spans }), 2);
+    // The first run grows, so the two after it move and are drawn again too.
+    edit(editor, "before", null);
+    typeIntoRuns(editor, ["Text is now grouped into ", "spans", " (one style)"], { caret: null });
+    finish(editor, true);
+    await vi.waitFor(() => expect(editor.store.get().drawn.fits.get(0)?.after).toBeDefined());
+    expect(changedCount(editor.store.get())).toBe(1);
+    expect(warnedCount(editor.store.get())).toEqual({ count: 1, different: false });
+    expect(changesShown({ changed: 1, ...warnedCount(editor.store.get()) }, PSEUDO_SENTENCES).plain).toBe("");
   });
 });
 
