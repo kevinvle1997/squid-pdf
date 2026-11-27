@@ -125,25 +125,84 @@ export interface TypedRun {
   readonly text: string;
 }
 
+/** One run of a line, measured: where the page starts it, its own words' width, and the typed words'. */
+export interface RunWidths {
+  readonly x: number;
+  readonly originalPt: number;
+  readonly typedPt: number;
+  readonly changed: boolean;
+}
+
 /**
- * What would happen if a line's runs read `runs`' words: the runs changed, set against the line's room, as one. A run
- * not changed adds nothing: it moves with the line, and a way out scales only the runs changed.
+ * A line's runs fitted by those that change: the line's fit, the way out drawn, how wide the changed runs are drawn
+ * as a share of their typed width, and where each run starts.
+ */
+export interface RunsLaidOut {
+  readonly fit: Fit; // the line's, no one run's letters
+  readonly way: Strategy;
+  readonly scale: number;
+  readonly starts: readonly number[];
+}
+
+/**
+ * A line's runs as typed, fitted in its room by those that change, and set along it: `runs_laid_out` in
+ * editing/fit.py, held to `line_cases` in tests/editing/fit_cases.json. A way out scales only the changed runs, to
+ * where they ended, so nothing after them moves; as typed, the runs after a change move with it.
+ */
+export function runsLaidOut(
+  runs: readonly RunWidths[],
+  { roomPt, asked, rules }: { roomPt: number; asked: Strategy | undefined; rules: FitRules },
+): RunsLaidOut {
+  const changed = runs.filter((run) => run.changed);
+  const originalPt = sumOf(changed.map((run) => run.originalPt));
+  const deltaPt = sumOf(changed.map((run) => run.typedPt)) - originalPt;
+  const options = optionsFor(deltaPt, { originalPt, roomPt, rules });
+  const way = wayDrawn(asked, { options });
+  // A way out is offered only past the room, so the changed runs have some width then.
+  const scale = way === "as-is" ? 1 : originalPt / (originalPt + deltaPt);
+  const fit = { originalPt, deltaPt: Math.round(deltaPt * 100) / 100, roomPt, missing: [], options };
+  return { fit, way, scale, starts: runStartsOf(runs, scale) };
+}
+
+/** Where each run starts once those before it are drawn, changed ones `scale` wide, each gap the page left kept. */
+function runStartsOf(runs: readonly RunWidths[], scale: number): number[] {
+  const starts: number[] = [];
+  let nextPt = runs[0]?.x ?? 0;
+  for (const [index, run] of runs.entries()) {
+    const before = runs[index - 1];
+    if (before !== undefined) nextPt += run.x - (before.x + before.originalPt);
+    starts.push(nextPt);
+    nextPt += run.changed ? run.typedPt * scale : run.typedPt;
+  }
+  return starts;
+}
+
+/** A run of a line as typed: its span, the font that sets it, and the words it reads. */
+export interface TypedRun {
+  readonly span: SpanInfo;
+  readonly font: FontInfo;
+  readonly text: string;
+}
+
+/** `runs` of a line measured, each from where the page starts it. */
+export function runWidthsOf(runs: readonly TypedRun[]): RunWidths[] {
+  return runs.map(({ span, font, text }) => {
+    const originalPt = lineWidthPt(span, span.text, font.glyphs);
+    const changed = text !== span.text;
+    const typedPt = changed ? lineWidthPt(span, spelledIn(text, font.glyphs), font.glyphs) : originalPt;
+    return { x: span.origin[0] ?? span.bbox.x0, originalPt, typedPt, changed };
+  });
+}
+
+/**
+ * What would happen if a line's runs read `runs`' words: the runs changed, set against the line's room, as one, and
+ * every letter a changed run's font lacks.
  */
 export function lineFitOf(runs: readonly TypedRun[], { roomPt, rules }: { roomPt: number; rules: FitRules }): Fit {
+  const { fit } = runsLaidOut(runWidthsOf(runs), { roomPt, asked: undefined, rules });
   const changed = runs.filter(({ span, text }) => text !== span.text);
-  const originalPt = sumOf(changed.map(({ span, font }) => lineWidthPt(span, span.text, font.glyphs)));
-  const typedPt = sumOf(
-    changed.map(({ span, font, text }) => lineWidthPt(span, spelledIn(text, font.glyphs), font.glyphs)),
-  );
-  const deltaPt = Math.round((typedPt - originalPt) * 100) / 100;
   const missing = new Set(changed.flatMap(({ font, text }) => missingIn(text, font.glyphs)));
-  return {
-    originalPt,
-    deltaPt,
-    roomPt,
-    missing: [...missing],
-    options: optionsFor(deltaPt, { originalPt, roomPt, rules }),
-  };
+  return { ...fit, missing: [...missing] };
 }
 
 /** The sum of `widths`. */
