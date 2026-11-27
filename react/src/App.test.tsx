@@ -11,6 +11,7 @@ import {
   billingPortal,
   checkout,
   ProblemError,
+  renderStrips,
   signIn,
   signOut,
   terms,
@@ -25,8 +26,10 @@ import {
   persistFile,
   persistState,
 } from "./documents/localPersistence";
-import { EMPTY_HISTORY, historyReducer } from "./editing/history";
-import { A4, aDoc, aFont, anAccount, aProblem, aSignedIn, aSpan, TERMS } from "./fixtures";
+import { change, closeEditor, createEditor, type Editor } from "./editing/editor";
+import { EMPTY_HISTORY, entriesOf, historyReducer } from "./editing/history";
+import { isWork } from "./editing/workPersistence";
+import { A4, aDoc, aFont, anAccount, aProblem, aReply, aSignedIn, aSpan, TERMS } from "./fixtures";
 import { animationsDone, emulateTouchScreen } from "./testing";
 
 vi.mock(import("./api/client"), async (original) => ({
@@ -85,6 +88,36 @@ async function persistedHere(until: number) {
   });
   await persistFile(new File(["%PDF-"], "contract.pdf", { type: "application/pdf" }));
   await persistState({ doc: PERSISTED_DOC, work: { history, fonts: [] }, until, order: [0] });
+}
+
+/** Store `value` under `key` in this browser's database, as an earlier build wrote it. */
+async function storedAs(key: string, value: unknown) {
+  const database = await new Promise<IDBDatabase>((resolve, reject) => {
+    const opening = indexedDB.open("squid-pdf", 1);
+    opening.onsuccess = () => resolve(opening.result);
+    opening.onerror = () => reject(opening.error);
+  });
+  const transaction = database.transaction("kept", "readwrite");
+  transaction.objectStore("kept").put(value, key);
+  await new Promise((resolve) => {
+    transaction.oncomplete = resolve;
+  });
+  database.close();
+}
+
+/** What this browser's database holds under `key`, read as it is: unlike opening it again, a read that forgets nothing. */
+async function storedUnder(key: string): Promise<unknown> {
+  const database = await new Promise<IDBDatabase>((resolve, reject) => {
+    const opening = indexedDB.open("squid-pdf", 1);
+    opening.onsuccess = () => resolve(opening.result);
+    opening.onerror = () => reject(opening.error);
+  });
+  const reading = database.transaction("kept", "readonly").objectStore("kept").get(key);
+  const value = await new Promise((resolve) => {
+    reading.onsuccess = () => resolve(reading.result);
+  });
+  database.close();
+  return value;
 }
 
 /** A PDF chosen on the landing, as its file picker hands one over. */
@@ -176,6 +209,68 @@ test("a document persisted here opens again with its changes, without sending th
   await screen.getByRole("button", { name: "Open it again" }).click();
   await expect.element(screen.getByRole("button", { name: "is a" })).toBeInTheDocument();
   expect(upload).not.toHaveBeenCalled();
+});
+
+test("a document persisted by the build before, its reading in the state with its work, opens again with its changes", async () => {
+  await persistedHere(Date.now() + 60_000);
+  const { work } = (await persistedDocument()) ?? {};
+  await forgetPersisted();
+  await persistFile(new File(["%PDF-"], "contract.pdf", { type: "application/pdf" }));
+  // The shape the build before stored, which no type names now.
+  await storedAs("state", { doc: PERSISTED_DOC, work, until: Date.now() + 60_000, format: 1 });
+  const screen = await render(<App />);
+  await screen.getByRole("button", { name: "Open it again" }).click();
+  await expect.element(screen.getByRole("button", { name: "is a" })).toBeInTheDocument();
+  expect(upload).not.toHaveBeenCalled();
+});
+
+test("a document the server opened again under a new id, with no change since, opens again under that id", async () => {
+  const later = new Date(Date.now() + 7_200_000).toISOString();
+  vi.mocked(upload)
+    .mockResolvedValueOnce(PERSISTED_DOC)
+    .mockResolvedValueOnce({ ...PERSISTED_DOC, id: "again", expires_at: later });
+  // The server lost the copy (a deploy, say), and says so before the change's first write is done.
+  vi.mocked(renderStrips)
+    .mockRejectedValueOnce(new ProblemError(aProblem(404, "Not found.")))
+    .mockResolvedValueOnce(aReply({ expires_at: later }));
+  const screen = await render(<App />);
+  choose(screen.container, "contract.pdf");
+  const mark = screen.getByRole("button", { name: "was a" });
+  await expect.element(mark).toBeInTheDocument();
+  mark.element().focus();
+  await userEvent.keyboard("{Enter}");
+  await screen.getByRole("textbox").fill("is a");
+  await userEvent.keyboard("{Enter}");
+  // Three writes, one after another: the change's, the document opened again, and the hour its reply moved. Read
+  // raw meanwhile, as `persistedDocument` forgets a record it finds half written.
+  await expect.poll(() => storedUnder("until"), { timeout: 5000 }).toBe(Date.parse(later));
+  expect((await persistedDocument())?.doc.id).toBe("again");
+});
+
+test("two tabs persisting two documents never open one's work on the other's reading", async () => {
+  const documentX = aDoc({ id: "x", spans: [aSpan({ id: "on x" })], fonts: [aFont("Times-Roman")] });
+  const documentY = aDoc({ id: "y", spans: [aSpan({ id: "on y" })], fonts: [aFont("Times-Roman")] });
+  /** An editor on `doc`, its span changed to `text`, persisted here. */
+  const changedIn = async (editor: Editor, text: string) => {
+    const [span] = editor.store.get().doc.spans;
+    change(editor, { kind: "add", edits: [{ kind: "replace", span_id: span?.id ?? "", text }] });
+    await expect.poll(() => editor.persistence.history).toBe(editor.store.get().history);
+  };
+  const tabX = createEditor(new File(["%PDF-x"], "x.pdf"), documentX, 2);
+  await changedIn(tabX, "first");
+  const tabY = createEditor(new File(["%PDF-y"], "y.pdf"), documentY, 2);
+  await changedIn(tabY, "first");
+  await changedIn(tabX, "second");
+  onTestFinished(() => {
+    closeEditor(tabX);
+    closeEditor(tabY);
+  });
+
+  const persisted = await persistedDocument();
+  const spans = new Set(persisted?.doc.spans.map((span) => span.id));
+  const edited = isWork(persisted?.work) ? entriesOf(persisted.work.history).map(({ edit }) => edit) : [];
+  // Whatever is offered, its work is on its own reading's spans.
+  expect(edited.every((edit) => edit.kind !== "replace" || spans.has(edit.span_id))).toBe(true);
 });
 
 test("a document persisted before the server's sentences were renamed comes back with them under their new name", async () => {

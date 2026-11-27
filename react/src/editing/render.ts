@@ -70,7 +70,7 @@ export function landedFits(
   return Object.fromEntries(Object.entries(fits).filter(([spanId]) => !stale.has(spanId)));
 }
 
-/** What a reply says, less the images and `expires_at`, which goes to `persistUntil`. Not read: `build`, since a deploy retires the document. */
+/** What a reply says, less the images and `expires_at`, which goes to `untilMoved`. Not read: `build`, since a deploy retires the document. */
 type RenderReply = Pick<Render, "fits" | "insert_fits" | "redactions" | "notices" | "skipped">;
 
 /** The page a notice is about: its span's, or its insert's. A notice about the whole file names none. */

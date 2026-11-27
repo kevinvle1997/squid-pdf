@@ -15,7 +15,7 @@ import {
   upload,
 } from "../../api/client";
 import type { Document, FontList, Render } from "../../api/types";
-import { type PersistedWork, persistFile, persistState } from "../../documents/localPersistence";
+import { type PersistedWork, persistFile, persistState, persistUntil } from "../../documents/localPersistence";
 import {
   A4,
   aDoc,
@@ -46,6 +46,7 @@ vi.mock(import("../../documents/localPersistence"), async (original) => ({
   ...(await original()),
   persistFile: vi.fn(async () => undefined),
   persistState: vi.fn(async () => undefined),
+  persistUntil: vi.fn(async () => undefined),
 }));
 
 vi.mock(import("../../api/client"), async (original) => ({
@@ -856,7 +857,7 @@ describe("leaving the page", () => {
     expect(given?.type).toBe(FONT_FILE.type);
   });
 
-  test("each change is persisted as it's made: the file once, then the history, until the server's hour ends", async () => {
+  test("each change is persisted as it's made: the file and the server's reading once, then the history, until the server's hour ends", async () => {
     vi.mocked(persistFile).mockClear();
     vi.mocked(persistState).mockClear();
     const file = new File(["%PDF-"], "contract.pdf");
@@ -866,12 +867,27 @@ describe("leaving the page", () => {
     expect(persistFile).toHaveBeenCalledWith(file);
     const [persisted] = vi.mocked(persistState).mock.calls[0] ?? [];
     expect(persisted?.until).toBe(Date.parse(DOC.expires_at));
+    expect(persisted?.doc).toBe(DOC);
+    expect(vi.mocked(persistState).mock.calls[0]?.[1]).toEqual({ docChanged: true });
     expect(persisted?.work).toMatchObject({ history: { done: [[{ edit: { span_id: span.id, text: "is here" } }]] } });
 
     screen.getByRole("button", { name: "is here" }).element().focus();
     await userEvent.keyboard("{Control>}z{/Control}");
     await vi.waitFor(() => expect(persistState).toHaveBeenCalledTimes(2));
     expect(persistFile).toHaveBeenCalledTimes(1);
+    // The reading is the most there is to store, and it hasn't changed.
+    expect(vi.mocked(persistState).mock.calls[1]?.[1]).toEqual({ docChanged: false });
+  });
+
+  test("a render's reply moves the hour persisted here, and writes the work no second time", async () => {
+    const later = new Date(Date.now() + 7_200_000).toISOString();
+    vi.mocked(renderStrips).mockResolvedValueOnce(aReply({ expires_at: later }));
+    vi.mocked(persistState).mockClear();
+    vi.mocked(persistUntil).mockClear();
+    const screen = await openEditor();
+    await changeSpan(screen, "is here");
+    await vi.waitFor(() => expect(persistUntil).toHaveBeenCalledWith(Date.parse(later)));
+    expect(persistState).toHaveBeenCalledTimes(1);
   });
 });
 

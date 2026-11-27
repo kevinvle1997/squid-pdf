@@ -20,8 +20,13 @@ const DATABASE = "squid-pdf";
 const STORE = "kept";
 const FILE = "file";
 const STATE = "state";
-// What's stored changes shape with the code: one stored in another shape is forgotten.
-const FORMAT = 1;
+// The server's reading, apart from the work, as it's the most there is to store and changes least; and its hour.
+const DOC = "doc";
+const UNTIL = "until";
+// What's stored changes shape with the code: one stored in another shape is forgotten, but for the shape before.
+const FORMAT = 2;
+// The shape before: the reading and its hour stored in the state, with the work.
+const READING_IN_STATE = 1;
 
 let connection: Promise<IDBDatabase> | undefined;
 
@@ -65,35 +70,75 @@ export async function persistFile(file: File): Promise<void> {
     lastModified: file.lastModified,
   };
   await inStore("readwrite", (store) => {
-    store.delete(STATE);
+    for (const key of [STATE, DOC, UNTIL]) store.delete(key);
     return store.put(persistedFile, FILE);
   });
 }
 
-/** Persist what's true of the persisted file now: the server's reading of it, the work done to it, and until when. */
-export async function persistState<Work>(state: Omit<Persisted<Work>, "file">): Promise<void> {
-  await inStore("readwrite", (store) => store.put({ ...state, format: FORMAT }, STATE));
+/**
+ * Persist the work done to the persisted file, which document it was done on, its order and until when, in one
+ * transaction with the server's reading of it once that changed: the most there is to store.
+ */
+export async function persistState<Work>(
+  { doc, work, until, order }: Omit<Persisted<Work>, "file">,
+  { docChanged = true }: { docChanged?: boolean } = {},
+): Promise<void> {
+  await inStore("readwrite", (store) => {
+    if (docChanged) store.put(doc, DOC);
+    store.put(until, UNTIL);
+    return store.put({ work, docId: doc.id, order, format: FORMAT }, STATE);
+  });
 }
 
-/** The document persisted here: none if there's none, or its hour has run out, or it was stored in another shape. */
+/** Persist until when the server keeps the persisted file, as each of its replies moves it: the work stays as it is. */
+export async function persistUntil(until: number): Promise<void> {
+  await inStore("readwrite", (store) => store.put(until, UNTIL));
+}
+
+/**
+ * The document persisted here: none if there's none, or its hour has run out, or it isn't whole: stored in a shape but
+ * this build's or the one before, or its work done on another document than the reading stored.
+ */
 export async function persistedDocument(): Promise<Persisted<unknown> | null> {
   const persistedFile = await inStore("readonly", (store) => store.get(FILE));
   const state = await inStore("readonly", (store) => store.get(STATE));
-  const whole = persistedFile?.bytes instanceof ArrayBuffer && state?.format === FORMAT;
-  if (whole && state.until > Date.now()) {
+  const stored = await storedDoc(state);
+  const whole = persistedFile?.bytes instanceof ArrayBuffer && stored !== null;
+  if (whole && stored.until > Date.now()) {
     const { bytes, name, type, lastModified } = persistedFile;
     return {
       file: new File([bytes], name, { type, lastModified }),
-      doc: withSpanFields(renamed(state.doc)),
+      doc: withSpanFields(renamed(stored.doc)),
       work: state.work,
-      until: state.until,
+      until: stored.until,
       // Stored before the order was: the original's pages, which is where opening again starts all the same.
-      order: state.order ?? state.doc.pages.map((_: unknown, page: number) => page),
+      order: state.order ?? stored.doc.pages.map((_, page) => page),
     };
   }
   // Past its hour, or half stored: nothing to open again, so nothing to keep.
   if (persistedFile !== undefined || state !== undefined) await forgetPersisted();
   return null;
+}
+
+/**
+ * The server's reading persisted with `state`'s work, and its hour: none where either is missing, the reading is of
+ * another document than the work (another tab's, opened since), or `state` is in another shape.
+ */
+async function storedDoc(
+  state: { format?: unknown; doc?: Document; docId?: string; until?: number } | undefined,
+): Promise<{ doc: Document; until: number } | null> {
+  if (state?.format !== FORMAT && state?.format !== READING_IN_STATE) return null;
+  const doc = await inStore<Document | undefined>("readonly", (store) => store.get(DOC));
+  const until = await inStore<number | undefined>("readonly", (store) => store.get(UNTIL));
+  // The build before kept both in the state, and a reply since may have moved the hour. Nothing outlives the
+  // server's hour, so this can go an hour after a deploy.
+  if (state.format === READING_IN_STATE) return wholeDoc(state.doc, until ?? state.until);
+  return doc?.id === state.docId ? wholeDoc(doc, until) : null;
+}
+
+/** The reading and its hour, if both are there. */
+function wholeDoc(doc: Document | undefined, until: unknown): { doc: Document; until: number } | null {
+  return doc !== undefined && typeof until === "number" ? { doc, until } : null;
 }
 
 /** A persisted reading of the document, its sentences as `sentences` though it was stored when they were `copy`. */

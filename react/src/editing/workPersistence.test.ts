@@ -6,7 +6,14 @@ afterEach(() => vi.useRealTimers());
 
 /** What's persisted of an open document, the server keeping it another `ms`. */
 function persistedFor(ms: number): Persistence {
-  return { file: true, history: EMPTY_HISTORY, until: Date.now() + ms, forgetting: null };
+  return {
+    file: true,
+    doc: null,
+    history: EMPTY_HISTORY,
+    until: Date.now() + ms,
+    forgetting: null,
+    writing: Promise.resolve(),
+  };
 }
 
 test("what's persisted here is forgotten as the server's hour runs out, to be persisted afresh from then on", () => {
@@ -16,7 +23,13 @@ test("what's persisted here is forgotten as the server's hour runs out, to be pe
   vi.advanceTimersByTime(999);
   expect(persistence.file).toBe(true);
   vi.advanceTimersByTime(1);
-  expect(persistence).toEqual({ file: false, history: null, until: persistence.until, forgetting: null });
+  expect(persistence).toMatchObject({
+    file: false,
+    doc: null,
+    history: null,
+    until: persistence.until,
+    forgetting: null,
+  });
 });
 
 test("the hour moving on moves the forgetting with it, and a closed editor forgets nothing", () => {

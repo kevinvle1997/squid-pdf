@@ -26,6 +26,7 @@ vi.mock(import("../../documents/localPersistence"), async (original) => ({
   ...(await original()),
   persistFile: vi.fn(async () => undefined),
   persistState: vi.fn(async () => undefined),
+  persistUntil: vi.fn(async () => undefined),
 }));
 
 vi.mock(import("../../api/client"), async (original) => ({

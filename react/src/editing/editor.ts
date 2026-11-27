@@ -43,7 +43,7 @@ import { type FontsByObject, fontOf, fontsByObject, shownNameIn } from "./spanFo
 import { createStore, type Store } from "./store";
 import type { Draft } from "./typing";
 import { fill, fillCounted } from "./words";
-import { type Persistence, persistUntil, persistWork, stopForgetting } from "./workPersistence";
+import { type Persistence, persistWork, stopForgetting, untilMoved } from "./workPersistence";
 import { FITTED, type Zoom } from "./zoom";
 
 /**
@@ -250,7 +250,7 @@ export function createEditor(file: File, opened: Document, scale: number): Edito
     scale,
     near,
     drawn: (drawn) => drawnNow(store, drawn),
-    extended: (expiresAt) => persistUntil(editor, expiresAt),
+    extended: (expiresAt) => untilMoved(editor, expiresAt),
   });
   const editor: Editor = {
     store,
@@ -263,7 +263,14 @@ export function createEditor(file: File, opened: Document, scale: number): Edito
     finding: {},
     ahead: {},
     fontList: {},
-    persistence: { file: false, history: null, until: Date.parse(opened.expires_at), forgetting: null },
+    persistence: {
+      file: false,
+      doc: null,
+      history: null,
+      until: Date.parse(opened.expires_at),
+      forgetting: null,
+      writing: Promise.resolve(),
+    },
   };
   return editor;
 }
@@ -279,6 +286,8 @@ async function reopened(editor: Editor, doc: Document): Promise<Document> {
   const notices = { ...store.get().notices, reopen, ...(refusal !== null && { font: refusal }) };
   const heard = refusal === null ? reopen.text : `${reopen.text} ${refusal.text}`;
   store.set({ doc: judged, layout: layoutOf(judged), notices, announcement: announcing(heard) });
+  // Persisted under its new id, so a reload opens the copy the server has.
+  if (editor.persistence.file) void persistWork(editor);
   // Pages drawn with a copy now refused no longer show what export would give.
   if (refusal !== null) queue.redraw(store.get().reading);
   return judged;
