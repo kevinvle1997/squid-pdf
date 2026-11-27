@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import io
+from collections.abc import Mapping
 
 from fontTools.ttLib import TTFont
 
 from squidpdf.core.fonts.catalog import CATALOG, FACES
+from squidpdf.core.fonts.letter_shapes import kind_by_shape
 from squidpdf.core.fonts.names import bare_name, style_of
-from squidpdf.core.types import Category, Face, FontDescriptor, LookAlike, Style
+from squidpdf.core.types import Category, Face, FontDescriptor, GlyphId, LookAlike, Style
 
 _FIXED_WIDTH = 1 << 0
 _SERIF = 1 << 1
@@ -95,13 +97,20 @@ def _nearest_face(family: dict[Style, Face], style: Style) -> Face:
     return family[style]
 
 
-def kind_in_file(file: bytes) -> Category | None:
-    """Many PDFs set only /Flags' Nonsymbolic bit, so a serif reads as sans: OS/2 is truer."""
+def kind_in_file(file: bytes, letters: Mapping[str, GlyphId]) -> Category | None:
+    """Many PDFs set only /Flags' Nonsymbolic bit, so a serif reads as sans: the file says."""
     try:
-        os2 = TTFont(io.BytesIO(file), lazy=True).getTableData("OS/2")
-    except Exception:  # noqa: BLE001 (fontTools can fail in many ways on a font, and CFF has no OS/2)
+        font = TTFont(io.BytesIO(file), lazy=True)
+        return _kind_in_os2(font) or kind_by_shape(font, letters)
+    except Exception:  # noqa: BLE001 (fontTools fails in many ways on a font, as on a bare CFF)
         return None
-    # No table, or one cut short: a trimmed TrueType says nothing of its kind.
+
+
+def _kind_in_os2(font: TTFont) -> Category | None:
+    # A trimmed TrueType often keeps no OS/2 table, or one cut short.
+    if "OS/2" not in font:
+        return None
+    os2 = font.getTableData("OS/2")
     if len(os2) < _PANOSE_END:
         return None
     text_face = os2[_PANOSE_FAMILY_TYPE] == _PANOSE_TEXT_FACE
