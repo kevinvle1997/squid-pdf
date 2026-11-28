@@ -20,7 +20,7 @@ _POSITION_DP = 2
 
 
 def build_index(pages: Iterable[list[list[TextPiece]]]) -> SpanIndex:
-    written = [(page, group) for page, group in _each_group(pages) if _text_in(group).strip()]
+    written = list(_each_group(pages))
     return index_of(
         _span_from(page, group, ordinal=ordinal)
         for ordinal, (page, group) in enumerate(written)
@@ -32,8 +32,12 @@ def _each_group(
 ) -> Iterator[tuple[int, list[TextPiece]]]:
     for page, lines in enumerate(pages):
         for line in lines:
-            for group in _merge(line):
-                yield page, group
+            groups = _merge(line)
+            worded = [index for index, group in enumerate(groups) if _text_in(group).strip()]
+            for index, group in enumerate(groups):
+                # A space in a font of its own, as Chrome writes them, is kept between words.
+                if worded and worded[0] <= index <= worded[-1]:
+                    yield page, group
 
 
 def _text_in(group: list[TextPiece]) -> str:

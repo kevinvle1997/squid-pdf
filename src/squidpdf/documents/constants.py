@@ -33,7 +33,7 @@ DOCUMENT_CACHE = "private, no-cache"
 REPLY_VERSION = 14
 # How an original, its span index and page list are kept: bump it when one changes. One kept
 # in another reads as gone, never indexed again, and the browser opens it again from its copy.
-DOCUMENT_FORMAT = 5
+DOCUMENT_FORMAT = 6
 # How an analysis is kept and judged: bump it when either changes; an old one is redone.
 ANALYSIS_FORMAT = 14
 

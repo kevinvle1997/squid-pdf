@@ -24,6 +24,14 @@ _TWICE = "Total"  # drawn twice, a little apart, as a bold the font doesn't have
 _DUE = " due"
 _BIG, _SMALL = ("BIG", 20), (" small", 8)
 _BOX_X = 300
+# Each space in a font of its own, as Chrome writes a web font it can't embed whole.
+_SPACED_APART = (
+    ("Pay", "helv"),
+    (" ", "tiro"),
+    ("now", "helv"),
+    (" ", "tiro"),
+    ("please", "helv"),
+)
 
 
 def _lines_page() -> bytes:
@@ -43,6 +51,7 @@ def _lines_page() -> bytes:
     page.insert_text((squared_x, 256), _SQUARED[1], fontsize=6)
     _write_twice(page, 300)
     _write_big_and_small(page, 360)
+    write_runs(page, _SPACED_APART, origin=(_LEFT, 400), size=_SIZE)
     return doc.tobytes()
 
 
@@ -83,6 +92,14 @@ def test_a_sentence_with_a_bold_word_is_one_line_of_its_three_spans(lines_doc):
     lines = [[text.strip() for text in line] for line in _texts_of(lines_doc)]
 
     assert_equal(lines[0], sentence, "the sentence's spans, left to right")
+
+
+def test_a_line_whose_spaces_are_drawn_in_another_font_reads_with_them(lines_doc):
+    words = "".join(text for text, _font in _SPACED_APART)
+
+    texts = ["".join(line) for line in _texts_of(lines_doc)]
+
+    assert_equal(words in texts, True, f"{words!r} among the lines {texts}")
 
 
 def test_a_line_is_cut_only_where_moving_a_span_would_leave_something_behind(lines_doc):
