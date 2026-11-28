@@ -344,6 +344,31 @@ describe("a page", () => {
     expect(playing).toEqual(["arrive"]);
   });
 
+  test("an edit's lines hang under its baseline, clear of the next line's tops where lines are set tight", async () => {
+    // A quarter of the box under the baseline, as a font's descender reaches.
+    const tight = { ...span, origin: [72, 118] as [number, number] };
+    openDocument(aDoc({ spans: [tight], fonts: [aFont("Times-Roman", { glyphs })] }));
+    const message = "no h in this font, so the line is drawn in Liberation Serif Regular";
+    vi.mocked(renderStrips).mockResolvedValue(aReply({ fits: { [span.id]: aFit({ missing: ["h"], message }) } }));
+    const screen = await draw();
+    await expect.element(screen.getByRole("button", { name: WORDS })).toBeInTheDocument();
+    edit(editor, span.id, null);
+    typeInto(editor, "is here");
+    finish(editor, true);
+    await expect.poll(() => editor.store.get().drawn.fits.get(0)?.[span.id]?.missing).toEqual(["h"]);
+
+    const mark = screen.getByRole("button", { name: "is here" }).element();
+    const height = mark.getBoundingClientRect().height;
+    const baselineAboveFoot = height / 4;
+    // Set solid, the next line's capitals start about a third of a box under this baseline.
+    const nextLineAboveFoot = baselineAboveFoot - height * 0.35;
+    for (const line of ["::after", "::before"]) {
+      const lineFootAboveFoot = Number.parseFloat(getComputedStyle(mark, line).bottom);
+      expect(lineFootAboveFoot, line).toBeGreaterThan(nextLineAboveFoot);
+      expect(lineFootAboveFoot, line).toBeLessThan(baselineAboveFoot);
+    }
+  });
+
   test("the chip says the verdict on what's typed: it looks identical, or a similar font draws it, warned", async () => {
     const screen = await draw();
     await editSpan(screen);

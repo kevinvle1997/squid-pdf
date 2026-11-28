@@ -14,7 +14,7 @@ import type { PageFits, PageRedactions } from "../render";
 import { type FontsByObject, fontOf } from "../spanFonts";
 import { edit } from "../typing";
 import { useEditor } from "./context";
-import { boxOf, markBoxOf } from "./geometry";
+import { baselineOf, boxOf, markBoxOf } from "./geometry";
 import type { Notes, Via } from "./notes";
 import styles from "./SpanMark.module.css";
 
@@ -103,7 +103,7 @@ export const LineMark = memo(function LineMark(props: Props) {
         className={className}
         data-span={line.id}
         data-warned={look.trouble ? "" : undefined}
-        style={boxOf(markBox, info)}
+        style={{ ...boxOf(markBox, info), ...baselineOf(markBox, line.spans[0]?.origin[1] ?? markBox.y1) }}
         aria-describedby={described ? noteId : undefined}
         onPress={pressed}
         onPressStart={passShortcut}

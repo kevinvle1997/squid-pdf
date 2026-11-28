@@ -37,6 +37,13 @@ export function boxOf(
   };
 }
 
+/** Where a mark's underlines hang from: its baseline, as a share of its box up from the box's foot. */
+export function baselineOf(box: Box, baselineY: number): { "--below-baseline": string } {
+  const height = box.y1 - box.y0;
+  const below = height > 0 ? (box.y1 - baselineY) / height : 0;
+  return { "--below-baseline": `${Math.min(Math.max(below, 0), 1) * 100}%` };
+}
+
 export function topOf(yPt: number, page: { height: number }): { top: string } {
   return { top: `${(yPt / page.height) * 100}%` };
 }

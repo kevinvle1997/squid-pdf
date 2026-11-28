@@ -7,8 +7,9 @@
 }
 /* Not a redacted one, whose look `ui/Redacted` gives: loaded first, it would lose to a rule here. */
 .span:not(.redacted) { background: transparent; }
+/* Under the baseline, as a text's underline is: the box's foot is the font's lowest, past the next line's tops where lines are set tight. */
 .span::after {
-  content: ""; position: absolute; inset-inline: 0; bottom: -1px;
+  content: ""; position: absolute; inset-inline: 0; bottom: calc(var(--below-baseline, 0%) - 8% - 2px);
   height: 1px; background: var(--sheet-ink-lo); opacity: 0;
   transition: opacity var(--dur-press) var(--ease-out);
 }
@@ -25,7 +26,7 @@
 .formField[data-hovered]::after, .formField[data-focus-visible]::after { opacity: 1; }
 .changed::after { opacity: 1; height: 2px; background: var(--mark-change); }
 /* The warning's dashed line runs under the change's solid one, so each shows by its shape, never by colour alone. */
-.trouble { composes: warnLine from "../../ui/WarnLine.module.css"; }
+.trouble { composes: warnLine from "../../ui/WarnLine.module.css"; --warn-line-bottom: calc(var(--below-baseline, 0%) - 20% - 2px); }
 .redacted { composes: redacted from "../../ui/Redacted.module.css"; }
 .redacted[data-hovered] { background: var(--mark-change-soft); }
 .redacted::after, .redacted[data-hovered]::after { opacity: 1; height: 2px; background: var(--mark-change); }

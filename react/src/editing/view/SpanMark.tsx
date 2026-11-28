@@ -11,7 +11,7 @@ import { redactedRangesOf, type SpanReading } from "../project";
 import { redactedBoxes, redactedSentences } from "../redaction";
 import { edit } from "../typing";
 import { useEditor } from "./context";
-import { boxOf, markBoxOf } from "./geometry";
+import { baselineOf, boxOf, markBoxOf } from "./geometry";
 import type { Notes, Via } from "./notes";
 import styles from "./SpanMark.module.css";
 
@@ -97,7 +97,10 @@ export const SpanMark = memo(function SpanMark(props: Props) {
         className={className}
         data-span={span.id}
         data-warned={look.trouble ? "" : undefined}
-        style={boxOf(markBoxOf(span, { replaced: reading?.replaced ?? false, fit }), info)}
+        style={{
+          ...boxOf(markBoxOf(span, { replaced: reading?.replaced ?? false, fit }), info),
+          ...baselineOf(span.bbox, span.origin[1] ?? span.bbox.y1),
+        }}
         aria-describedby={described ? noteId : undefined}
         onPress={pressed}
         onPressStart={passShortcut}
