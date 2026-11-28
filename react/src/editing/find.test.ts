@@ -582,3 +582,51 @@ describe("stepping through the places found", () => {
     expect(current()).toBeNull();
   });
 });
+
+describe("a line of several runs", () => {
+  const RUNS = [
+    aSpan({ id: "before", text: "Please read " }),
+    aSpan({ id: "bold", text: "the", font: "Times-Bold", bbox: { x0: 130, y0: 100, x1: 145, y1: 112 } }),
+    aSpan({ id: "after", text: " terms today.", bbox: { x0: 145, y0: 100, x1: 200, y1: 112 } }),
+  ];
+  const ON_A_LINE = aDoc({
+    sentences: PSEUDO_SENTENCES,
+    spans: RUNS,
+    lines: [{ span_ids: RUNS.map(({ id }) => id), room_pt: 100 }],
+    fonts: [aFont("Times-Roman", { glyphs }), aFont("Times-Bold", { glyphs })],
+  });
+
+  beforeEach(() => {
+    editor = createEditor(new File(["%PDF-"], "terms.pdf"), ON_A_LINE, 1);
+    openFind(editor);
+  });
+
+  test("finds words that run into bold as one place, each run marked for its own part", () => {
+    typeQuery(editor, "read the terms");
+    vi.advanceTimersByTime(FIND_DELAY_MS);
+
+    const onPage = editor.store.get().find.matches.get(0);
+    expect(findCount(editor.store.get()).places).toBe(1);
+    expect(onPage?.get("before")).toEqual([{ start: 7, end: 12 }]);
+    expect(onPage?.get("bold")).toEqual([{ start: 0, end: 3 }]);
+    expect(onPage?.get("after")).toEqual([{ start: 0, end: 6 }]);
+  });
+
+  test("Change all puts the new words in the run where the match starts, and takes the rest out of the runs after", () => {
+    typeQuery(editor, "read the terms");
+    typeReplacement(editor, "see our rules");
+    changeAll(editor);
+
+    const { reading } = editor.store.get();
+    expect(reading.edits).toEqual([
+      {
+        kind: "replace_runs",
+        runs: [
+          { span_id: "before", text: "Please see our rules" },
+          { span_id: "bold", text: "" },
+          { span_id: "after", text: " today." },
+        ],
+      },
+    ]);
+  });
+});

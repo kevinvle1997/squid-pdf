@@ -56,29 +56,100 @@ export const FIND_CLOSED: FindState = {
   changedAll: 0,
 };
 
-interface Found {
+interface FoundRun {
   readonly span: SpanInfo;
   readonly text: string;
   readonly strategy: Strategy | undefined;
+}
+
+/** A place: a line, searched as one text across its runs, or a span on no line. */
+interface Found {
+  readonly id: string;
+  readonly runs: readonly FoundRun[];
+  readonly text: string;
   readonly matches: readonly Match[];
 }
 
-function foundIn(
-  spans: readonly SpanInfo[],
-  { reading, find, typed }: { reading: Reading; find: FindState; typed: Replace | ReplaceRuns | null },
-): Found[] {
-  if (find.searched === "") return [];
-  const found: Found[] = [];
-  for (const span of spans) {
-    const now = reading.spans.get(span.id);
-    if (reading.deleted.has(span.page) || span.form_field || now?.redacted) continue;
-    const kept = typed !== null && spansOf(typed).includes(span.id) ? typed : undefined;
-    const text = (kept === undefined ? undefined : typedTextOf(kept, span.id)) ?? textIn(reading, span);
-    const strategy = kept === undefined ? now?.strategy : kept.strategy;
-    const matches = matchesIn(text, find.searched, find);
-    if (matches.length > 0) found.push({ span, text, strategy, matches });
+interface Searching {
+  readonly reading: Reading;
+  readonly find: FindState;
+  readonly typed: Replace | ReplaceRuns | null;
+}
+
+function foundIn(layout: Pick<Layout, "ordered" | "lines">, searching: Searching): Found[] {
+  if (searching.find.searched === "") return [];
+  return placesToSearch(layout, searching).flatMap((runs) => {
+    const text = runs.map((run) => run.text).join("");
+    const matches = matchesIn(text, searching.find.searched, searching.find);
+    const [first] = runs;
+    if (matches.length === 0 || first === undefined) return [];
+    const id = layout.lines.get(first.span.id)?.id ?? first.span.id;
+    return [{ id, runs, text, matches }];
+  });
+}
+
+function placesToSearch(
+  { ordered, lines }: Pick<Layout, "ordered" | "lines">,
+  { reading, typed }: Searching,
+): FoundRun[][] {
+  const places: FoundRun[][] = [];
+  for (const span of ordered) {
+    const line = lines.get(span.id);
+    if (line !== undefined && line.id !== span.id) continue;
+    const runs = (line?.spans ?? [span]).map((each) => runOf(each, { reading, typed }));
+    // A line with a redaction or a form field in it is searched span by span, leaving those out.
+    if (runs.every((run) => run !== null)) places.push(runs);
+    else places.push(...runs.flatMap((run) => (run === null ? [] : [[run]])));
   }
-  return found;
+  return places;
+}
+
+function runOf(span: SpanInfo, { reading, typed }: Omit<Searching, "find">): FoundRun | null {
+  const now = reading.spans.get(span.id);
+  if (reading.deleted.has(span.page) || span.form_field || now?.redacted) return null;
+  const kept = typed !== null && spansOf(typed).includes(span.id) ? typed : undefined;
+  const text = (kept === undefined ? undefined : typedTextOf(kept, span.id)) ?? textIn(reading, span);
+  const strategy = kept === undefined ? now?.strategy : kept.strategy;
+  return { span, text, strategy };
+}
+
+/** Each run's share of `matches`, which count from the start of the runs' joined text. */
+function runMatchesOf(runs: readonly FoundRun[], matches: readonly Match[]): [FoundRun, Match[]][] {
+  let runStart = 0;
+  return runs.map((run) => {
+    const runEnd = runStart + run.text.length;
+    const inRun = matches.flatMap(({ start, end }) =>
+      start < runEnd && end > runStart
+        ? [{ start: Math.max(start, runStart) - runStart, end: Math.min(end, runEnd) - runStart }]
+        : [],
+    );
+    runStart = runEnd;
+    return [run, inRun];
+  });
+}
+
+/** The runs' words once Change all puts `replacement` in the run where each match starts. */
+function runsReplacedIn({ runs, text, matches }: Found, replacement: string): string[] {
+  let texts = runs.map((run) => run.text);
+  for (const { start, end } of [...matches].reverse()) {
+    const typed = replacedIn(text.slice(start, end), [{ start: 0, end: end - start }], replacement);
+    texts = runsWithout(texts, { start, end, typed });
+  }
+  return texts;
+}
+
+function runsWithout(texts: readonly string[], { start, end, typed }: Match & { typed: string }): string[] {
+  let runStart = 0;
+  let placed = false;
+  return texts.map((run) => {
+    const from = Math.min(Math.max(start - runStart, 0), run.length);
+    const to = Math.min(Math.max(end - runStart, 0), run.length);
+    const holdsStart = !placed && start < runStart + run.length;
+    runStart += run.length;
+    if (!holdsStart) return run.slice(0, from) + run.slice(to);
+    placed = true;
+    return run.slice(0, from) + typed + run.slice(to);
+  });
 }
 
 function typedTextOf(typed: Replace | ReplaceRuns, spanId: string): string | undefined {
@@ -87,7 +158,7 @@ function typedTextOf(typed: Replace | ReplaceRuns, spanId: string): string | und
 }
 
 function foundNow(state: EditorState): Found[] {
-  return foundIn(state.layout.ordered, { reading: state.reading, find: state.find, typed: keptEditOf(state) });
+  return foundIn(state.layout, { reading: state.reading, find: state.find, typed: keptEditOf(state) });
 }
 
 function sameMatches(a: readonly Match[] | undefined, b: readonly Match[]): boolean {
@@ -104,9 +175,12 @@ function samePageMatches(a: ReadonlyMap<string, readonly Match[]>, b: ReadonlyMa
 
 function matchesOf(found: readonly Found[], before: FindState["matches"]): FindState["matches"] {
   const pages = new Map<number, Map<string, readonly Match[]>>();
-  for (const { span, matches } of found) {
-    const onPage = pages.get(span.page) ?? new Map<string, readonly Match[]>();
-    pages.set(span.page, onPage.set(span.id, matches));
+  for (const { runs, matches } of found) {
+    for (const [{ span }, inRun] of runMatchesOf(runs, matches)) {
+      if (inRun.length === 0) continue;
+      const onPage = pages.get(span.page) ?? new Map<string, readonly Match[]>();
+      pages.set(span.page, onPage.set(span.id, inRun));
+    }
   }
   return new Map(
     [...pages].map(([page, spans]) => {
@@ -189,13 +263,13 @@ function runDrawnAt(
 function refound(state: Pick<EditorState, "find" | "layout">, reading: Reading): FindState {
   const { find, layout } = state;
   // The span typed in shows no marks (`tintsOn`), so its saved words do here.
-  const found = foundIn(layout.ordered, { reading, find, typed: null });
-  const current = found.some(({ span }) => span.id === find.current) ? find.current : null;
+  const found = foundIn(layout, { reading, find, typed: null });
+  const current = found.some(({ id }) => id === find.current) ? find.current : null;
   return { ...find, matches: matchesOf(found, find.matches), current };
 }
 
 function placesIn(state: EditorState): string[] {
-  return foundNow(state).map(({ span }) => span.id);
+  return foundNow(state).map(({ id }) => id);
 }
 
 export function placeAt(state: EditorState): number | null {
@@ -248,17 +322,28 @@ function wouldEmpty({ text, matches }: Found, replacement: string): boolean {
   return replacement !== "" && isEmpty(replacedIn(text, matches, replacement));
 }
 
-function looksDifferent(
-  { span, text, strategy, matches }: Found,
-  { drawn, fonts, replacement, rules }: { drawn: Drawn; fonts: FontsByObject; replacement: string; rules: FitRules },
-): boolean {
+interface Judging {
+  readonly drawn: Drawn;
+  readonly fonts: FontsByObject;
+  readonly replacement: string;
+  readonly rules: FitRules;
+}
+
+function looksDifferent(found: Found, judging: Judging): boolean {
+  const replaced = judging.replacement === "" ? null : runsReplacedIn(found, judging.replacement);
+  return runMatchesOf(found.runs, found.matches).some(([run, inRun], index) => {
+    if (inRun.length === 0) return false;
+    const judged = replaced === null ? run : { ...run, text: replaced[index] ?? run.text, strategy: undefined };
+    return runLooksDifferent(judged, judging);
+  });
+}
+
+function runLooksDifferent({ span, text, strategy }: FoundRun, { drawn, fonts, rules }: Judging): boolean {
   const font = fontOf(fonts, span);
   if (font === undefined) return span.fidelity !== "exact";
-  const judged =
-    replacement === "" ? { text, strategy } : { text: replacedIn(text, matches, replacement), strategy: undefined };
-  if (editVerdictOf(drawn, { span, font, ...judged }).fidelity !== "exact") return true;
-  const fit = fitOf(span, { font, text: judged.text, rules });
-  return runsPast(fit.deltaPt, fit.roomPt, rules) && wayDrawn(judged.strategy, fit) === "as-is";
+  if (editVerdictOf(drawn, { span, font, text, strategy }).fidelity !== "exact") return true;
+  const fit = fitOf(span, { font, text, rules });
+  return runsPast(fit.deltaPt, fit.roomPt, rules) && wayDrawn(strategy, fit) === "as-is";
 }
 
 export function findCount(state: EditorState): FindCount {
@@ -380,7 +465,9 @@ function changeAllEditsOf(
   const done = new Set<string>();
   return [...replaced].flatMap(([spanId, text]): (Replace | ReplaceRuns)[] => {
     const line = layout.lines.get(spanId);
-    if (line === undefined || reading.spans.get(spanId)?.lineEdit === undefined) {
+    const othersChanged = line?.spans.some((span) => span.id !== spanId && replaced.has(span.id)) ?? false;
+    const edited = reading.spans.get(spanId)?.lineEdit !== undefined;
+    if (line === undefined || !(edited || othersChanged)) {
       return [{ kind: "replace", span_id: spanId, text }];
     }
     if (done.has(line.id)) return [];
@@ -409,7 +496,13 @@ export function changeAll(editor: Editor): void {
     return;
   }
   const replaced = new Map(
-    changing.map(({ span, text, matches }) => [span.id, replacedIn(text, matches, find.replacement)]),
+    changing.flatMap((each) => {
+      const texts = runsReplacedIn(each, find.replacement);
+      return each.runs.flatMap(({ span, text }, index) => {
+        const now = texts[index] ?? text;
+        return now === text ? [] : [[span.id, now] as const];
+      });
+    }),
   );
   const after = historyReducer(state.history, typed);
   const kept = readingOf(state.doc, { base: unsplitOf(state.layout), entries: entriesOf(after) }, state);
